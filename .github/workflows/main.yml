@@ -21,43 +21,79 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
+      # 1. Configurar o ambiente JDK adequado aos requisitos do projeto (AGP 9.1.1 + Gradle 9.3.1 exigem JDK 17+)
       - name: Configurar JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Validar ambiente Java
+        run: |
+          java -version
+          echo "JAVA_HOME=$JAVA_HOME"
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
+      # 2. Passo para verificar a existência do gradlew e do gradle-wrapper.properties
+      - name: Verificar existência do Gradle Wrapper (gradlew)
+        run: |
+          echo "Verificando a existência do gradlew..."
+          if [ ! -f "./gradlew" ]; then
+            echo "AVISO: gradlew não encontrado no repositório! Gerando wrapper..."
+            sudo apt-get update && sudo apt-get install -y gradle || true
+            gradle wrapper --gradle-version 9.3.1
+          fi
+
+          if [ ! -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+            echo "AVISO: gradle-wrapper.properties não encontrado! Criando configuração padrão..."
+            mkdir -p gradle/wrapper
+            cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+EOF
+          fi
+
+          chmod +x ./gradlew
+          ls -la ./gradlew gradle/wrapper/
+
+      # 3. Inicializar a distribuição do Gradle usando o gradle-wrapper.properties
+      - name: Inicializar distribuição do Gradle a partir do wrapper
+        run: |
+          DIST_URL=$(grep 'distributionUrl' gradle/wrapper/gradle-wrapper.properties | cut -d'=' -f2 | tr -d '\\')
+          echo "Distribuição configurada: $DIST_URL"
+          ./gradlew --version
+
+      # 4. Configurar e restaurar chaves de assinatura para garantir sucesso no build
       - name: Configurar chaves de assinatura
         run: |
-          # 1. Se debug.keystore não estiver presente, restaura do debug.keystore.base64
+          # Restaura debug.keystore do debug.keystore.base64 se necessário
           if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
             echo "debug.keystore restaurado com sucesso."
           fi
 
-          # 2. Se a build for release, configura ou gera chave compatível
+          # Se for build release, configura ou gera chave compatível
           if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
             if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
               echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > my-upload-key.jks
               echo "STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> $GITHUB_ENV
               echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
             elif [ ! -f "my-upload-key.jks" ]; then
-              echo "Gerando chave de assinatura padrão para release..."
+              echo "Gerando keystore padrão para compilação release..."
               keytool -genkeypair -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android,O=Android,C=US"
               echo "STORE_PASSWORD=android" >> $GITHUB_ENV
               echo "KEY_PASSWORD=android" >> $GITHUB_ENV
             fi
           fi
 
-      - name: Dar permissão ao gradlew
-        run: chmod +x ./gradlew
-
+      # 5. Executar o build do APK
       - name: Build do APK
         run: |
           if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
@@ -66,6 +102,7 @@ jobs:
             ./gradlew :app:assembleDebug --stacktrace
           fi
 
+      # 6. Localizar o arquivo APK gerado
       - name: Localizar o APK gerado
         id: apk
         shell: bash
@@ -83,6 +120,7 @@ jobs:
           echo "apk_path=${APK_PATH}" >> "$GITHUB_OUTPUT"
           echo "APK encontrado: ${APK_PATH}"
 
+      # 7. Disponibilizar o APK para download nos artefatos da Action
       - name: Upload do APK como artefato
         uses: actions/upload-artifact@v4
         with:
