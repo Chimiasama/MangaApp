@@ -1,27 +1,33 @@
-name: Manual APK Build
+name: Gerar APK de Teste (Celular)
 
 on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: "Tipo de build"
+        description: "Tipo de build do APK"
         required: true
         default: debug
         type: choice
         options:
           - debug
           - release
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
 
 jobs:
   build-apk:
-    name: Build APK
+    name: Gerar APK Android
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do código
+      - name: Baixar código do repositório
         uses: actions/checkout@v4
 
-      # 1. Configurar o ambiente JDK adequado aos requisitos do projeto (AGP 9.1.1 + Gradle 9.3.1 exigem JDK 17+)
+      # 1. Configurar JDK 17 (compatível com AGP 9.1.1 e Gradle 9.3.1)
       - name: Configurar JDK 17
         uses: actions/setup-java@v4
         with:
@@ -33,21 +39,21 @@ jobs:
           java -version
           echo "JAVA_HOME=$JAVA_HOME"
 
+      # 2. Configurar Android SDK
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
-      # 2. Passo para verificar a existência do gradlew e do gradle-wrapper.properties
+      # 3. Garantir existência e permissão do Gradle Wrapper
       - name: Verificar existência do Gradle Wrapper (gradlew)
         run: |
-          echo "Verificando a existência do gradlew..."
+          echo "Verificando se o gradlew existe..."
           if [ ! -f "./gradlew" ]; then
-            echo "AVISO: gradlew não encontrado no repositório! Gerando wrapper..."
+            echo "Criando gradle wrapper..."
             sudo apt-get update && sudo apt-get install -y gradle || true
             gradle wrapper --gradle-version 9.3.1
           fi
 
           if [ ! -f "gradle/wrapper/gradle-wrapper.properties" ]; then
-            echo "AVISO: gradle-wrapper.properties não encontrado! Criando configuração padrão..."
             mkdir -p gradle/wrapper
             cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
 distributionBase=GRADLE_USER_HOME
@@ -63,51 +69,52 @@ EOF
           chmod +x ./gradlew
           ls -la ./gradlew gradle/wrapper/
 
-      # 3. Inicializar a distribuição do Gradle usando o gradle-wrapper.properties
-      - name: Inicializar distribuição do Gradle a partir do wrapper
+      # 4. Inicializar a distribuição do Gradle a partir do gradle-wrapper.properties
+      - name: Inicializar Gradle pelo Wrapper
         run: |
-          DIST_URL=$(grep 'distributionUrl' gradle/wrapper/gradle-wrapper.properties | cut -d'=' -f2 | tr -d '\\')
-          echo "Distribuição configurada: $DIST_URL"
           ./gradlew --version
 
-      # 4. Configurar e restaurar chaves de assinatura para garantir sucesso no build
+      # 5. Restaurar / configurar chaves de assinatura
       - name: Configurar chaves de assinatura
         run: |
-          # Restaura debug.keystore do debug.keystore.base64 se necessário
+          # Restaura debug.keystore do base64 se não existir no runner
           if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
             echo "debug.keystore restaurado com sucesso."
           fi
 
-          # Se for build release, configura ou gera chave compatível
-          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+          # Se o build for release e não houver chave customizada, gera uma chave padrão para compilar
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
+          if [ "$BUILD_TYPE" = "release" ]; then
             if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
               echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > my-upload-key.jks
               echo "STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> $GITHUB_ENV
               echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
             elif [ ! -f "my-upload-key.jks" ]; then
-              echo "Gerando keystore padrão para compilação release..."
+              echo "Gerando chave de assinatura para release..."
               keytool -genkeypair -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android,O=Android,C=US"
               echo "STORE_PASSWORD=android" >> $GITHUB_ENV
               echo "KEY_PASSWORD=android" >> $GITHUB_ENV
             fi
           fi
 
-      # 5. Executar o build do APK
-      - name: Build do APK
+      # 6. Compilar o APK
+      - name: Compilar APK
         run: |
-          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
+          if [ "$BUILD_TYPE" = "release" ]; then
             ./gradlew :app:assembleRelease --stacktrace
           else
             ./gradlew :app:assembleDebug --stacktrace
           fi
 
-      # 6. Localizar o arquivo APK gerado
-      - name: Localizar o APK gerado
+      # 7. Localizar o arquivo APK gerado
+      - name: Localizar APK
         id: apk
         shell: bash
         run: |
-          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
+          if [ "$BUILD_TYPE" = "release" ]; then
             APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           else
             APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
@@ -118,13 +125,13 @@ EOF
           fi
 
           echo "apk_path=${APK_PATH}" >> "$GITHUB_OUTPUT"
-          echo "APK encontrado: ${APK_PATH}"
+          echo "APK gerado em: ${APK_PATH}"
 
-      # 7. Disponibilizar o APK para download nos artefatos da Action
-      - name: Upload do APK como artefato
+      # 8. Upload do APK para download direto
+      - name: Salvar APK para Download
         uses: actions/upload-artifact@v4
         with:
-          name: mangaapp-${{ github.event.inputs.build_type }}-apk
+          name: MangaReader-APK-Instalar-no-Celular
           path: ${{ steps.apk.outputs.apk_path }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
