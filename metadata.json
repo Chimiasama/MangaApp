@@ -1,0 +1,6 @@
+{
+  "name": "Manga Reader",
+  "description": "Modular Manga Reader with local persistence, dynamic source selector rules, reading progress, and adult content controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
