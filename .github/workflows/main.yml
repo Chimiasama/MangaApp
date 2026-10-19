@@ -28,38 +28,37 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # 2. Configurar Gradle 9.3.1 oficialmente (evita problemas de wrapper ausente ou desatualizado)
-      - name: Configurar Gradle 9.3.1
+      # 2. Configurar cache do Gradle para builds rápidos
+      - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.3.1"
 
-      # 3. Configurar Android SDK e aceitar licenças
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
+      # 3. Aceitar licenças do Android SDK (usando caminhos oficiais do runner)
       - name: Aceitar licenças do Android SDK
         run: |
-          yes | sdkmanager --licenses || true
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          elif [ -d "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          fi
 
       # 4. Preparar arquivos de ambiente e chaves de assinatura
-      - name: Preparar ambiente e chaves
+      - name: Preparar chaves e ambiente
         run: |
-          # Garante que .env exista para o secrets-plugin
+          # 1. Cria .env se ausente para o secrets-gradle-plugin
           touch .env
 
-          # Garante que debug.keystore exista para a assinatura de debug
+          # 2. Garante que debug.keystore exista para a assinatura
           if [ ! -f "debug.keystore" ]; then
             if [ -f "debug.keystore.base64" ]; then
               base64 -d debug.keystore.base64 > debug.keystore
-              echo "debug.keystore restaurado a partir do base64."
+              echo "debug.keystore restaurado do base64."
             else
-              echo "Gerando novo debug.keystore padrão..."
+              echo "Gerando debug.keystore padrão..."
               keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
             fi
           fi
 
-          # Se for build release, garante que a chave de upload exista
+          # 3. Se for release, garante chave de upload
           BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
           if [ "$BUILD_TYPE" = "release" ]; then
             if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
@@ -67,29 +66,24 @@ jobs:
               echo "STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> $GITHUB_ENV
               echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
             elif [ ! -f "my-upload-key.jks" ]; then
-              echo "Gerando chave padrão para build release..."
+              echo "Gerando chave release padrão..."
               keytool -genkeypair -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android,O=Android,C=US"
               echo "STORE_PASSWORD=android" >> $GITHUB_ENV
               echo "KEY_PASSWORD=android" >> $GITHUB_ENV
             fi
           fi
 
-          # Garante permissão no gradlew se ele existir
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          else
-            gradle wrapper --gradle-version 9.3.1
-            chmod +x ./gradlew
-          fi
+          # 4. Conceder permissão de execução ao ./gradlew
+          chmod +x ./gradlew
 
-      # 5. Compilar o APK
+      # 5. Compilar o APK usando ./gradlew
       - name: Compilar APK
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
           if [ "$BUILD_TYPE" = "release" ]; then
-            gradle :app:assembleRelease --stacktrace
+            ./gradlew assembleRelease --stacktrace
           else
-            gradle :app:assembleDebug --stacktrace
+            ./gradlew assembleDebug --stacktrace
           fi
 
       # 6. Salvar o APK gerado como artefato para download
