@@ -519,7 +519,7 @@ fun ReaderScreen(
 
                 Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
                     Text(
-                        text = state.currentChapter?.title ?: "Leitor",
+                        text = state.currentChapter?.title?.replace(Regex("^\\[[^\\]]+\\]\\s*"), "")?.trim() ?: "Leitor",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,

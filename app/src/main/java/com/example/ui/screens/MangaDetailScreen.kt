@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -217,12 +218,17 @@ fun MangaDetailScreen(
                                 fontSize = 20.sp,
                                 maxLines = 2
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Fonte: ${manga.sourceId.uppercase()} • ${manga.author.ifEmpty { "Autor Desconhecido" }}",
-                                color = AccentGold,
-                                fontSize = 12.sp
-                            )
+                            val authorText = manga.author.takeIf {
+                                it.isNotBlank() && !it.equals("Autor Desconhecido", ignoreCase = true)
+                            }
+                            if (authorText != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Autor: $authorText",
+                                    color = AccentGold,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -239,7 +245,7 @@ fun MangaDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = manga.description.ifEmpty { "Sem sinopse informada." },
+                        text = cleanDescription(manga.description),
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 20.sp
@@ -275,7 +281,7 @@ fun MangaDetailScreen(
                                         color = PrimaryPurple
                                     )
                                     Text(
-                                        text = "${progress.chapterTitle} • Pág ${progress.lastPageRead + 1}/${progress.totalPages}",
+                                        text = "${formatChapterTitle(progress.chapterTitle)} • Pág ${progress.lastPageRead + 1}/${progress.totalPages}",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
@@ -323,7 +329,7 @@ fun MangaDetailScreen(
                                         color = CrimsonRed
                                     )
                                     Text(
-                                        text = firstChapter.title,
+                                        text = formatChapterTitle(firstChapter.title),
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1
@@ -449,72 +455,102 @@ fun MangaDetailScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Capítulos (${state.chapters.size})",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                Text(
+                                    text = "Capítulos (${state.chapters.size})",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                // Botão de ordenação dos capítulos
+                                IconButton(
+                                    onClick = { sortAscending = !sortAscending },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .testTag("toggle_sort_order_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwapVert,
+                                        contentDescription = if (sortAscending) "Ordenar: Mais Recentes Primeiro" else "Ordenar: Do Começo",
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(22.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    // Botão de ordenação dos capítulos
-                                    IconButton(
-                                        onClick = { sortAscending = !sortAscending },
-                                        modifier = Modifier.size(32.dp).testTag("toggle_sort_order_button")
+                                }
+                            }
+
+                            if (state.chapters.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { isSelectionMode = true },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(40.dp)
+                                            .testTag("toggle_selection_mode_button")
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.SwapVert,
-                                            contentDescription = if (sortAscending) "Ordenar: Mais Recentes Primeiro" else "Ordenar: Do Começo",
+                                            imageVector = Icons.Default.Checklist,
+                                            contentDescription = null,
                                             tint = PrimaryPurple,
-                                            modifier = Modifier.size(20.dp)
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Selecionar",
+                                            fontSize = 13.sp,
+                                            color = PrimaryPurple,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1
                                         )
                                     }
-                                }
 
-                                if (state.chapters.isNotEmpty()) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        OutlinedButton(
-                                            onClick = { isSelectionMode = true },
-                                            shape = RoundedCornerShape(20.dp),
-                                            modifier = Modifier.testTag("toggle_selection_mode_button")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Checklist,
-                                                contentDescription = null,
-                                                tint = PrimaryPurple,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Selecionar", fontSize = 12.sp, color = PrimaryPurple)
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                val unDownloaded = state.chapters.filter { ch ->
-                                                    downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
-                                                }
-                                                if (unDownloaded.isNotEmpty()) {
-                                                    onDownloadMultipleChapters(unDownloaded)
-                                                    Toast.makeText(
-                                                        context,
-                                                        "${unDownloaded.size} capítulos enfileirados para download em segundo plano!",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                            shape = RoundedCornerShape(20.dp),
-                                            modifier = Modifier.testTag("download_all_button")
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Download,
-                                                contentDescription = null,
-                                                tint = PrimaryPurple,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Baixar Todos", fontSize = 12.sp, color = PrimaryPurple)
-                                        }
+                                    Button(
+                                        onClick = {
+                                            val unDownloaded = state.chapters.filter { ch ->
+                                                downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
+                                            }
+                                            if (unDownloaded.isNotEmpty()) {
+                                                onDownloadMultipleChapters(unDownloaded)
+                                                Toast.makeText(
+                                                    context,
+                                                    "${unDownloaded.size} capítulos enfileirados para download em segundo plano!",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Todos os capítulos já foram baixados!",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple.copy(alpha = 0.15f)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(40.dp)
+                                            .testTag("download_all_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = null,
+                                            tint = PrimaryPurple,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Baixar Todos",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = PrimaryPurple,
+                                            maxLines = 1
+                                        )
                                     }
                                 }
                             }
@@ -673,7 +709,7 @@ fun MangaDetailScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = chapter.title,
+                                    text = formatChapterTitle(chapter.title),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
                                     color = if (isCurrentReading || isSelected) PrimaryPurple else MaterialTheme.colorScheme.onSurface
@@ -763,4 +799,60 @@ fun MangaDetailScreen(
             }
         }
     }
+}
+
+/**
+ * Removes leading language/origin tags such as [PT-BR], [EN], [PT], [Scan], etc.
+ */
+fun formatChapterTitle(title: String): String {
+    if (title.isBlank()) return title
+    return title.replace(Regex("^\\[[^\\]]+\\]\\s*"), "").trim()
+}
+
+/**
+ * Cleans synopsis by removing markdown dividers, external source links, origin notes, and junk tags.
+ */
+fun cleanDescription(description: String): String {
+    if (description.isBlank()) return "Sem descrição disponível."
+
+    val lines = description.lines()
+    val cleanedLines = mutableListOf<String>()
+
+    for (line in lines) {
+        val trimmed = line.trim()
+        val lower = trimmed.lowercase()
+
+        // Discard markdown dividers
+        if (trimmed == "---" || trimmed == "***" || trimmed == "___") {
+            continue
+        }
+
+        // Discard origin/source metadata headers and scan links
+        if (lower.startsWith("origem:") || lower.startsWith("fonte:") ||
+            lower.startsWith("source:") || lower.startsWith("links:") ||
+            lower.startsWith("**links:**") || lower.startsWith("scan:") ||
+            lower.startsWith("scanlator:") || lower.startsWith("raw:") ||
+            lower.startsWith("official raw:") || lower.startsWith("original webcomic:") ||
+            lower.startsWith("track on") || lower.startsWith("alternative titles:")
+        ) {
+            continue
+        }
+
+        // Discard markdown link list items like "* [Official English](...)" or "[Pixiv](...)"
+        if (trimmed.startsWith("* [") || trimmed.startsWith("- [") || (trimmed.startsWith("[") && trimmed.contains("]("))) {
+            continue
+        }
+
+        // Convert [Title](url) -> Title
+        var cleanedLine = trimmed.replace(Regex("\\[([^\\]]+)\\]\\([^\\)]+\\)"), "$1")
+        // Strip bold/italics markers
+        cleanedLine = cleanedLine.replace("**", "").replace("*", "")
+        // Strip basic HTML tags
+        cleanedLine = cleanedLine.replace(Regex("<[^>]*>"), "")
+
+        cleanedLines.add(cleanedLine)
+    }
+
+    val result = cleanedLines.joinToString("\n").trim()
+    return if (result.isBlank()) "Sem descrição disponível." else result
 }
