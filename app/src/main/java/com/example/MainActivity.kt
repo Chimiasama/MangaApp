@@ -18,25 +18,20 @@ import com.example.util.ImageCacheConfig
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import androidx.activity.viewModels
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        // Configure Coil Disk & Memory Image Caching for Manga Pages and Covers
-        val customImageLoader = ImageCacheConfig.setupCoilImageLoader(applicationContext)
-        Coil.setImageLoader(customImageLoader)
-
-        // Clean Architecture Initialization
+    private val mangaRepository: MangaRepository by lazy {
         val db = AppDatabase.getDatabase(applicationContext)
         val preferencesRepository = UserPreferencesRepository(applicationContext)
         val downloadManager = ChapterDownloadManager(
             context = applicationContext,
             downloadDao = db.downloadDao()
         )
-
-        val mangaRepository = MangaRepository(
+        MangaRepository(
             mangaDao = db.mangaDao(),
             progressDao = db.progressDao(),
             downloadDao = db.downloadDao(),
@@ -47,9 +42,37 @@ class MainActivity : ComponentActivity() {
             bookmarkDao = db.bookmarkDao(),
             searchHistoryDao = db.searchHistoryDao()
         )
+    }
 
-        val mangaViewModel = MangaViewModel(mangaRepository)
-        val settingsViewModel = SettingsViewModel(mangaRepository, preferencesRepository)
+    private val preferencesRepository: UserPreferencesRepository by lazy {
+        UserPreferencesRepository(applicationContext)
+    }
+
+    private val mangaViewModel: MangaViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return MangaViewModel(mangaRepository) as T
+            }
+        }
+    }
+
+    private val settingsViewModel: SettingsViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return SettingsViewModel(mangaRepository, preferencesRepository) as T
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        // Configure Coil Disk & Memory Image Caching for Manga Pages and Covers
+        val customImageLoader = ImageCacheConfig.setupCoilImageLoader(applicationContext)
+        Coil.setImageLoader(customImageLoader)
 
         setContent {
             val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()

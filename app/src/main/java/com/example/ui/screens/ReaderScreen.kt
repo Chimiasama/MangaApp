@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -73,6 +74,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -177,35 +179,36 @@ fun ReaderScreen(
         pageCount = { state.pages.size }
     )
 
-    // Sync scroll com listState (Webtoon)
-    LaunchedEffect(listState, currentMode) {
-        if (currentMode == "WEBTOON") {
-            snapshotFlow { listState.firstVisibleItemIndex }.collect { index ->
-                if (index != state.currentPageIndex && index in state.pages.indices) {
-                    onPageSelected(index)
+    // Posicionamento inicial suave ao carregar o capítulo (não interfere na rolagem contínua do leitor)
+    var initialPositionApplied by rememberSaveable(state.currentChapter?.id) { mutableStateOf(false) }
+    LaunchedEffect(state.pages, state.currentChapter?.id) {
+        if (!initialPositionApplied && state.pages.isNotEmpty()) {
+            val targetPage = state.currentPageIndex.coerceIn(0, state.pages.lastIndex)
+            if (targetPage > 0) {
+                if (currentMode == "WEBTOON") {
+                    listState.scrollToItem(targetPage)
+                } else {
+                    pagerState.scrollToPage(targetPage)
                 }
+            }
+            initialPositionApplied = true
+        }
+    }
+
+    // Salva o progresso no modo Webtoon à medida que o usuário rola de forma livre e fluida
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }.collect { index ->
+            if (currentMode == "WEBTOON" && index in state.pages.indices && index != state.currentPageIndex) {
+                onPageSelected(index)
             }
         }
     }
 
-    // Sync scroll com pagerState (Modos Horizontais)
-    LaunchedEffect(pagerState, currentMode) {
-        if (currentMode != "WEBTOON") {
-            snapshotFlow { pagerState.currentPage }.collect { page ->
-                if (page != state.currentPageIndex && page in state.pages.indices) {
-                    onPageSelected(page)
-                }
-            }
-        }
-    }
-
-    // Sincronizar quando currentPageIndex mudar externamente
-    LaunchedEffect(state.currentPageIndex, currentMode) {
-        if (state.currentPageIndex in state.pages.indices) {
-            if (currentMode == "WEBTOON" && listState.firstVisibleItemIndex != state.currentPageIndex) {
-                listState.scrollToItem(state.currentPageIndex)
-            } else if (currentMode != "WEBTOON" && pagerState.currentPage != state.currentPageIndex) {
-                pagerState.scrollToPage(state.currentPageIndex)
+    // Salva o progresso no modo paginado horizontal
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            if (currentMode != "WEBTOON" && page in state.pages.indices && page != state.currentPageIndex) {
+                onPageSelected(page)
             }
         }
     }
@@ -246,40 +249,29 @@ fun ReaderScreen(
             // Container principal de leitura
             Box(modifier = Modifier.fillMaxSize()) {
                 if (currentMode == "WEBTOON") {
-                    // Modo Cascata Contínua (Webtoon Vertical)
+                    // Modo Cascata Contínua (Webtoon Vertical Fluido e Ininterrupto)
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        itemsIndexed(state.pages) { index, pageUrl ->
+                        itemsIndexed(
+                            items = state.pages,
+                            key = { index, _ -> "webtoon_page_$index" }
+                        ) { index, pageUrl ->
                             val isBookmarked = index in state.bookmarkedPages
-                            ZoomableMangaPage(
+                            WebtoonContinuousPage(
                                 pageUrl = pageUrl,
                                 pageIndex = index,
                                 isBookmarked = isBookmarked,
-                                contentScale = fitMode,
-                                externalScale = currentScale,
-                                onScaleChanged = { currentScale = it },
-                                onCenterTap = { showControls = !showControls },
-                                onLeftTap = {
-                                    // Rolar um pouco para cima
-                                    coroutineScope.launch {
-                                        val target = (index - 1).coerceAtLeast(0)
-                                        listState.animateScrollToItem(target)
-                                    }
-                                },
-                                onRightTap = {
-                                    // Rolar um pouco para baixo
-                                    coroutineScope.launch {
-                                        val target = (index + 1).coerceAtMost(state.pages.lastIndex)
-                                        listState.animateScrollToItem(target)
-                                    }
-                                }
+                                onCenterTap = { showControls = !showControls }
                             )
                         }
 
                         // Final de capítulo
-                        item {
+                        item(key = "end_of_chapter") {
                             EndOfChapterCard(
                                 onNextChapter = { onNavigateChapter(true) },
                                 onBack = onBack
@@ -714,7 +706,17 @@ fun ReaderScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                     Slider(
                         value = state.currentPageIndex.toFloat(),
-                        onValueChange = { onPageSelected(it.toInt()) },
+                        onValueChange = { targetFloat ->
+                            val targetPage = targetFloat.toInt().coerceIn(0, totalPages - 1)
+                            onPageSelected(targetPage)
+                            coroutineScope.launch {
+                                if (currentMode == "WEBTOON") {
+                                    listState.scrollToItem(targetPage)
+                                } else {
+                                    pagerState.scrollToPage(targetPage)
+                                }
+                            }
+                        },
                         valueRange = 0f..(totalPages - 1).toFloat(),
                         steps = if (totalPages > 2) totalPages - 2 else 0,
                         colors = SliderDefaults.colors(
@@ -727,6 +729,108 @@ fun ReaderScreen(
                             .testTag("page_slider")
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Visualizador Contínuo para Webtoon / Manhwa Vertical
+ * - Sem limites de altura artificial por página: cada imagem flui com proporção natural
+ * - Zero espaçamento para fusão perfeita entre painéis
+ * - Gestos independentes: duplo toque ativa zoom 2.2x e toque simples alterna a barra de ferramentas
+ *   sem interferir no scroll vertical suave da lista
+ */
+@Composable
+fun WebtoonContinuousPage(
+    pageUrl: String,
+    pageIndex: Int,
+    isBookmarked: Boolean,
+    onCenterTap: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("webtoon_page_$pageIndex")
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1.2f) 1.0f else 2.2f
+                    },
+                    onTap = {
+                        onCenterTap()
+                    }
+                )
+            }
+    ) {
+        SubcomposeAsyncImage(
+            model = pageUrl,
+            contentDescription = "Página ${pageIndex + 1}",
+            contentScale = ContentScale.FillWidth,
+            loading = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(350.dp)
+                        .background(Color(0xFF101012)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = CrimsonRed,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            },
+            error = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(260.dp)
+                        .background(Color(0xFF18181C)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Erro ao carregar página ${pageIndex + 1}",
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale
+                )
+        )
+
+        // Indicador de Marcador Salvo na página
+        if (isBookmarked) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = "Marcado",
+                    tint = AccentGold,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Marcado",
+                    color = AccentGold,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

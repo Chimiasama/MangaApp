@@ -154,6 +154,25 @@ fun MangaDetailScreen(
                         )
                     }
 
+                    // Marcador Fixo de Favorito no topo da tela ao abrir o mangá
+                    IconButton(
+                        onClick = { onToggleFavorite(manga) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                            .background(
+                                if (state.isFavorite) CrimsonRed else Color.Black.copy(alpha = 0.5f),
+                                CircleShape
+                            )
+                            .testTag("favorite_fixed_marker")
+                    ) {
+                        Icon(
+                            imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = if (state.isFavorite) "Remover dos Favoritos" else "Adicionar aos Favoritos",
+                            tint = Color.White
+                        )
+                    }
+
                     // Cover + Header info
                     Row(
                         modifier = Modifier
@@ -742,22 +761,6 @@ fun MangaDetailScreen(
                     }
                 }
             }
-        }
-
-        // Floating Favorite Toggle
-        FloatingActionButton(
-            onClick = { onToggleFavorite(manga) },
-            containerColor = if (state.isFavorite) NsfwRedBadge else MaterialTheme.colorScheme.surface,
-            contentColor = Color.White,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp)
-                .testTag("detail_favorite_fab")
-        ) {
-            Icon(
-                imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                contentDescription = "Favoritar"
-            )
         }
     }
 }
