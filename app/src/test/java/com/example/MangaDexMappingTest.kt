@@ -277,4 +277,18 @@ class MangaDexMappingTest {
         assertEquals("https://uploads.mangadex.org/data/secret-hash/page1.jpg", pages[0])
         assertEquals("https://uploads.mangadex.org/data/secret-hash/page2.jpg", pages[1])
     }
+
+    @Test
+    fun `test Moshi parses real sample_mangadex json`() {
+        val file = java.io.File("/tmp/sample_mangadex.json")
+        if (file.exists()) {
+            val json = file.readText()
+            val adapter = com.example.data.network.RetrofitClient.moshi.adapter(com.example.data.network.model.MangaDexMangaListResponse::class.java)
+            val response = adapter.fromJson(json)
+            assertNotNull(response)
+            assertNotNull(response?.data)
+            println("PARSED DATA SIZE: ${response?.data?.size}")
+            assertTrue((response?.data?.size ?: 0) > 0)
+        }
+    }
 }

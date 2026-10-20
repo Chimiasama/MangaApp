@@ -12,3 +12,14 @@ data class MangaModel(
     val author: String = "",
     val status: String = "Unknown"
 )
+
+/**
+ * Represents a categorized horizontal carousel section on the browse/explore home screen.
+ */
+data class GenreCarouselSection(
+    val id: String,
+    val title: String,
+    val genreKey: String,
+    val items: List<MangaModel> = emptyList()
+)
+
