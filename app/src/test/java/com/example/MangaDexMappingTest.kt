@@ -116,7 +116,7 @@ class MangaDexMappingTest {
 
         assertEquals("chapter-uuid-42", chapterEntity.id)
         assertEquals(mangaUrl, chapterEntity.mangaUrl)
-        assertEquals("[PT-BR] Cap. 15.5 - O Retorno das Sombras", chapterEntity.title)
+        assertEquals("Cap. 15.5 - O Retorno das Sombras", chapterEntity.title)
         assertEquals(15.5f, chapterEntity.chapterNumber, 0.001f)
         assertEquals("2024-05-10", chapterEntity.dateUpload)
         assertEquals(28, chapterEntity.totalPages)
@@ -126,7 +126,7 @@ class MangaDexMappingTest {
         // Also test domain ChapterModel
         val chapterModel = chapterDto.toChapterModel()
         assertEquals("chapter-uuid-42", chapterModel.id)
-        assertEquals("[PT-BR] Cap. 15.5 - O Retorno das Sombras", chapterModel.title)
+        assertEquals("Cap. 15.5 - O Retorno das Sombras", chapterModel.title)
         assertEquals(15.5f, chapterModel.chapterNumber, 0.001f)
     }
 
@@ -263,7 +263,7 @@ class MangaDexMappingTest {
         // 5. Chapters
         val chapters = source.getChapters("https://api.mangadex.org/manga/mock-1")
         assertEquals(1, chapters.size)
-        assertEquals("[PT-BR] Cap. 1 - Início", chapters[0].title)
+        assertEquals("Cap. 1 - Início", chapters[0].title)
 
         // 6. Chapter Room entities direct method
         val chapterEntities: List<Chapter> = source.getChaptersAsEntities("https://api.mangadex.org/manga/mock-1")

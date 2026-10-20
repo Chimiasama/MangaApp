@@ -188,28 +188,41 @@ class MangaViewModel(
 
             try {
                 var list = if (query.isBlank()) {
-                    repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
+                    if (currentGenre.isNotBlank() && currentGenre != "all") {
+                        val genreResults = repository.searchManga(currentGenre, currentSource, adultEnabled, filterAdultSearch)
+                        if (genreResults.isNotEmpty()) {
+                            genreResults
+                        } else {
+                            repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
+                        }
+                    } else {
+                        repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
+                    }
                 } else {
                     repository.saveSearchQuery(query)
                     repository.searchManga(query, currentSource, adultEnabled, filterAdultSearch)
                 }
 
-                if (currentGenre.isNotBlank() && currentGenre != "all") {
+                if (currentGenre.isNotBlank() && currentGenre != "all" && query.isNotBlank()) {
                     val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
                     val tagEquivalents = when (genreLower) {
-                        "ação" -> listOf("action")
-                        "aventura" -> listOf("adventure")
-                        "fantasia" -> listOf("fantasy", "magic")
-                        "comédia" -> listOf("comedy")
+                        "ação" -> listOf("action", "ação")
+                        "aventura" -> listOf("adventure", "aventura")
+                        "fantasia" -> listOf("fantasy", "magic", "fantasia")
+                        "comédia" -> listOf("comedy", "comédia")
                         "romance" -> listOf("romance")
-                        "sci-fi" -> listOf("sci-fi", "science fiction")
-                        "sobrenatural" -> listOf("supernatural", "ghosts", "demons")
-                        "escolar" -> listOf("school life")
+                        "sci-fi" -> listOf("sci-fi", "science fiction", "ficção")
+                        "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural")
+                        "escolar" -> listOf("school life", "school", "escolar")
                         "ninja" -> listOf("ninja", "martial arts")
+                        "shounen" -> listOf("shounen", "shonen")
+                        "seinen" -> listOf("seinen")
+                        "shoujo" -> listOf("shoujo", "shojo")
+                        "isekai" -> listOf("isekai")
                         else -> listOf(genreLower)
                     }
 
-                    list = list.filter { manga ->
+                    val filtered = list.filter { manga ->
                         manga.genres.any { g ->
                             val gLower = g.lowercase(java.util.Locale.getDefault())
                             tagEquivalents.any { eq -> gLower.contains(eq) } || gLower.contains(genreLower)
@@ -217,15 +230,33 @@ class MangaViewModel(
                         manga.title.lowercase(java.util.Locale.getDefault()).contains(genreLower) ||
                         manga.description.lowercase(java.util.Locale.getDefault()).contains(genreLower)
                     }
+                    if (filtered.isNotEmpty()) {
+                        list = filtered
+                    }
+                }
+
+                if (list.isEmpty()) {
+                    list = repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
                 }
 
                 _mangaList.value = list
             } catch (e: Exception) {
-                _errorMessage.value = "Erro ao carregar mangás: ${e.localizedMessage}"
+                _errorMessage.value = "Erro ao carregar mangás: ${e.localizedMessage ?: "Verifique sua conexão."}"
             } finally {
                 _isLoadingBrowse.value = false
             }
         }
+    }
+
+    fun refresh() {
+        loadBrowseManga()
+    }
+
+    fun clearFiltersAndReload() {
+        _searchQuery.value = ""
+        _selectedGenre.value = "all"
+        _selectedSourceId.value = "all"
+        loadBrowseManga()
     }
 
     fun selectGenre(genre: String) {

@@ -95,10 +95,18 @@ object MangaDexMapper {
      * Extracts genres / tags.
      */
     fun extractGenres(dto: MangaDexMangaDto): List<String> {
-        val tags = dto.attributes?.tags ?: return emptyList()
-        return tags.mapNotNull { tag ->
-            tag.attributes?.name?.get("en")?.takeIf { it.isNotBlank() }
+        val list = mutableListOf<String>()
+        dto.attributes?.publicationDemographic?.takeIf { it.isNotBlank() }?.let { demo ->
+            list.add(demo.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() })
         }
+        val tags = dto.attributes?.tags.orEmpty()
+        for (tag in tags) {
+            val tagName = tag.attributes?.name?.get("en")
+            if (!tagName.isNullOrBlank()) {
+                list.add(tagName)
+            }
+        }
+        return list
     }
 
     /**

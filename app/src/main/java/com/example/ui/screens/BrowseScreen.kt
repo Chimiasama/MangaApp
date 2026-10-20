@@ -25,8 +25,11 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -34,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -65,7 +69,9 @@ fun BrowseScreen(
     onFavoriteToggle: (MangaModel) -> Unit,
     favoriteUrls: Set<String>,
     onDeleteSearchHistoryItem: (Long) -> Unit = {},
-    onClearSearchHistory: () -> Unit = {}
+    onClearSearchHistory: () -> Unit = {},
+    onRefresh: () -> Unit = {},
+    onClearFilters: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -90,12 +96,24 @@ fun BrowseScreen(
                         )
                     },
                     trailingIcon = {
-                        if (state.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { onQueryChange("") }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onQueryChange("") }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Limpar busca",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = onRefresh,
+                                modifier = Modifier.testTag("refresh_catalog_button")
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Limpar busca",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Recarregar catálogo",
+                                    tint = PrimaryPurple
                                 )
                             }
                         }
@@ -306,51 +324,113 @@ fun BrowseScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = CrimsonRed)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Buscando fontes de mangá...", fontSize = 14.sp)
+                    Text("Buscando fontes de mangá (MangaDex)...", fontSize = 14.sp)
                 }
             }
         } else if (state.mangaList.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = "Sem resultados",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        imageVector = if (state.errorMessage != null) Icons.Default.Warning else Icons.Default.FilterList,
+                        contentDescription = "Status",
+                        tint = if (state.errorMessage != null) CrimsonRed else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(56.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Nenhum mangá encontrado",
+                        text = if (state.errorMessage != null) "Erro ao conectar à API" else "Nenhum mangá encontrado",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Tente mudar a busca ou selecionar outra fonte.",
+                        text = state.errorMessage ?: if (state.searchQuery.isNotBlank() || state.selectedGenre != "all") {
+                            "Nenhum mangá corresponde aos filtros selecionados."
+                        } else {
+                            "A API do MangaDex pode estar oscilando ou a conexão falhou. Toque abaixo para tentar novamente."
+                        },
                         fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (state.searchQuery.isNotBlank() || state.selectedGenre != "all" || state.selectedSourceId != "all") {
+                            OutlinedButton(
+                                onClick = onClearFilters,
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Limpar Filtros")
+                            }
+                        }
+
+                        Button(
+                            onClick = onRefresh,
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("retry_browse_button")
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Tentar Novamente")
+                        }
+                    }
                 }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 140.dp),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(state.mangaList) { manga ->
-                    val isFav = favoriteUrls.contains(manga.url)
-                    MangaCard(
-                        manga = manga,
-                        onClick = { onMangaClick(manga) },
-                        isFavorite = isFav,
-                        onFavoriteToggle = { onFavoriteToggle(manga) }
-                    )
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (state.errorMessage != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .background(AccentGold.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .clickable { onRefresh() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Exibindo dados em cache / offline. Toque para recarregar.",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(Icons.Default.Refresh, contentDescription = "Recarregar", tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 140.dp),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(state.mangaList) { manga ->
+                        val isFav = favoriteUrls.contains(manga.url)
+                        MangaCard(
+                            manga = manga,
+                            onClick = { onMangaClick(manga) },
+                            isFavorite = isFav,
+                            onFavoriteToggle = { onFavoriteToggle(manga) }
+                        )
+                    }
                 }
             }
         }

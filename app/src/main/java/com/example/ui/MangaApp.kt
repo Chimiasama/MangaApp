@@ -173,7 +173,9 @@ fun MangaApp(
                     onFavoriteToggle = { manga -> mangaViewModel.toggleFavorite(manga) },
                     favoriteUrls = favorites.map { it.url }.toSet(),
                     onDeleteSearchHistoryItem = { id -> mangaViewModel.deleteSearchHistoryItem(id) },
-                    onClearSearchHistory = { mangaViewModel.clearSearchHistory() }
+                    onClearSearchHistory = { mangaViewModel.clearSearchHistory() },
+                    onRefresh = { mangaViewModel.refresh() },
+                    onClearFilters = { mangaViewModel.clearFiltersAndReload() }
                 )
             }
 
