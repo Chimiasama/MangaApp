@@ -11,6 +11,8 @@ import com.example.data.model.ReadingStats
 import com.example.data.repository.MangaRepository
 import com.example.data.sync.CloudSyncState
 import com.example.source.ChapterModel
+import com.example.source.GenreCarouselSection
+import com.example.source.MangaDexSource
 import com.example.source.MangaModel
 import com.example.source.MangaSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,9 +26,11 @@ import kotlinx.coroutines.launch
 data class BrowseUiState(
     val selectedSourceId: String = "all",
     val selectedGenre: String = "all",
+    val selectedLanguage: String = "pt-br",
     val searchQuery: String = "",
     val isLoading: Boolean = false,
     val mangaList: List<MangaModel> = emptyList(),
+    val carouselSections: List<GenreCarouselSection> = emptyList(),
     val availableSources: List<MangaSource> = emptyList(),
     val searchHistory: List<SearchHistoryEntity> = emptyList(),
     val errorMessage: String? = null
@@ -48,15 +52,22 @@ data class ReaderUiState(
     val currentChapter: ChapterModel? = null,
     val pages: List<String> = emptyList(),
     val currentPageIndex: Int = 0,
+    val scrollOffset: Int = 0,
     val isLoading: Boolean = false,
     val chaptersList: List<ChapterModel> = emptyList(),
     val isOfflineDownloaded: Boolean = false,
     val bookmarkedPages: Set<Int> = emptySet()
 )
 
+private data class MangaData(
+    val list: List<MangaModel>,
+    val carousels: List<GenreCarouselSection>
+)
+
 private data class BrowseParams(
     val sourceId: String,
     val genre: String,
+    val language: String,
     val query: String,
     val loading: Boolean
 )
@@ -70,6 +81,9 @@ class MangaViewModel(
     private val _searchQuery = MutableStateFlow("")
     private val _isLoadingBrowse = MutableStateFlow(false)
     private val _mangaList = MutableStateFlow<List<MangaModel>>(emptyList())
+    private val _carouselSections = MutableStateFlow<List<GenreCarouselSection>>(
+        buildCarouselSections(MangaDexSource.STARTER_FALLBACK_MANGAS)
+    )
     private val _errorMessage = MutableStateFlow<String?>(null)
 
     val adultContentEnabled: StateFlow<Boolean> = repository.preferencesRepository.adultContentEnabled
@@ -100,6 +114,9 @@ class MangaViewModel(
     val cloudSyncState: StateFlow<CloudSyncState> = repository.cloudSyncState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CloudSyncState.Idle())
 
+    val selectedLanguage: StateFlow<String> = repository.preferencesRepository.selectedLanguage
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "pt-br")
+
     fun triggerCloudSync() {
         viewModelScope.launch {
             repository.triggerCloudSync()
@@ -123,21 +140,25 @@ class MangaViewModel(
     }
 
     val browseUiState: StateFlow<BrowseUiState> = combine(
-        combine(_selectedSourceId, _selectedGenre, _searchQuery, _isLoadingBrowse) { sourceId, genre, query, loading ->
-            BrowseParams(sourceId, genre, query, loading)
+        combine(_selectedSourceId, _selectedGenre, selectedLanguage, _searchQuery, _isLoadingBrowse) { sourceId, genre, language, query, loading ->
+            BrowseParams(sourceId, genre, language, query, loading)
         },
-        _mangaList,
+        combine(_mangaList, _carouselSections) { list, carousels ->
+            MangaData(list, carousels)
+        },
         _errorMessage,
         adultContentEnabled,
         searchHistory
-    ) { params, list, error, adultEnabled, history ->
+    ) { params, mangaData, error, adultEnabled, history ->
         val sources = repository.getAvailableSources(includeAdult = adultEnabled)
         BrowseUiState(
             selectedSourceId = params.sourceId,
             selectedGenre = params.genre,
+            selectedLanguage = params.language,
             searchQuery = params.query,
             isLoading = params.loading,
-            mangaList = list,
+            mangaList = mangaData.list,
+            carouselSections = mangaData.carousels,
             availableSources = sources,
             searchHistory = history,
             errorMessage = error
@@ -176,6 +197,75 @@ class MangaViewModel(
         loadBrowseManga()
     }
 
+    private fun buildCarouselSections(allMangas: List<MangaModel>): List<GenreCarouselSection> {
+        if (allMangas.isEmpty()) return emptyList()
+
+        val highlights = allMangas.take(20)
+
+        fun getForGenre(genreKey: String, keywords: List<String>): List<MangaModel> {
+            val matched = allMangas.filter { manga ->
+                val gLower = manga.genres.map { it.lowercase() }
+                val tLower = manga.title.lowercase()
+                val dLower = manga.description.lowercase()
+                keywords.any { kw ->
+                    gLower.any { it.contains(kw) } || tLower.contains(kw) || dLower.contains(kw)
+                }
+            }
+            return if (matched.size >= 5) {
+                matched.take(20)
+            } else {
+                (matched + allMangas.shuffled(java.util.Random(genreKey.hashCode().toLong())))
+                    .distinctBy { it.id }
+                    .take(20)
+            }
+        }
+
+        return listOf(
+            GenreCarouselSection(
+                id = "highlights",
+                title = "🔥 Destaques & Populares",
+                genreKey = "all",
+                items = highlights
+            ),
+            GenreCarouselSection(
+                id = "shounen",
+                title = "⚔️ Shounen Épico",
+                genreKey = "Shounen",
+                items = getForGenre("Shounen", listOf("shounen", "shonen", "ninja", "herói", "luta", "one piece", "naruto", "jujutsu", "chainsaw", "bleach", "hero"))
+            ),
+            GenreCarouselSection(
+                id = "action",
+                title = "💥 Ação & Aventura",
+                genreKey = "Ação",
+                items = getForGenre("Ação", listOf("ação", "action", "aventura", "adventure", "batalha", "combate", "caçador", "hunter"))
+            ),
+            GenreCarouselSection(
+                id = "fantasy_isekai",
+                title = "🪄 Fantasia & Isekai",
+                genreKey = "Fantasia",
+                items = getForGenre("Fantasia", listOf("fantasia", "fantasy", "isekai", "magia", "magic", "elfa", "slime", "reencarna"))
+            ),
+            GenreCarouselSection(
+                id = "romance_comedy",
+                title = "❤️ Romance & Comédia Escolar",
+                genreKey = "Romance",
+                items = getForGenre("Romance", listOf("romance", "comédia", "comedy", "escolar", "school", "escola", "amor"))
+            ),
+            GenreCarouselSection(
+                id = "scifi_supernatural",
+                title = "🚀 Sci-Fi & Sobrenatural",
+                genreKey = "Sci-Fi",
+                items = getForGenre("Sci-Fi", listOf("sci-fi", "science fiction", "ficção", "sobrenatural", "supernatural", "demônios", "psíquico", "tempo", "pedra"))
+            ),
+            GenreCarouselSection(
+                id = "seinen",
+                title = "🗡️ Seinen & Histórias Maduras",
+                genreKey = "Seinen",
+                items = getForGenre("Seinen", listOf("seinen", "sombrio", "dark", "medieval", "espada", "guerra", "vingança"))
+            )
+        )
+    }
+
     fun loadBrowseManga() {
         viewModelScope.launch {
             _isLoadingBrowse.value = true
@@ -184,45 +274,47 @@ class MangaViewModel(
             val filterAdultSearch = filterAdultSearchEnabled.value
             val currentSource = _selectedSourceId.value
             val currentGenre = _selectedGenre.value
+            val currentLanguage = selectedLanguage.value
             val query = _searchQuery.value
 
             try {
-                var list = if (query.isBlank()) {
-                    if (currentGenre.isNotBlank() && currentGenre != "all") {
-                        val genreResults = repository.searchManga(currentGenre, currentSource, adultEnabled, filterAdultSearch)
-                        if (genreResults.isNotEmpty()) {
-                            genreResults
-                        } else {
-                            repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
-                        }
-                    } else {
-                        repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
+                if (query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")) {
+                    val popularList = repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    _mangaList.value = popularList
+                    if (popularList.isNotEmpty()) {
+                        _carouselSections.value = buildCarouselSections(popularList)
                     }
+                } else if (query.isNotBlank()) {
+                    val searchResults = repository.searchManga(query, currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    _mangaList.value = searchResults
                 } else {
-                    repository.saveSearchQuery(query)
-                    repository.searchManga(query, currentSource, adultEnabled, filterAdultSearch)
-                }
+                    // Genre filter is active (e.g., clicked "Mostrar mais" or selected genre chip)
+                    val genreResults = repository.searchManga(currentGenre, currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    val baseList = if (genreResults.isNotEmpty()) {
+                        genreResults
+                    } else {
+                        repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    }
 
-                if (currentGenre.isNotBlank() && currentGenre != "all" && query.isNotBlank()) {
                     val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
                     val tagEquivalents = when (genreLower) {
-                        "ação" -> listOf("action", "ação")
-                        "aventura" -> listOf("adventure", "aventura")
-                        "fantasia" -> listOf("fantasy", "magic", "fantasia")
-                        "comédia" -> listOf("comedy", "comédia")
-                        "romance" -> listOf("romance")
-                        "sci-fi" -> listOf("sci-fi", "science fiction", "ficção")
-                        "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural")
-                        "escolar" -> listOf("school life", "school", "escolar")
-                        "ninja" -> listOf("ninja", "martial arts")
+                        "ação" -> listOf("action", "ação", "combate", "luta", "batalha")
+                        "aventura" -> listOf("adventure", "aventura", "jornada")
+                        "fantasia" -> listOf("fantasy", "magic", "fantasia", "magia")
+                        "comédia" -> listOf("comedy", "comédia", "engraçado")
+                        "romance" -> listOf("romance", "amor")
+                        "sci-fi" -> listOf("sci-fi", "science fiction", "ficção", "futuro")
+                        "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural", "demônio", "espírito")
+                        "escolar" -> listOf("school life", "school", "escolar", "escola")
+                        "ninja" -> listOf("ninja", "martial arts", "shinobi")
                         "shounen" -> listOf("shounen", "shonen")
                         "seinen" -> listOf("seinen")
                         "shoujo" -> listOf("shoujo", "shojo")
-                        "isekai" -> listOf("isekai")
+                        "isekai" -> listOf("isekai", "reencarnação", "outro mundo")
                         else -> listOf(genreLower)
                     }
 
-                    val filtered = list.filter { manga ->
+                    val filtered = baseList.filter { manga ->
                         manga.genres.any { g ->
                             val gLower = g.lowercase(java.util.Locale.getDefault())
                             tagEquivalents.any { eq -> gLower.contains(eq) } || gLower.contains(genreLower)
@@ -230,16 +322,9 @@ class MangaViewModel(
                         manga.title.lowercase(java.util.Locale.getDefault()).contains(genreLower) ||
                         manga.description.lowercase(java.util.Locale.getDefault()).contains(genreLower)
                     }
-                    if (filtered.isNotEmpty()) {
-                        list = filtered
-                    }
-                }
 
-                if (list.isEmpty()) {
-                    list = repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch)
+                    _mangaList.value = if (filtered.isNotEmpty()) filtered else baseList
                 }
-
-                _mangaList.value = list
             } catch (e: Exception) {
                 _errorMessage.value = "Erro ao carregar mangás: ${e.localizedMessage ?: "Verifique sua conexão."}"
             } finally {
@@ -281,8 +366,43 @@ class MangaViewModel(
         loadBrowseManga()
     }
 
-    fun searchManga(query: String) {
+    fun selectLanguage(language: String) {
+        viewModelScope.launch {
+            repository.preferencesRepository.setSelectedLanguage(language)
+            loadBrowseManga()
+            val currentManga = _detailManga.value
+            if (currentManga != null) {
+                try {
+                    _isLoadingDetail.value = true
+                    _detailChapters.value = repository.getChapters(currentManga.url, currentManga.sourceId, language)
+                } catch (e: Exception) {
+                    _detailChapters.value = emptyList()
+                } finally {
+                    _isLoadingDetail.value = false
+                }
+            }
+        }
+    }
+
+    fun submitSearch(query: String) {
+        val trimmed = query.trim()
+        _searchQuery.value = trimmed
+        if (trimmed.length >= 2) {
+            viewModelScope.launch {
+                repository.saveSearchQuery(trimmed)
+            }
+        }
+        loadBrowseManga()
+    }
+
+    fun searchManga(query: String, saveToHistory: Boolean = false) {
+        val trimmed = query.trim()
         _searchQuery.value = query
+        if (saveToHistory && trimmed.length >= 2) {
+            viewModelScope.launch {
+                repository.saveSearchQuery(trimmed)
+            }
+        }
         loadBrowseManga()
     }
 
@@ -304,7 +424,8 @@ class MangaViewModel(
         }
         viewModelScope.launch {
             try {
-                val chapters = repository.getChapters(manga.url, manga.sourceId)
+                val currentLang = selectedLanguage.value
+                val chapters = repository.getChapters(manga.url, manga.sourceId, currentLang)
                 _detailChapters.value = chapters
             } catch (e: Exception) {
                 _detailChapters.value = emptyList()
@@ -378,7 +499,8 @@ class MangaViewModel(
         manga: MangaModel,
         chapter: ChapterModel,
         chaptersList: List<ChapterModel>,
-        initialPage: Int? = null
+        initialPage: Int? = null,
+        initialScrollOffset: Int? = null
     ) {
         viewModelScope.launch {
             _readerState.value = ReaderUiState(
@@ -402,14 +524,17 @@ class MangaViewModel(
             val pages = repository.getPages(chapter.chapterUrl, chapter.id, manga.sourceId)
             val isOffline = pages.any { it.startsWith("file://") }
             
-            // Get last saved page if available
+            // Get last saved page and exact scroll offset if available from Room
             val progress = repository.getProgressForManga(manga.url).first()
             val savedPage = if (progress?.chapterId == chapter.id) progress.lastPageRead else 0
+            val savedOffset = if (progress?.chapterId == chapter.id) progress.scrollOffset else 0
             val targetPage = initialPage ?: savedPage
+            val targetOffset = initialScrollOffset ?: savedOffset
 
             _readerState.value = _readerState.value.copy(
                 pages = pages,
                 currentPageIndex = if (targetPage in pages.indices) targetPage else 0,
+                scrollOffset = targetOffset,
                 isLoading = false,
                 isOfflineDownloaded = isOffline
             )
@@ -434,6 +559,7 @@ class MangaViewModel(
                 chapterTitle = chapter.title,
                 pageIndex = pageIndex,
                 pageUrl = pageUrl,
+                scrollOffset = currentState.scrollOffset,
                 note = note
             )
         }
@@ -462,30 +588,76 @@ class MangaViewModel(
             manga = dummyManga,
             chapter = dummyChapter,
             chaptersList = listOf(dummyChapter),
-            initialPage = bookmark.pageIndex
+            initialPage = bookmark.pageIndex,
+            initialScrollOffset = bookmark.scrollOffset
         )
     }
 
-    fun updateReaderPageIndex(pageIndex: Int) {
+    private var scrollSyncJob: kotlinx.coroutines.Job? = null
+
+    fun updateReaderScrollPosition(pageIndex: Int, scrollOffset: Int) {
         val currentState = _readerState.value
         val chapter = currentState.currentChapter ?: return
         val totalPages = currentState.pages.size
         if (totalPages == 0) return
 
         val newIndex = pageIndex.coerceIn(0, totalPages - 1)
-        _readerState.value = currentState.copy(currentPageIndex = newIndex)
+        _readerState.value = currentState.copy(
+            currentPageIndex = newIndex,
+            scrollOffset = scrollOffset
+        )
 
-        // Save reading progress to Room DB
-        viewModelScope.launch {
-            repository.saveReadingProgress(
-                mangaUrl = currentState.mangaUrl,
-                chapterId = chapter.id,
-                chapterTitle = chapter.title,
-                chapterUrl = chapter.chapterUrl,
-                lastPageRead = newIndex,
-                totalPages = totalPages
-            )
+        scrollSyncJob?.cancel()
+        scrollSyncJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
+            persistCurrentScrollPosition(newIndex, scrollOffset)
         }
+    }
+
+    fun flushReaderScrollPosition() {
+        scrollSyncJob?.cancel()
+        val currentState = _readerState.value
+        if (currentState.pages.isNotEmpty()) {
+            viewModelScope.launch {
+                persistCurrentScrollPosition(currentState.currentPageIndex, currentState.scrollOffset)
+            }
+        }
+    }
+
+    private suspend fun persistCurrentScrollPosition(pageIndex: Int, scrollOffset: Int) {
+        val currentState = _readerState.value
+        val chapter = currentState.currentChapter ?: return
+        val totalPages = currentState.pages.size
+        if (totalPages == 0) return
+
+        // 1. Sync reading progress with exact scroll offset to local Room
+        repository.saveReadingProgress(
+            mangaUrl = currentState.mangaUrl,
+            chapterId = chapter.id,
+            chapterTitle = chapter.title,
+            chapterUrl = chapter.chapterUrl,
+            lastPageRead = pageIndex,
+            totalPages = totalPages,
+            scrollOffset = scrollOffset
+        )
+
+        // 2. Automatically sync bookmark for exact scroll position to local Room
+        val pageUrl = currentState.pages.getOrElse(pageIndex) { "" }
+        val mangaTitle = if (currentState.mangaTitle.isBlank()) "Mangá" else currentState.mangaTitle
+        repository.saveAutoScrollBookmark(
+            mangaUrl = currentState.mangaUrl,
+            mangaTitle = mangaTitle,
+            mangaCoverUrl = currentState.mangaCoverUrl,
+            chapterId = chapter.id,
+            chapterTitle = chapter.title,
+            pageIndex = pageIndex,
+            pageUrl = pageUrl,
+            scrollOffset = scrollOffset
+        )
+    }
+
+    fun updateReaderPageIndex(pageIndex: Int) {
+        updateReaderScrollPosition(pageIndex, 0)
     }
 
     fun navigateChapter(next: Boolean) {

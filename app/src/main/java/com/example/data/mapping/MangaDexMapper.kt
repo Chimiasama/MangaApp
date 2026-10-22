@@ -190,9 +190,16 @@ object MangaDexMapper {
         val chNumStr = attr?.chapter ?: fallbackNumber.toString()
         val num = chNumStr.toFloatOrNull() ?: fallbackNumber
         val chapterTitle = attr?.title.orEmpty()
+        val lang = attr?.translatedLanguage?.lowercase() ?: ""
+        val langFlag = when (lang) {
+            "pt-br", "pt", "" -> ""
+            "en" -> " 🇺🇸"
+            "es", "es-la" -> " 🇪🇸"
+            else -> " [${lang.uppercase()}]"
+        }
         val displayTitle = when {
-            chapterTitle.isNotBlank() -> "Cap. $chNumStr - $chapterTitle"
-            else -> "Capítulo $chNumStr"
+            chapterTitle.isNotBlank() -> "Cap. $chNumStr - $chapterTitle$langFlag"
+            else -> "Capítulo $chNumStr$langFlag"
         }
 
         val chapterUrl = "$baseUrl/chapter/${dto.id}"

@@ -133,6 +133,7 @@ class FirestoreSyncManager(
                 val chapterUrl = doc.getString("chapterUrl") ?: ""
                 val lastPageRead = (doc.getLong("lastPageRead") ?: 0L).toInt()
                 val totalPages = (doc.getLong("totalPages") ?: 0L).toInt()
+                val scrollOffset = (doc.getLong("scrollOffset") ?: 0L).toInt()
                 val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
 
                 val remoteProgEntity = ProgressEntity(
@@ -142,6 +143,7 @@ class FirestoreSyncManager(
                     chapterUrl = chapterUrl,
                     lastPageRead = lastPageRead,
                     totalPages = totalPages,
+                    scrollOffset = scrollOffset,
                     timestamp = timestamp
                 )
                 progressDao.saveProgress(remoteProgEntity)
@@ -203,6 +205,7 @@ class FirestoreSyncManager(
                     "chapterUrl" to prog.chapterUrl,
                     "lastPageRead" to prog.lastPageRead,
                     "totalPages" to prog.totalPages,
+                    "scrollOffset" to prog.scrollOffset,
                     "timestamp" to prog.timestamp
                 )
                 userProgRef.document(docId).set(progMap, SetOptions.merge()).await()
@@ -271,6 +274,7 @@ class FirestoreSyncManager(
                 val chapterUrl = doc.getString("chapterUrl") ?: ""
                 val lastPageRead = (doc.getLong("lastPageRead") ?: 0L).toInt()
                 val totalPages = (doc.getLong("totalPages") ?: 0L).toInt()
+                val scrollOffset = (doc.getLong("scrollOffset") ?: 0L).toInt()
                 val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
 
                 progressDao.saveProgress(
@@ -281,6 +285,7 @@ class FirestoreSyncManager(
                         chapterUrl = chapterUrl,
                         lastPageRead = lastPageRead,
                         totalPages = totalPages,
+                        scrollOffset = scrollOffset,
                         timestamp = timestamp
                     )
                 )

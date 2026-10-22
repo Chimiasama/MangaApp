@@ -7,7 +7,8 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "bookmarks",
     indices = [
-        Index(value = ["chapterId", "pageIndex"], unique = true),
+        Index(value = ["chapterId", "pageIndex"]),
+        Index(value = ["mangaUrl", "isAutoBookmark"]),
         Index(value = ["mangaUrl"])
     ]
 )
@@ -20,6 +21,8 @@ data class BookmarkEntity(
     val chapterTitle: String,
     val pageIndex: Int,
     val pageUrl: String,
+    val scrollOffset: Int = 0,
     val note: String = "",
+    val isAutoBookmark: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )

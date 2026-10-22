@@ -504,8 +504,9 @@ private fun HistoryList(
                                     Spacer(modifier = Modifier.height(4.dp))
                                     val currentPage = progress.lastPageRead + 1
                                     val total = progress.totalPages
+                                    val offsetText = if (progress.scrollOffset > 0) " • Posição exata" else ""
                                     Text(
-                                        text = "Progresso: Página $currentPage de $total",
+                                        text = "Progresso: Página $currentPage de $total$offsetText",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -784,15 +785,37 @@ private fun BookmarksList(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "${bookmark.chapterTitle} • Página ${bookmark.pageIndex + 1}",
-                                        fontSize = 13.sp,
-                                        color = PrimaryPurple,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (bookmark.note.isNotBlank()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "${bookmark.chapterTitle} • Página ${bookmark.pageIndex + 1}",
+                                            fontSize = 13.sp,
+                                            color = PrimaryPurple,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (bookmark.isAutoBookmark) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "AUTO",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = AccentGold,
+                                                modifier = Modifier
+                                                    .background(AccentGold.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                    if (bookmark.scrollOffset > 0) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = if (bookmark.isAutoBookmark) "Posição exata salva automaticamente (+${bookmark.scrollOffset}px)" else "Posição exata: +${bookmark.scrollOffset}px",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else if (bookmark.note.isNotBlank()) {
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
                                             text = bookmark.note,

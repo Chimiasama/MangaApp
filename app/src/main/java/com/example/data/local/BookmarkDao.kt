@@ -29,4 +29,13 @@ interface BookmarkDao {
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun deleteBookmarkById(id: Long)
+
+    @Query("SELECT * FROM bookmarks WHERE mangaUrl = :mangaUrl AND isAutoBookmark = 1 LIMIT 1")
+    suspend fun getAutoBookmarkForManga(mangaUrl: String): BookmarkEntity?
+
+    @Query("SELECT * FROM bookmarks WHERE chapterId = :chapterId AND isAutoBookmark = 1 LIMIT 1")
+    suspend fun getAutoBookmarkForChapter(chapterId: String): BookmarkEntity?
+
+    @Query("DELETE FROM bookmarks WHERE mangaUrl = :mangaUrl AND isAutoBookmark = 1")
+    suspend fun deleteAutoBookmarkForManga(mangaUrl: String)
 }

@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -65,6 +66,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -109,7 +111,9 @@ fun ReaderScreen(
     readerOrientation: String = "SENSOR",
     defaultFullscreen: Boolean = true,
     onBack: () -> Unit,
-    onPageSelected: (Int) -> Unit,
+    onPageSelected: (Int) -> Unit = {},
+    onScrollPositionChanged: (pageIndex: Int, scrollOffset: Int) -> Unit = { page, _ -> onPageSelected(page) },
+    onFlushScrollPosition: () -> Unit = {},
     onNavigateChapter: (Boolean) -> Unit,
     onToggleBookmark: (Int) -> Unit = {},
     onReaderModeChanged: (String) -> Unit = {}
@@ -173,43 +177,70 @@ fun ReaderScreen(
     }
 
     val coroutineScope = rememberCoroutineScope()
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.currentPageIndex)
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = state.currentPageIndex,
+        initialFirstVisibleItemScrollOffset = state.scrollOffset
+    )
     val pagerState = rememberPagerState(
         initialPage = state.currentPageIndex.coerceIn(0, (state.pages.size - 1).coerceAtLeast(0)),
         pageCount = { state.pages.size }
     )
 
-    // Posicionamento inicial suave ao carregar o capítulo (não interfere na rolagem contínua do leitor)
+    // Posicionamento inicial exato suave ao carregar o capítulo
     var initialPositionApplied by rememberSaveable(state.currentChapter?.id) { mutableStateOf(false) }
+    var showResumedBadge by remember { mutableStateOf(false) }
+
     LaunchedEffect(state.pages, state.currentChapter?.id) {
         if (!initialPositionApplied && state.pages.isNotEmpty()) {
             val targetPage = state.currentPageIndex.coerceIn(0, state.pages.lastIndex)
-            if (targetPage > 0) {
+            val targetOffset = state.scrollOffset
+            if (targetPage > 0 || targetOffset > 0) {
                 if (currentMode == "WEBTOON") {
-                    listState.scrollToItem(targetPage)
+                    listState.scrollToItem(targetPage, targetOffset)
                 } else {
                     pagerState.scrollToPage(targetPage)
                 }
+                showResumedBadge = true
             }
             initialPositionApplied = true
         }
     }
 
-    // Salva o progresso no modo Webtoon à medida que o usuário rola de forma livre e fluida
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.firstVisibleItemIndex }.collect { index ->
-            if (currentMode == "WEBTOON" && index in state.pages.indices && index != state.currentPageIndex) {
-                onPageSelected(index)
+    LaunchedEffect(showResumedBadge) {
+        if (showResumedBadge) {
+            kotlinx.coroutines.delay(2600)
+            showResumedBadge = false
+        }
+    }
+
+    // Sincroniza continuamente a posição exata de rolagem com o Room
+    LaunchedEffect(listState, currentMode) {
+        if (currentMode == "WEBTOON") {
+            snapshotFlow {
+                Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+            }.collect { (index, offset) ->
+                if (index in state.pages.indices) {
+                    onScrollPositionChanged(index, offset)
+                }
             }
         }
     }
 
     // Salva o progresso no modo paginado horizontal
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.collect { page ->
-            if (currentMode != "WEBTOON" && page in state.pages.indices && page != state.currentPageIndex) {
-                onPageSelected(page)
+    LaunchedEffect(pagerState, currentMode) {
+        if (currentMode != "WEBTOON") {
+            snapshotFlow { pagerState.currentPage }.collect { page ->
+                if (page in state.pages.indices) {
+                    onScrollPositionChanged(page, 0)
+                }
             }
+        }
+    }
+
+    // Flush de posição ao sair do leitor para garantir salvamento imediato
+    DisposableEffect(Unit) {
+        onDispose {
+            onFlushScrollPosition()
         }
     }
 
@@ -219,6 +250,42 @@ fun ReaderScreen(
             .background(Color.Black)
             .testTag("reader_screen")
     ) {
+        // Indicador de Posição Exata Retomada
+        AnimatedVisibility(
+            visible = showResumedBadge,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+            exit = fadeOut() + slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 40.dp)
+                .testTag("resumed_position_badge")
+        ) {
+            Surface(
+                color = Color(0xEE1E1B2E),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.8f)),
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = null,
+                        tint = AccentGold,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Marcador: Leitura retomada na posição exata",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
         if (state.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),

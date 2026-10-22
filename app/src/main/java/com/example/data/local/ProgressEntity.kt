@@ -11,5 +11,6 @@ data class ProgressEntity(
     val chapterUrl: String,
     val lastPageRead: Int,
     val totalPages: Int,
+    val scrollOffset: Int = 0,
     val timestamp: Long = System.currentTimeMillis()
 )

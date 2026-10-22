@@ -71,6 +71,7 @@ fun MangaApp(
     val stats by mangaViewModel.readingStats.collectAsStateWithLifecycle()
     val cloudSyncState by mangaViewModel.cloudSyncState.collectAsStateWithLifecycle()
     val adultContentEnabled by mangaViewModel.adultContentEnabled.collectAsStateWithLifecycle()
+    val selectedLanguage by mangaViewModel.selectedLanguage.collectAsStateWithLifecycle()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -163,7 +164,9 @@ fun MangaApp(
                 BrowseScreen(
                     state = browseState,
                     adultContentEnabled = adultContentEnabled,
-                    onQueryChange = { query -> mangaViewModel.searchManga(query) },
+                    onQueryChange = { query -> mangaViewModel.searchManga(query, saveToHistory = false) },
+                    onSearchSubmit = { query -> mangaViewModel.submitSearch(query) },
+                    onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
                     onSourceSelected = { sourceId -> mangaViewModel.selectSource(sourceId) },
                     onGenreSelected = { genre -> mangaViewModel.selectGenre(genre) },
                     onMangaClick = { manga ->
@@ -259,6 +262,8 @@ fun MangaApp(
                 MangaDetailScreen(
                     state = detailState,
                     downloads = downloads,
+                    selectedLanguage = selectedLanguage,
+                    onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
                     onBack = { navController.popBackStack() },
                     onToggleFavorite = { manga -> mangaViewModel.toggleFavorite(manga) },
                     onChapterClick = { chapter ->
@@ -299,6 +304,8 @@ fun MangaApp(
                     defaultFullscreen = settingsState.defaultFullscreenReader,
                     onBack = { navController.popBackStack() },
                     onPageSelected = { index -> mangaViewModel.updateReaderPageIndex(index) },
+                    onScrollPositionChanged = { index, offset -> mangaViewModel.updateReaderScrollPosition(index, offset) },
+                    onFlushScrollPosition = { mangaViewModel.flushReaderScrollPosition() },
                     onNavigateChapter = { next -> mangaViewModel.navigateChapter(next) },
                     onToggleBookmark = { pageIndex -> mangaViewModel.togglePageBookmark(pageIndex) },
                     onReaderModeChanged = { mode -> settingsViewModel.setReaderMode(mode) }

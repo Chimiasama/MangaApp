@@ -15,6 +15,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class UserPreferencesRepository(private val context: Context) {
 
     companion object {
+        const val DEFAULT_LANGUAGE = "pt-br"
         val ADULT_CONTENT_ENABLED = booleanPreferencesKey("adult_content_enabled")
         val AGE_VERIFIED = booleanPreferencesKey("age_verified")
         val CUSTOM_RULES_JSON = stringPreferencesKey("custom_rules_json")
@@ -24,6 +25,11 @@ class UserPreferencesRepository(private val context: Context) {
         val DEFAULT_FULLSCREEN_READER = booleanPreferencesKey("default_fullscreen_reader")
         val AUTO_CLOUD_SYNC = booleanPreferencesKey("auto_cloud_sync")
         val FILTER_ADULT_CONTENT_SEARCH = booleanPreferencesKey("filter_adult_content_search")
+        val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
+    }
+
+    val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SELECTED_LANGUAGE] ?: DEFAULT_LANGUAGE
     }
 
     val adultContentEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -113,6 +119,12 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setFilterAdultContentInSearch(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[FILTER_ADULT_CONTENT_SEARCH] = enabled
+        }
+    }
+
+    suspend fun setSelectedLanguage(lang: String) {
+        context.dataStore.edit { prefs ->
+            prefs[SELECTED_LANGUAGE] = lang
         }
     }
 }

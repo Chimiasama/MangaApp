@@ -87,6 +87,7 @@ class MangaRepository(
         chapterTitle: String,
         pageIndex: Int,
         pageUrl: String,
+        scrollOffset: Int = 0,
         note: String = ""
     ) {
         val dao = bookmarkDao ?: return
@@ -101,10 +102,45 @@ class MangaRepository(
                 chapterTitle = chapterTitle,
                 pageIndex = pageIndex,
                 pageUrl = pageUrl,
-                note = note
+                scrollOffset = scrollOffset,
+                note = note,
+                isAutoBookmark = false
             )
             dao.insertBookmark(bookmark)
         }
+    }
+
+    suspend fun saveAutoScrollBookmark(
+        mangaUrl: String,
+        mangaTitle: String,
+        mangaCoverUrl: String,
+        chapterId: String,
+        chapterTitle: String,
+        pageIndex: Int,
+        pageUrl: String,
+        scrollOffset: Int = 0
+    ) {
+        val dao = bookmarkDao ?: return
+        val existing = dao.getAutoBookmarkForManga(mangaUrl)
+        val autoBookmark = BookmarkEntity(
+            id = existing?.id ?: 0,
+            mangaUrl = mangaUrl,
+            mangaTitle = mangaTitle,
+            mangaCoverUrl = mangaCoverUrl,
+            chapterId = chapterId,
+            chapterTitle = chapterTitle,
+            pageIndex = pageIndex,
+            pageUrl = pageUrl,
+            scrollOffset = scrollOffset,
+            note = "Posição exata salva automaticamente",
+            isAutoBookmark = true,
+            timestamp = System.currentTimeMillis()
+        )
+        dao.insertBookmark(autoBookmark)
+    }
+
+    suspend fun getAutoBookmarkForManga(mangaUrl: String): BookmarkEntity? {
+        return bookmarkDao?.getAutoBookmarkForManga(mangaUrl)
     }
 
     suspend fun deleteBookmarkById(id: Long) {
@@ -174,7 +210,8 @@ class MangaRepository(
     suspend fun getPopularManga(
         sourceId: String?,
         includeAdult: Boolean,
-        filterAdultSearch: Boolean = false
+        filterAdultSearch: Boolean = false,
+        language: String = "pt-br"
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
@@ -187,7 +224,7 @@ class MangaRepository(
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch) {
             try {
-                val list = src.getPopularManga()
+                val list = src.getPopularManga(language)
                 val filtered = list.filter { manga ->
                     if (!includeAdult && manga.isNsfw) return@filter false
                     if (filterAdultSearch && (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.lowercase()) })) return@filter false
@@ -232,7 +269,8 @@ class MangaRepository(
         query: String,
         sourceId: String?,
         includeAdult: Boolean,
-        filterAdultSearch: Boolean = false
+        filterAdultSearch: Boolean = false,
+        language: String = "pt-br"
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
@@ -245,7 +283,7 @@ class MangaRepository(
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch) {
             try {
-                val list = src.searchManga(query)
+                val list = src.searchManga(query, language)
                 val filtered = list.filter { manga ->
                     if (!includeAdult && manga.isNsfw) return@filter false
                     if (filterAdultSearch && (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.lowercase()) })) return@filter false
@@ -320,10 +358,14 @@ class MangaRepository(
         }
     }
 
-    suspend fun getChapters(mangaUrl: String, sourceId: String): List<ChapterModel> {
+    suspend fun getChapters(
+        mangaUrl: String,
+        sourceId: String,
+        language: String = "pt-br"
+    ): List<ChapterModel> {
         val source = sourceRegistry[sourceId] ?: sourceRegistry.values.first()
         return try {
-            val networkChapters = source.getChapters(mangaUrl)
+            val networkChapters = source.getChapters(mangaUrl, language)
             if (networkChapters.isNotEmpty() && chapterDao != null) {
                 val entities = networkChapters.mapIndexed { index, ch ->
                     ChapterEntity(
@@ -428,7 +470,8 @@ class MangaRepository(
         chapterTitle: String,
         chapterUrl: String,
         lastPageRead: Int,
-        totalPages: Int
+        totalPages: Int,
+        scrollOffset: Int = 0
     ) {
         val progress = ProgressEntity(
             mangaUrl = mangaUrl,
@@ -437,6 +480,7 @@ class MangaRepository(
             chapterUrl = chapterUrl,
             lastPageRead = lastPageRead,
             totalPages = totalPages,
+            scrollOffset = scrollOffset,
             timestamp = System.currentTimeMillis()
         )
         progressDao.saveProgress(progress)
