@@ -62,7 +62,7 @@ object RetrofitClient {
     }
 
     const val CONSUMET_BASE_URL = "https://api.consumet.org/"
-    const val COMICK_BASE_URL = "https://api.comick.fun/"
+    const val COMICK_BASE_URL = "https://api.comick.app/"
 
     val consumetRetrofit: Retrofit by lazy {
         Retrofit.Builder()
