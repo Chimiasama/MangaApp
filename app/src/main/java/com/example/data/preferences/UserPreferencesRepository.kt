@@ -29,6 +29,10 @@ class UserPreferencesRepository(private val context: Context) {
         val READER_BACKGROUND_COLOR = stringPreferencesKey("reader_background_color")
         val READER_INVERT_COLORS = booleanPreferencesKey("reader_invert_colors")
         val PAGE_PRELOAD_ENABLED = booleanPreferencesKey("page_preload_enabled")
+        val ANILIST_TOKEN = stringPreferencesKey("anilist_token")
+        val ANILIST_USERNAME = stringPreferencesKey("anilist_username")
+        val ANILIST_AVATAR = stringPreferencesKey("anilist_avatar")
+        val ANILIST_AUTO_SYNC = booleanPreferencesKey("anilist_auto_sync")
     }
 
     val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->
@@ -81,6 +85,22 @@ class UserPreferencesRepository(private val context: Context) {
 
     val pagePreloadEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[PAGE_PRELOAD_ENABLED] ?: true
+    }
+
+    val aniListToken: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[ANILIST_TOKEN]
+    }
+
+    val aniListUsername: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[ANILIST_USERNAME]
+    }
+
+    val aniListAvatar: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[ANILIST_AVATAR]
+    }
+
+    val aniListAutoSync: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[ANILIST_AUTO_SYNC] ?: true
     }
 
     suspend fun setAdultContentEnabled(enabled: Boolean) {
@@ -158,6 +178,32 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setPagePreloadEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[PAGE_PRELOAD_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveAniListAuth(token: String, username: String, avatarUrl: String?) {
+        context.dataStore.edit { prefs ->
+            prefs[ANILIST_TOKEN] = token
+            prefs[ANILIST_USERNAME] = username
+            if (avatarUrl != null) {
+                prefs[ANILIST_AVATAR] = avatarUrl
+            } else {
+                prefs.remove(ANILIST_AVATAR)
+            }
+        }
+    }
+
+    suspend fun clearAniListAuth() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(ANILIST_TOKEN)
+            prefs.remove(ANILIST_USERNAME)
+            prefs.remove(ANILIST_AVATAR)
+        }
+    }
+
+    suspend fun setAniListAutoSync(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[ANILIST_AUTO_SYNC] = enabled
         }
     }
 }
