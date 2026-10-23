@@ -279,6 +279,85 @@ class MangaDexMappingTest {
     }
 
     @Test
+    fun `test fetchChaptersForLanguage merges fallback chapters when primary language chapters are sparse`() = runBlocking {
+        val fakeApiService = object : MangaDexApiService {
+            override suspend fun getMangaList(
+                limit: Int, offset: Int, title: String?, translatedLanguages: List<String>?,
+                orderFollowedCount: String?, orderRelevance: String?, includes: List<String>,
+                contentRatings: List<String>, userAgent: String
+            ): MangaDexMangaListResponse = throw NotImplementedError()
+
+            override suspend fun getMangaDetails(
+                mangaId: String, includes: List<String>, userAgent: String
+            ): MangaDexMangaDetailsResponse = throw NotImplementedError()
+
+            override suspend fun getChapterFeed(
+                mangaId: String, limit: Int, offset: Int, translatedLanguages: List<String>?,
+                orderChapter: String, contentRatings: List<String>, userAgent: String
+            ): MangaDexChapterFeedResponse {
+                val isPt = translatedLanguages?.contains("pt-br") == true
+                val isEn = translatedLanguages?.contains("en") == true
+
+                return if (isPt) {
+                    // Only 1 chapter available in PT-BR (Ch 115.5)
+                    MangaDexChapterFeedResponse(
+                        result = "ok",
+                        data = listOf(
+                            MangaDexChapterDto(
+                                id = "ch-pt-115.5",
+                                attributes = MangaDexChapterAttributesDto(
+                                    chapter = "115.5",
+                                    title = "Epílogo",
+                                    translatedLanguage = "pt-br",
+                                    pages = 30
+                                )
+                            )
+                        )
+                    )
+                } else if (isEn) {
+                    // 10 chapters available in EN (Ch 1 through 10)
+                    val enList = (1..10).map { num ->
+                        MangaDexChapterDto(
+                            id = "ch-en-$num",
+                            attributes = MangaDexChapterAttributesDto(
+                                chapter = num.toString(),
+                                title = "Chapter $num",
+                                translatedLanguage = "en",
+                                pages = 20
+                            )
+                        )
+                    }
+                    MangaDexChapterFeedResponse(result = "ok", data = enList)
+                } else {
+                    MangaDexChapterFeedResponse(result = "ok", data = emptyList())
+                }
+            }
+
+            override suspend fun getAtHomeServer(
+                chapterId: String, userAgent: String
+            ): MangaDexAtHomeResponse = throw NotImplementedError()
+        }
+
+        val source = MangaDexSource(apiService = fakeApiService)
+
+        // Requesting chapters for pt-br
+        val chapters = source.getChapters("https://api.mangadex.org/manga/test-bisque-doll", "pt-br")
+
+        // Should return 11 total chapters: 1 PT-BR (115.5) + 10 EN (1..10)
+        assertEquals(11, chapters.size)
+
+        // Check PT-BR chapter is present
+        val ptChapter = chapters.find { it.id == "ch-pt-115.5" }
+        assertNotNull(ptChapter)
+        assertEquals("Cap. 115.5 - Epílogo", ptChapter?.title)
+
+        // Check English fallback chapters (Ch 1..10) are filled in
+        val enChapter1 = chapters.find { it.id == "ch-en-1" }
+        assertNotNull(enChapter1)
+        assertEquals("Cap. 1 - Chapter 1 🇺🇸", enChapter1?.title)
+    }
+
+    @Test
     fun `test Moshi parses real sample_mangadex json`() {
         val file = java.io.File("/tmp/sample_mangadex.json")
         if (file.exists()) {
