@@ -361,44 +361,9 @@ class MangaDexSource(
         }
 
         if (targetLanguages != null) {
-            val primaryChapters = fetchAllChapters(mangaId, targetLanguages)
-
-            // Concurrently fetch English and global fallback chapters if primary language chapters are missing or incomplete
-            val (enChapters, fallbackChapters) = coroutineScope {
-                val enDeferred = async {
-                    if (!targetLanguages.contains("en")) fetchAllChapters(mangaId, listOf("en")) else emptyList()
-                }
-                val fallbackDeferred = async {
-                    if (primaryChapters.size < 10) fetchAllChapters(mangaId, null) else emptyList()
-                }
-                Pair(enDeferred.await(), fallbackDeferred.await())
-            }
-
-            val chapterMap = LinkedHashMap<String, com.example.data.network.model.MangaDexChapterDto>()
-
-            // 1. Insert primary language chapters first (highest priority)
-            for (ch in primaryChapters) {
-                val numKey = ch.attributes?.chapter ?: ch.id
-                chapterMap[numKey] = ch
-            }
-
-            // 2. Fill in missing chapter numbers from English
-            for (ch in enChapters) {
-                val numKey = ch.attributes?.chapter ?: ch.id
-                if (!chapterMap.containsKey(numKey)) {
-                    chapterMap[numKey] = ch
-                }
-            }
-
-            // 3. Fill in missing chapter numbers from any other language fallback
-            for (ch in fallbackChapters) {
-                val numKey = ch.attributes?.chapter ?: ch.id
-                if (!chapterMap.containsKey(numKey)) {
-                    chapterMap[numKey] = ch
-                }
-            }
-
-            return chapterMap.values.sortedWith(
+            // Strict filter: only display chapters in the user-selected fixed language
+            val chapters = fetchAllChapters(mangaId, targetLanguages)
+            return chapters.sortedWith(
                 compareBy<com.example.data.network.model.MangaDexChapterDto> { dto ->
                     dto.attributes?.chapter?.toFloatOrNull() ?: Float.MAX_VALUE
                 }.thenBy { dto ->
