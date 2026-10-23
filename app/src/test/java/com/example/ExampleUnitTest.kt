@@ -94,4 +94,45 @@ class ExampleUnitTest {
         assertEquals(8, targetPage)
         assertEquals(620, targetOffset)
     }
+
+    @Test
+    fun testSteppedZoomProgression() {
+        // Estágio 1: 1.0x -> 1.75x (amplia um pouco)
+        val stage1 = com.example.ui.screens.getNextZoomScale(1.0f)
+        assertEquals(1.75f, stage1, 0.001f)
+
+        // Estágio 2: 1.75x -> 2.75x (amplia mais)
+        val stage2 = com.example.ui.screens.getNextZoomScale(stage1)
+        assertEquals(2.75f, stage2, 0.001f)
+
+        // Estágio 3: 2.75x -> 4.0x (amplia totalmente)
+        val stage3 = com.example.ui.screens.getNextZoomScale(stage2)
+        assertEquals(4.0f, stage3, 0.001f)
+
+        // Estágio 4: 4.0x -> 1.0x (reset suave ao padrão)
+        val stage4 = com.example.ui.screens.getNextZoomScale(stage3)
+        assertEquals(1.0f, stage4, 0.001f)
+    }
+
+    @Test
+    fun testPanClampingBoundsCalculation() {
+        val width = 1080f
+        val height = 1920f
+        val scale = 2.75f
+
+        val maxOffsetX = ((scale - 1f) * width) / 2f
+        val maxOffsetY = ((scale - 1f) * height) / 2f
+
+        assertEquals(945f, maxOffsetX, 0.001f)
+        assertEquals(1680f, maxOffsetY, 0.001f)
+
+        // Panning beyond bounds is safely clamped
+        val desiredX = 1200f
+        val clampedX = desiredX.coerceIn(-maxOffsetX, maxOffsetX)
+        assertEquals(945f, clampedX, 0.001f)
+
+        val desiredNegativeY = -2000f
+        val clampedY = desiredNegativeY.coerceIn(-maxOffsetY, maxOffsetY)
+        assertEquals(-1680f, clampedY, 0.001f)
+    }
 }

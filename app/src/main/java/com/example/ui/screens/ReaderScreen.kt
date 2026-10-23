@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -15,6 +16,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -86,13 +92,20 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -509,7 +522,7 @@ fun ReaderScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
-                                currentScale = if (currentScale > 1.2f) 1.0f else 2.5f
+                                currentScale = getNextZoomScale(currentScale)
                             }
                             .background(
                                 if (currentScale > 1.05f) CrimsonRed.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.15f)
@@ -802,11 +815,52 @@ fun ReaderScreen(
 }
 
 /**
+ * Calcula a próxima etapa de escala no duplo toque:
+ * - 1º duplo toque: amplia um pouco (1.75x)
+ * - 2º duplo toque: amplia mais (2.75x)
+ * - 3º duplo toque: amplia totalmente (4.0x)
+ * - 4º duplo toque (ou quando já ampliado no máximo): retorna suavemente ao padrão (1.0x)
+ */
+fun getNextZoomScale(currentScale: Float): Float = when {
+    currentScale < 1.4f -> 1.75f
+    currentScale < 2.3f -> 2.75f
+    currentScale < 3.6f -> 4.0f
+    else -> 1.0f
+}
+
+/**
+ * Detector de gestos para zoom de pinça (pinch) exclusivo com 2 dedos.
+ * Permite pinçar para ampliar sem interceptar ou consumir gestos com 1 dedo
+ * (garantindo que o scroll do LazyColumn ou swipe do Pager funcionem 100% livres).
+ */
+private suspend fun PointerInputScope.detectPinchZoomOnly(
+    onZoom: (zoomChange: Float) -> Unit
+) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        do {
+            val event = awaitPointerEvent()
+            val pressedCount = event.changes.count { it.pressed }
+            if (pressedCount > 1) {
+                val zoom = event.calculateZoom()
+                if (zoom != 1f) {
+                    onZoom(zoom)
+                    event.changes.fastForEach { change ->
+                        if (change.positionChanged()) {
+                            change.consume()
+                        }
+                    }
+                }
+            }
+        } while (event.changes.fastAny { it.pressed })
+    }
+}
+
+/**
  * Visualizador Contínuo para Webtoon / Manhwa Vertical
- * - Sem limites de altura artificial por página: cada imagem flui com proporção natural
- * - Zero espaçamento para fusão perfeita entre painéis
- * - Gestos independentes: duplo toque ativa zoom 2.2x e toque simples alterna a barra de ferramentas
- *   sem interferir no scroll vertical suave da lista
+ * - Encaixe perfeitamente justaposto sem divisória entre páginas (-1dp offset e Alignment.TopCenter)
+ * - Zoom inteligente em etapas via duplo toque (1.75x -> 2.75x -> 4.0x -> 1.0x)
+ * - Movimentação livre e suave 2D: segure a página com zoom e mova livremente em qualquer direção
  */
 @Composable
 fun WebtoonContinuousPage(
@@ -816,16 +870,107 @@ fun WebtoonContinuousPage(
     onCenterTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var scale by remember { mutableFloatStateOf(1f) }
+    val coroutineScope = rememberCoroutineScope()
+    val scaleAnim = remember { Animatable(1f) }
+    val offsetXAnim = remember { Animatable(0f) }
+    val offsetYAnim = remember { Animatable(0f) }
+    var pageSize by remember { mutableStateOf(IntSize.Zero) }
+
+    val isZoomed = scaleAnim.value > 1.05f
 
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (pageIndex > 0) Modifier.offset(y = (-1).dp) else Modifier)
+            .zIndex(if (isZoomed) 2f else 0f)
+            .onSizeChanged { pageSize = it }
             .testTag("webtoon_page_$pageIndex")
-            .pointerInput(Unit) {
+            .pointerInput(isZoomed, pageSize) {
+                if (isZoomed) {
+                    // Quando ampliado, permite segurar a página com 1 dedo e mover livremente em 2D
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val width = pageSize.width.toFloat().coerceAtLeast(1f)
+                        val height = pageSize.height.toFloat().coerceAtLeast(1f)
+
+                        val currentScale = scaleAnim.value
+                        val newScale = (currentScale * zoom).coerceIn(1.0f, 4.5f)
+
+                        val maxOffsetX = ((newScale - 1f) * width) / 2f
+                        val maxOffsetY = ((newScale - 1f) * height) / 2f
+
+                        val newX = (offsetXAnim.value + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                        val newY = (offsetYAnim.value + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+
+                        coroutineScope.launch {
+                            scaleAnim.snapTo(newScale)
+                            offsetXAnim.snapTo(newX)
+                            offsetYAnim.snapTo(newY)
+                        }
+                    }
+                } else {
+                    // Quando em 1.0x, permite zoom de pinça com 2 dedos sem bloquear o scroll vertical da LazyColumn
+                    detectPinchZoomOnly { zoomChange ->
+                        val newScale = (scaleAnim.value * zoomChange).coerceIn(1.0f, 4.5f)
+                        coroutineScope.launch {
+                            scaleAnim.snapTo(newScale)
+                        }
+                    }
+                }
+            }
+            .pointerInput(pageSize) {
+                // Duplo toque em etapas e toque simples para alternar controles
                 detectTapGestures(
-                    onDoubleTap = {
-                        scale = if (scale > 1.2f) 1.0f else 2.2f
+                    onDoubleTap = { tapOffset ->
+                        val width = pageSize.width.toFloat().coerceAtLeast(1f)
+                        val height = pageSize.height.toFloat().coerceAtLeast(1f)
+
+                        val nextScale = getNextZoomScale(scaleAnim.value)
+
+                        val targetX: Float
+                        val targetY: Float
+                        if (nextScale <= 1.05f) {
+                            targetX = 0f
+                            targetY = 0f
+                        } else {
+                            val maxOffsetX = ((nextScale - 1f) * width) / 2f
+                            val maxOffsetY = ((nextScale - 1f) * height) / 2f
+                            val centerX = width / 2f
+                            val centerY = height / 2f
+                            val desiredX = (centerX - tapOffset.x) * (nextScale - 1f)
+                            val desiredY = (centerY - tapOffset.y) * (nextScale - 1f)
+                            targetX = desiredX.coerceIn(-maxOffsetX, maxOffsetX)
+                            targetY = desiredY.coerceIn(-maxOffsetY, maxOffsetY)
+                        }
+
+                        coroutineScope.launch {
+                            launch {
+                                scaleAnim.animateTo(
+                                    targetValue = nextScale,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                            }
+                            launch {
+                                offsetXAnim.animateTo(
+                                    targetValue = targetX,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                            }
+                            launch {
+                                offsetYAnim.animateTo(
+                                    targetValue = targetY,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                            }
+                        }
                     },
                     onTap = {
                         onCenterTap()
@@ -837,6 +982,7 @@ fun WebtoonContinuousPage(
             model = pageUrl,
             contentDescription = "Página ${pageIndex + 1}",
             contentScale = ContentScale.FillWidth,
+            alignment = Alignment.TopCenter,
             loading = {
                 Box(
                     modifier = Modifier
@@ -869,10 +1015,13 @@ fun WebtoonContinuousPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale
-                )
+                .graphicsLayer {
+                    scaleX = scaleAnim.value
+                    scaleY = scaleAnim.value
+                    translationX = offsetXAnim.value
+                    translationY = offsetYAnim.value
+                    clip = scaleAnim.value > 1.05f
+                }
         )
 
         // Indicador de Marcador Salvo na página
@@ -904,9 +1053,10 @@ fun WebtoonContinuousPage(
 }
 
 /**
- * Visualizador de Página com Zoom Avançado (Pinch + Pan livre 2D para cima, para baixo, esquerda e direita)
- * + Duplo toque inteligente com animação suave
- * + Tap Zones invisíveis (Esquerda = voltar, Direita = avançar, Centro = controles)
+ * Visualizador de Página com Zoom Avançado (Pinch + Pan livre 2D)
+ * - Duplo toque inteligente em etapas (1.75x -> 2.75x -> 4.0x -> 1.0x) com transições suaves
+ * - Segurar e mover livremente em qualquer direção enquanto em zoom com clamping elegante
+ * - Tap Zones invisíveis (Esquerda = voltar, Direita = avançar, Centro = controles)
  */
 @Composable
 fun ZoomableMangaPage(
@@ -921,24 +1071,27 @@ fun ZoomableMangaPage(
     onRightTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var internalScale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+    val scaleAnim = remember { Animatable(1f) }
+    val offsetXAnim = remember { Animatable(0f) }
+    val offsetYAnim = remember { Animatable(0f) }
 
     // Sincroniza se o dock de zoom externo alterar o scale
     LaunchedEffect(externalScale) {
-        if (internalScale != externalScale) {
-            internalScale = externalScale
+        if (kotlin.math.abs(scaleAnim.value - externalScale) > 0.05f) {
             if (externalScale <= 1.05f) {
-                offset = Offset.Zero
+                coroutineScope.launch {
+                    launch { scaleAnim.animateTo(1.0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
+                    launch { offsetXAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
+                    launch { offsetYAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
+                }
+            } else {
+                scaleAnim.animateTo(externalScale, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
             }
         }
     }
 
-    val animatedScale by animateFloatAsState(
-        targetValue = internalScale,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
-        label = "page_scale_anim"
-    )
+    val isZoomed = scaleAnim.value > 1.05f
 
     BoxWithConstraints(
         modifier = modifier
@@ -946,57 +1099,98 @@ fun ZoomableMangaPage(
             .clipToBounds()
             .testTag("reader_page_$pageIndex")
     ) {
-        val containerWidth = constraints.maxWidth.toFloat()
-        val containerHeight = constraints.maxHeight.toFloat()
+        val containerWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val containerHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(internalScale) {
-                    // Detecção de gestos de transformação: zoom e pan (tanto para cima quanto para baixo)
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val newScale = (internalScale * zoom).coerceIn(1.0f, 4.5f)
-                        internalScale = newScale
-                        onScaleChanged(newScale)
+                .pointerInput(isZoomed, containerWidth, containerHeight) {
+                    if (isZoomed) {
+                        // Detecção de gestos quando ampliado: segurar com 1 dedo e mover livremente em 2D
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val currentScale = scaleAnim.value
+                            val newScale = (currentScale * zoom).coerceIn(1.0f, 4.5f)
+                            onScaleChanged(newScale)
 
-                        if (newScale > 1.05f) {
-                            // Calcula limites máximos de pan para navegação suave em 2D
                             val maxOffsetX = ((newScale - 1f) * containerWidth) / 2f
                             val maxOffsetY = ((newScale - 1f) * containerHeight) / 2f
 
-                            val newOffsetX = (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                            val newOffsetY = (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                            offset = Offset(newOffsetX, newOffsetY)
-                        } else {
-                            offset = Offset.Zero
+                            val newX = (offsetXAnim.value + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                            val newY = (offsetYAnim.value + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+
+                            coroutineScope.launch {
+                                scaleAnim.snapTo(newScale)
+                                offsetXAnim.snapTo(newX)
+                                offsetYAnim.snapTo(newY)
+                            }
+                        }
+                    } else {
+                        // Quando em 1.0x, permite pinça com 2 dedos sem interceptar o swipe horizontal do pager
+                        detectPinchZoomOnly { zoomChange ->
+                            val newScale = (scaleAnim.value * zoomChange).coerceIn(1.0f, 4.5f)
+                            onScaleChanged(newScale)
+                            coroutineScope.launch {
+                                scaleAnim.snapTo(newScale)
+                            }
                         }
                     }
                 }
-                .pointerInput(internalScale) {
-                    // Toques rápidos e zonas de navegação invisíveis
+                .pointerInput(containerWidth, containerHeight) {
+                    // Toques rápidos, duplo toque em etapas e zonas de navegação invisíveis
                     detectTapGestures(
                         onDoubleTap = { tapOffset ->
-                            if (internalScale > 1.2f) {
-                                // Zoom Out para baixo (reseta para 1.0)
-                                internalScale = 1.0f
-                                offset = Offset.Zero
-                                onScaleChanged(1.0f)
+                            val nextScale = getNextZoomScale(scaleAnim.value)
+                            onScaleChanged(nextScale)
+
+                            val targetX: Float
+                            val targetY: Float
+                            if (nextScale <= 1.05f) {
+                                targetX = 0f
+                                targetY = 0f
                             } else {
-                                // Zoom In para cima (amplia para 2.5x com foco no ponto tocado)
-                                internalScale = 2.5f
-                                onScaleChanged(2.5f)
-                                val center = Offset(containerWidth / 2f, containerHeight / 2f)
-                                val targetOffset = (center - tapOffset) * 1.5f
-                                val maxOffsetX = (1.5f * containerWidth) / 2f
-                                val maxOffsetY = (1.5f * containerHeight) / 2f
-                                offset = Offset(
-                                    targetOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
-                                    targetOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
-                                )
+                                val maxOffsetX = ((nextScale - 1f) * containerWidth) / 2f
+                                val maxOffsetY = ((nextScale - 1f) * containerHeight) / 2f
+                                val centerX = containerWidth / 2f
+                                val centerY = containerHeight / 2f
+                                val desiredX = (centerX - tapOffset.x) * (nextScale - 1f)
+                                val desiredY = (centerY - tapOffset.y) * (nextScale - 1f)
+                                targetX = desiredX.coerceIn(-maxOffsetX, maxOffsetX)
+                                targetY = desiredY.coerceIn(-maxOffsetY, maxOffsetY)
+                            }
+
+                            coroutineScope.launch {
+                                launch {
+                                    scaleAnim.animateTo(
+                                        targetValue = nextScale,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
+                                launch {
+                                    offsetXAnim.animateTo(
+                                        targetValue = targetX,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
+                                launch {
+                                    offsetYAnim.animateTo(
+                                        targetValue = targetY,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
                             }
                         },
                         onTap = { tapOffset ->
-                            if (internalScale <= 1.1f) {
+                            if (scaleAnim.value <= 1.1f) {
                                 val xPercent = tapOffset.x / containerWidth
                                 when {
                                     xPercent < 0.28f -> onLeftTap()
@@ -1044,12 +1238,13 @@ fun ZoomableMangaPage(
                 },
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = animatedScale,
-                        scaleY = animatedScale,
-                        translationX = offset.x,
-                        translationY = offset.y
-                    )
+                    .graphicsLayer {
+                        scaleX = scaleAnim.value
+                        scaleY = scaleAnim.value
+                        translationX = offsetXAnim.value
+                        translationY = offsetYAnim.value
+                        clip = scaleAnim.value > 1.05f
+                    }
             )
 
             // Indicador de Marcador Salvo na página
