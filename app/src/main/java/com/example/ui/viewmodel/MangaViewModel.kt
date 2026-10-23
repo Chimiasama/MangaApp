@@ -374,7 +374,12 @@ class MangaViewModel(
             if (currentManga != null) {
                 try {
                     _isLoadingDetail.value = true
-                    _detailChapters.value = repository.getChapters(currentManga.url, currentManga.sourceId, language)
+                    _detailChapters.value = repository.getAggregatedChapters(
+                        mangaTitle = currentManga.title,
+                        mangaUrl = currentManga.url,
+                        primarySourceId = currentManga.sourceId,
+                        language = language
+                    )
                 } catch (e: Exception) {
                     _detailChapters.value = emptyList()
                 } finally {
@@ -425,7 +430,12 @@ class MangaViewModel(
         viewModelScope.launch {
             try {
                 val currentLang = selectedLanguage.value
-                val chapters = repository.getChapters(manga.url, manga.sourceId, currentLang)
+                val chapters = repository.getAggregatedChapters(
+                    mangaTitle = manga.title,
+                    mangaUrl = manga.url,
+                    primarySourceId = manga.sourceId,
+                    language = currentLang
+                )
                 _detailChapters.value = chapters
             } catch (e: Exception) {
                 _detailChapters.value = emptyList()

@@ -32,6 +32,8 @@ import com.example.source.SourceRuleConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -360,6 +362,80 @@ class MangaRepository(
                 )
             }
         }
+    }
+
+    suspend fun getAggregatedChapters(
+        mangaTitle: String,
+        mangaUrl: String,
+        primarySourceId: String,
+        language: String = "pt-br"
+    ): List<ChapterModel> = kotlinx.coroutines.coroutineScope {
+        val primarySource = sourceRegistry[primarySourceId] ?: sourceRegistry.values.first()
+        val primaryChapters = try {
+            primarySource.getChapters(mangaUrl, language)
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        val chapterMap = LinkedHashMap<Float, ChapterModel>()
+        primaryChapters.forEach { ch ->
+            if (ch.chapterNumber >= 0f) {
+                chapterMap[ch.chapterNumber] = ch
+            }
+        }
+
+        // Cross-reference with other sources concurrently to fill missing chapter gaps
+        val secondarySources = sourceRegistry.values.filter { it.id != primarySourceId }
+        val deferredList = secondarySources.map { src ->
+            async {
+                try {
+                    // Try direct URL fetch if compatible, otherwise search by title for source-specific URL
+                    val secChapters = if (mangaUrl.contains(src.id, ignoreCase = true)) {
+                        src.getChapters(mangaUrl, language)
+                    } else if (mangaTitle.isNotBlank()) {
+                        val searchResults = src.searchManga(mangaTitle, language)
+                        val match = searchResults.firstOrNull {
+                            it.title.equals(mangaTitle, ignoreCase = true) || it.title.contains(mangaTitle, ignoreCase = true)
+                        } ?: searchResults.firstOrNull()
+                        if (match != null) src.getChapters(match.url, language) else emptyList()
+                    } else {
+                        emptyList()
+                    }
+                    secChapters
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+        }
+
+        val secondaryResults = deferredList.flatMap { it.await() }
+        for (ch in secondaryResults) {
+            if (ch.chapterNumber >= 0f && !chapterMap.containsKey(ch.chapterNumber)) {
+                chapterMap[ch.chapterNumber] = ch
+            }
+        }
+
+        val mergedList = if (chapterMap.isNotEmpty()) {
+            chapterMap.values.sortedByDescending { it.chapterNumber }
+        } else {
+            primaryChapters
+        }
+
+        if (mergedList.isNotEmpty() && chapterDao != null) {
+            val entities = mergedList.mapIndexed { index, ch ->
+                ChapterEntity(
+                    id = ch.id,
+                    mangaUrl = mangaUrl,
+                    title = ch.title,
+                    chapterUrl = ch.chapterUrl,
+                    chapterNumber = if (ch.chapterNumber > 0) ch.chapterNumber else (index + 1).toFloat(),
+                    dateUpload = ch.dateUpload
+                )
+            }
+            chapterDao.insertChapters(entities)
+        }
+
+        mergedList
     }
 
     suspend fun getChapters(

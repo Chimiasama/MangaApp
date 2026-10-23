@@ -353,10 +353,10 @@ class MangaDexSource(
         mangaId: String,
         language: String
     ): List<com.example.data.network.model.MangaDexChapterDto> {
-        val targetLanguages = when (language) {
-            "pt-br" -> listOf("pt-br", "pt")
+        val targetLanguages = when (language.lowercase()) {
+            "pt-br", "pt", "pt-pt" -> listOf("pt-br", "pt", "pt-pt")
             "en" -> listOf("en")
-            "es" -> listOf("es-la", "es")
+            "es-la", "es", "es-es" -> listOf("es-la", "es", "es-es")
             else -> null
         }
 
