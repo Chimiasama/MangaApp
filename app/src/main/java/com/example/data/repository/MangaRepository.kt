@@ -163,10 +163,37 @@ class MangaRepository(
         registerSource(MangaDexSource())
         registerSource(ComickSource())
         registerSource(ConsumetMangaSource())
+        registerDefaultScraperRules()
+    }
+
+    private fun registerDefaultScraperRules() {
+        val defaultScraperConfig = SourceRuleConfig(
+            id = "jsoup_generic",
+            name = "Web HTML Scraper (Fallback)",
+            baseUrl = "https://mangalivre.blog",
+            isNsfw = false,
+            lang = "pt-BR",
+            listSelector = ".manga-item, .page-item, article",
+            titleSelector = ".manga-title, h3, h2, a",
+            coverAttrSelector = "img",
+            linkAttrSelector = "a",
+            detailDescSelector = ".description, .synopsis, p",
+            detailAuthorSelector = ".author, .meta-author",
+            chapterListSelector = ".chapter-item, li.wp-manga-chapter, .list-chapters li",
+            chapterTitleSelector = "a",
+            chapterLinkSelector = "a",
+            pageImageSelector = ".reader-area img, .page-break img, .reading-content img",
+            pageImageAttr = "src"
+        )
+        registerSource(DynamicJsoupSource(defaultScraperConfig))
     }
 
     fun registerSource(source: MangaSource) {
         sourceRegistry[source.id] = source
+    }
+
+    fun clearSources() {
+        sourceRegistry.clear()
     }
 
     fun loadScraperRulesFromJson(json: String): Boolean {
@@ -377,31 +404,49 @@ class MangaRepository(
             emptyList()
         }
 
-        val chapterMap = LinkedHashMap<Float, ChapterModel>()
+        fun isPrimaryLanguage(ch: ChapterModel): Boolean {
+            val titleLower = ch.title.lowercase()
+            return !titleLower.contains("🇺🇸") && !titleLower.contains("[en]") && !titleLower.contains(" english")
+        }
+
+        class ChapterEntry(val chapter: ChapterModel, val isPrimaryLang: Boolean)
+
+        val chapterMap = LinkedHashMap<Float, ChapterEntry>()
         primaryChapters.forEach { ch ->
             if (ch.chapterNumber >= 0f) {
-                chapterMap[ch.chapterNumber] = ch
+                chapterMap[ch.chapterNumber] = ChapterEntry(ch, isPrimaryLanguage(ch))
             }
         }
+
+        val isSparse = primaryChapters.size < 10 || primaryChapters.none { it.chapterNumber <= 1.0f }
 
         // Cross-reference with other sources concurrently to fill missing chapter gaps
         val secondarySources = sourceRegistry.values.filter { it.id != primarySourceId }
         val deferredList = secondarySources.map { src ->
             async {
                 try {
-                    // Try direct URL fetch if compatible, otherwise search by title for source-specific URL
-                    val secChapters = if (mangaUrl.contains(src.id, ignoreCase = true)) {
-                        src.getChapters(mangaUrl, language)
-                    } else if (mangaTitle.isNotBlank()) {
-                        val searchResults = src.searchManga(mangaTitle, language)
-                        val match = searchResults.firstOrNull {
-                            it.title.equals(mangaTitle, ignoreCase = true) || it.title.contains(mangaTitle, ignoreCase = true)
-                        } ?: searchResults.firstOrNull()
-                        if (match != null) src.getChapters(match.url, language) else emptyList()
+                    suspend fun fetchFromSource(targetLang: String): List<ChapterModel> {
+                        return if (mangaUrl.contains(src.id, ignoreCase = true)) {
+                            src.getChapters(mangaUrl, targetLang)
+                        } else if (mangaTitle.isNotBlank()) {
+                            val searchResults = src.searchManga(mangaTitle, targetLang)
+                            val match = searchResults.firstOrNull {
+                                it.title.equals(mangaTitle, ignoreCase = true) || it.title.contains(mangaTitle, ignoreCase = true)
+                            } ?: searchResults.firstOrNull()
+                            if (match != null) src.getChapters(match.url, targetLang) else emptyList()
+                        } else {
+                            emptyList()
+                        }
+                    }
+
+                    val primaryLangChapters = fetchFromSource(language)
+                    val fallbackChapters = if (isSparse || primaryLangChapters.size < 10) {
+                        if (language.equals("en", ignoreCase = true)) emptyList() else fetchFromSource("en")
                     } else {
                         emptyList()
                     }
-                    secChapters
+
+                    primaryLangChapters + fallbackChapters
                 } catch (_: Exception) {
                     emptyList()
                 }
@@ -410,13 +455,19 @@ class MangaRepository(
 
         val secondaryResults = deferredList.flatMap { it.await() }
         for (ch in secondaryResults) {
-            if (ch.chapterNumber >= 0f && !chapterMap.containsKey(ch.chapterNumber)) {
-                chapterMap[ch.chapterNumber] = ch
+            if (ch.chapterNumber >= 0f) {
+                val chIsPrimaryLang = isPrimaryLanguage(ch)
+                val existing = chapterMap[ch.chapterNumber]
+                if (existing == null) {
+                    chapterMap[ch.chapterNumber] = ChapterEntry(ch, chIsPrimaryLang)
+                } else if (!existing.isPrimaryLang && chIsPrimaryLang) {
+                    chapterMap[ch.chapterNumber] = ChapterEntry(ch, true)
+                }
             }
         }
 
         val mergedList = if (chapterMap.isNotEmpty()) {
-            chapterMap.values.sortedByDescending { it.chapterNumber }
+            chapterMap.values.map { it.chapter }.sortedByDescending { it.chapterNumber }
         } else {
             primaryChapters
         }

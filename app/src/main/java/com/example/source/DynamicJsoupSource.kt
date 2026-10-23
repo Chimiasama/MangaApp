@@ -120,13 +120,16 @@ class DynamicJsoupSource(
             var link = el.select(rules.chapterLinkSelector).attr("href")
             if (link.isEmpty()) link = el.attr("href")
             if (link.startsWith("/")) link = baseUrl.removeSuffix("/") + link
+
+            val parsedNum = Regex("""(?i)(?:cap[íi]tulo|cap\.?|chapter|ch\.?)\s*(\d+(?:\.\d+)?)""")
+                .find(title)?.groupValues?.get(1)?.toFloatOrNull() ?: index
             
             chapters.add(
                 ChapterModel(
                     id = link.hashCode().toString(),
-                    title = title.ifEmpty { "Capítulo $index" },
+                    title = title.ifEmpty { "Capítulo $parsedNum" },
                     chapterUrl = link,
-                    chapterNumber = index,
+                    chapterNumber = parsedNum,
                     dateUpload = "Recente"
                 )
             )
