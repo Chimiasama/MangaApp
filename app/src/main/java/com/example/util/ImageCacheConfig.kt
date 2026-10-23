@@ -31,4 +31,36 @@ object ImageCacheConfig {
             .crossfade(true)
             .build()
     }
+
+    fun getDiskCacheSizeBytes(context: Context): Long {
+        val dir = context.cacheDir.resolve("manga_image_disk_cache")
+        return if (dir.exists()) {
+            dir.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+        } else 0L
+    }
+
+    fun formatSizeBytes(bytes: Long): String {
+        if (bytes <= 0L) return "0 B"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+        return when {
+            gb >= 1.0 -> String.format(java.util.Locale.US, "%.1f GB", gb)
+            mb >= 1.0 -> String.format(java.util.Locale.US, "%.1f MB", mb)
+            kb >= 1.0 -> String.format(java.util.Locale.US, "%.1f KB", kb)
+            else -> "$bytes B"
+        }
+    }
+
+    fun clearImageCache(context: Context) {
+        try {
+            coil.Coil.imageLoader(context).diskCache?.clear()
+            coil.Coil.imageLoader(context).memoryCache?.clear()
+        } catch (_: Exception) {}
+        val dir = context.cacheDir.resolve("manga_image_disk_cache")
+        if (dir.exists()) {
+            dir.deleteRecursively()
+            dir.mkdirs()
+        }
+    }
 }

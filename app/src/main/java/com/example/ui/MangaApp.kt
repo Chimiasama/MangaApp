@@ -229,6 +229,7 @@ fun MangaApp(
             }
 
             composable(MangaDestinations.SETTINGS) {
+                val context = LocalContext.current
                 SettingsScreen(
                     state = settingsState,
                     syncState = cloudSyncState,
@@ -245,7 +246,12 @@ fun MangaApp(
                     onReaderOrientationSelected = { orientation -> settingsViewModel.setReaderOrientation(orientation) },
                     onDefaultFullscreenToggled = { enabled -> settingsViewModel.setDefaultFullscreenReader(enabled) },
                     onAutoCloudSyncToggled = { enabled -> settingsViewModel.setAutoCloudSync(enabled) },
-                    onFilterAdultSearchToggled = { enabled -> settingsViewModel.setFilterAdultContentInSearch(enabled) }
+                    onFilterAdultSearchToggled = { enabled -> settingsViewModel.setFilterAdultContentInSearch(enabled) },
+                    onReaderBackgroundColorSelected = { color -> settingsViewModel.setReaderBackgroundColor(color) },
+                    onReaderInvertColorsToggled = { inverted -> settingsViewModel.setReaderInvertColors(inverted) },
+                    onPagePreloadToggled = { enabled -> settingsViewModel.setPagePreloadEnabled(enabled) },
+                    onClearCacheClicked = { settingsViewModel.clearImageCache(context) },
+                    onRefreshCacheSize = { settingsViewModel.refreshCacheSize(context) }
                 )
             }
 
@@ -302,13 +308,18 @@ fun MangaApp(
                     readerMode = settingsState.readerMode,
                     readerOrientation = settingsState.readerOrientation,
                     defaultFullscreen = settingsState.defaultFullscreenReader,
+                    readerBackgroundColor = settingsState.readerBackgroundColor,
+                    readerInvertColors = settingsState.readerInvertColors,
+                    pagePreloadEnabled = settingsState.pagePreloadEnabled,
                     onBack = { navController.popBackStack() },
                     onPageSelected = { index -> mangaViewModel.updateReaderPageIndex(index) },
                     onScrollPositionChanged = { index, offset -> mangaViewModel.updateReaderScrollPosition(index, offset) },
                     onFlushScrollPosition = { mangaViewModel.flushReaderScrollPosition() },
                     onNavigateChapter = { next -> mangaViewModel.navigateChapter(next) },
                     onToggleBookmark = { pageIndex -> mangaViewModel.togglePageBookmark(pageIndex) },
-                    onReaderModeChanged = { mode -> settingsViewModel.setReaderMode(mode) }
+                    onReaderModeChanged = { mode -> settingsViewModel.setReaderMode(mode) },
+                    onReaderBackgroundColorChanged = { color -> settingsViewModel.setReaderBackgroundColor(color) },
+                    onReaderInvertColorsChanged = { inverted -> settingsViewModel.setReaderInvertColors(inverted) }
                 )
             }
         }

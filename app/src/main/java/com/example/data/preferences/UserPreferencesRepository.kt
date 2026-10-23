@@ -26,6 +26,9 @@ class UserPreferencesRepository(private val context: Context) {
         val AUTO_CLOUD_SYNC = booleanPreferencesKey("auto_cloud_sync")
         val FILTER_ADULT_CONTENT_SEARCH = booleanPreferencesKey("filter_adult_content_search")
         val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
+        val READER_BACKGROUND_COLOR = stringPreferencesKey("reader_background_color")
+        val READER_INVERT_COLORS = booleanPreferencesKey("reader_invert_colors")
+        val PAGE_PRELOAD_ENABLED = booleanPreferencesKey("page_preload_enabled")
     }
 
     val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->
@@ -66,6 +69,18 @@ class UserPreferencesRepository(private val context: Context) {
 
     val filterAdultContentInSearch: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[FILTER_ADULT_CONTENT_SEARCH] ?: true
+    }
+
+    val readerBackgroundColor: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[READER_BACKGROUND_COLOR] ?: "OLED"
+    }
+
+    val readerInvertColors: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[READER_INVERT_COLORS] ?: false
+    }
+
+    val pagePreloadEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[PAGE_PRELOAD_ENABLED] ?: true
     }
 
     suspend fun setAdultContentEnabled(enabled: Boolean) {
@@ -125,6 +140,24 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setSelectedLanguage(lang: String) {
         context.dataStore.edit { prefs ->
             prefs[SELECTED_LANGUAGE] = lang
+        }
+    }
+
+    suspend fun setReaderBackgroundColor(colorKey: String) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_BACKGROUND_COLOR] = colorKey
+        }
+    }
+
+    suspend fun setReaderInvertColors(inverted: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_INVERT_COLORS] = inverted
+        }
+    }
+
+    suspend fun setPagePreloadEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[PAGE_PRELOAD_ENABLED] = enabled
         }
     }
 }

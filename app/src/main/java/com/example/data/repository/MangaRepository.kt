@@ -21,6 +21,8 @@ import com.example.data.model.ReadingStats
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.sync.FirestoreSyncManager
 import com.example.source.ChapterModel
+import com.example.source.ComickSource
+import com.example.source.ConsumetMangaSource
 import com.example.source.DynamicJsoupSource
 import com.example.source.MangaDexSource
 import com.example.source.MangaModel
@@ -155,8 +157,10 @@ class MangaRepository(
     private val sourceRegistry = mutableMapOf<String, MangaSource>()
 
     init {
-        // Register default real official API source
+        // Register default real sources
         registerSource(MangaDexSource())
+        registerSource(ComickSource())
+        registerSource(ConsumetMangaSource())
     }
 
     fun registerSource(source: MangaSource) {

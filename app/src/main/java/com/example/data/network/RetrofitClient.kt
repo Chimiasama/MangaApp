@@ -61,6 +61,33 @@ object RetrofitClient {
         mangaDexRetrofit.create(MangaDexApiService::class.java)
     }
 
+    const val CONSUMET_BASE_URL = "https://api.consumet.org/"
+    const val COMICK_BASE_URL = "https://api.comick.fun/"
+
+    val consumetRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(CONSUMET_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+    }
+
+    val consumetApiService: ConsumetApiService by lazy {
+        consumetRetrofit.create(ConsumetApiService::class.java)
+    }
+
+    val comickRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(COMICK_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+    }
+
+    val comickApiService: ComickApiService by lazy {
+        comickRetrofit.create(ComickApiService::class.java)
+    }
+
     fun createServiceForBaseUrl(baseUrl: String): RemoteMangaApiService {
         val formattedUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()

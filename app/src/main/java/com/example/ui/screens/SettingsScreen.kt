@@ -64,11 +64,17 @@ import java.util.Locale
 
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.InvertColors
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 
 @Composable
 fun SettingsScreen(
@@ -87,11 +93,21 @@ fun SettingsScreen(
     onReaderOrientationSelected: (String) -> Unit = {},
     onDefaultFullscreenToggled: (Boolean) -> Unit = {},
     onAutoCloudSyncToggled: (Boolean) -> Unit = {},
-    onFilterAdultSearchToggled: (Boolean) -> Unit = {}
+    onFilterAdultSearchToggled: (Boolean) -> Unit = {},
+    onReaderBackgroundColorSelected: (String) -> Unit = {},
+    onReaderInvertColorsToggled: (Boolean) -> Unit = {},
+    onPagePreloadToggled: (Boolean) -> Unit = {},
+    onClearCacheClicked: () -> Unit = {},
+    onRefreshCacheSize: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var showRulesModal by remember { mutableStateOf(false) }
     var syncKeyInput by remember { mutableStateOf("") }
     var showKeyEditor by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        onRefreshCacheSize()
+    }
 
     Column(
         modifier = Modifier
@@ -397,6 +413,214 @@ fun SettingsScreen(
                         colors = SwitchDefaults.colors(checkedTrackColor = PrimaryPurple),
                         modifier = Modifier.testTag("auto_sync_switch")
                     )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Seletor de Cor de Fundo do Leitor
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        tint = PrimaryPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Cor de Fundo da Leitura",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Adapte a leitura para o seu conforto visual.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val bgColors = listOf(
+                        "OLED" to "OLED",
+                        "DARK" to "Cinza",
+                        "SEPIA" to "Sépia",
+                        "LIGHT" to "Claro"
+                    )
+                    bgColors.forEach { (key, label) ->
+                        val isSelected = state.readerBackgroundColor == key
+                        if (isSelected) {
+                            Button(
+                                onClick = { onReaderBackgroundColorSelected(key) },
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).testTag("reader_bg_$key")
+                            ) {
+                                Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onReaderBackgroundColorSelected(key) },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).testTag("reader_bg_$key")
+                            ) {
+                                Text(label, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Inversão Noturna de Cores
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.InvertColors,
+                        contentDescription = null,
+                        tint = PrimaryPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Modo Noturno Invertido",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Inverte as cores das páginas (preto vira branco) para leitura no escuro.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = state.readerInvertColors,
+                        onCheckedChange = { onReaderInvertColorsToggled(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = PrimaryPurple),
+                        modifier = Modifier.testTag("reader_invert_colors_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Pré-carregamento Inteligente (Pre-fetching)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = PrimaryPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Pré-carregamento de Páginas (Pre-fetch)",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Baixa as próximas páginas em background para transição instantânea.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = state.pagePreloadEnabled,
+                        onCheckedChange = { onPagePreloadToggled(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = PrimaryPurple),
+                        modifier = Modifier.testTag("page_preload_switch")
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Section: Armazenamento & Gerenciamento de Cache de Imagens (Fase 1.2)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("storage_cache_card")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Storage,
+                        contentDescription = null,
+                        tint = PrimaryPurple,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Armazenamento & Cache de Imagens",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Controle o espaço interno utilizado pelas páginas e capas salvas.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Espaço ocupado em Cache",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = state.cacheSizeFormatted,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = PrimaryPurple
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            onClearCacheClicked()
+                            Toast.makeText(context, "Cache de imagens liberado com sucesso!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("clear_cache_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Limpar Cache", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

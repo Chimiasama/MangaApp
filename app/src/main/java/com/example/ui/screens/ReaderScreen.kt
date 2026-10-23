@@ -49,18 +49,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Height
+import androidx.compose.material.icons.filled.InvertColors
 import androidx.compose.material.icons.filled.NavigateBefore
 import androidx.compose.material.icons.filled.NavigateNext
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.ViewStream
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import com.example.util.PagePreloaderManager
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -123,19 +129,76 @@ fun ReaderScreen(
     readerMode: String = "WEBTOON",
     readerOrientation: String = "SENSOR",
     defaultFullscreen: Boolean = true,
+    readerBackgroundColor: String = "OLED",
+    readerInvertColors: Boolean = false,
+    pagePreloadEnabled: Boolean = true,
     onBack: () -> Unit,
     onPageSelected: (Int) -> Unit = {},
     onScrollPositionChanged: (pageIndex: Int, scrollOffset: Int) -> Unit = { page, _ -> onPageSelected(page) },
     onFlushScrollPosition: () -> Unit = {},
     onNavigateChapter: (Boolean) -> Unit,
     onToggleBookmark: (Int) -> Unit = {},
-    onReaderModeChanged: (String) -> Unit = {}
+    onReaderModeChanged: (String) -> Unit = {},
+    onReaderBackgroundColorChanged: (String) -> Unit = {},
+    onReaderInvertColorsChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     var isFullscreen by remember { mutableStateOf(defaultFullscreen) }
     var currentMode by remember { mutableStateOf(readerMode) }
     var showControls by remember { mutableStateOf(false) } // Iniciar limpo para foco na leitura
     var showModeDropdown by remember { mutableStateOf(false) }
+
+    // Cor de Fundo do Leitor (OLED, DARK, SEPIA, LIGHT)
+    val readerBgColor = when (readerBackgroundColor) {
+        "OLED" -> Color.Black
+        "DARK" -> Color(0xFF141416)
+        "SEPIA" -> Color(0xFFF4ECD8)
+        "LIGHT" -> Color(0xFFF8F9FA)
+        else -> Color.Black
+    }
+
+    // Filtro Noturno Invertido via ColorMatrix (Fase 1.4)
+    val invertColorFilter = remember(readerInvertColors) {
+        if (readerInvertColors) {
+            val matrix = ColorMatrix(
+                floatArrayOf(
+                    -1f,  0f,  0f, 0f, 255f,
+                     0f, -1f,  0f, 0f, 255f,
+                     0f,  0f, -1f, 0f, 255f,
+                     0f,  0f,  0f, 1f,   0f
+                )
+            )
+            ColorFilter.colorMatrix(matrix)
+        } else null
+    }
+
+    // Pré-carregamento Inteligente de Páginas (Fase 1.1)
+    val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(state.currentPageIndex, state.pages, pagePreloadEnabled) {
+        if (pagePreloadEnabled && state.pages.isNotEmpty()) {
+            PagePreloaderManager.preloadPages(
+                context = context,
+                scope = coroutineScope,
+                pages = state.pages,
+                currentIndex = state.currentPageIndex,
+                forwardCount = 3,
+                backwardCount = 1
+            )
+        }
+    }
+
+    // Indicadores de Bateria e Relógio para leitura imersiva (Fase 1.4)
+    val batteryPercent = remember(context) {
+        try {
+            val bm = context.getSystemService(android.content.Context.BATTERY_SERVICE) as? android.os.BatteryManager
+            bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
+        } catch (_: Exception) {
+            100
+        }
+    }
+    val currentTime = remember {
+        java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+    }
 
     // Quick Zoom state aplicável globalmente ou por página
     var currentScale by remember { mutableFloatStateOf(1f) }
@@ -189,7 +252,6 @@ fun ReaderScreen(
         }
     }
 
-    val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = state.currentPageIndex,
         initialFirstVisibleItemScrollOffset = state.scrollOffset
@@ -327,14 +389,18 @@ fun ReaderScreen(
             }
         } else {
             // Container principal de leitura
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(readerBgColor)
+            ) {
                 if (currentMode == "WEBTOON") {
                     // Modo Cascata Contínua (Webtoon Vertical Fluido e Ininterrupto)
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black),
+                            .background(readerBgColor),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         itemsIndexed(
@@ -346,6 +412,7 @@ fun ReaderScreen(
                                 pageUrl = pageUrl,
                                 pageIndex = index,
                                 isBookmarked = isBookmarked,
+                                colorFilter = invertColorFilter,
                                 onCenterTap = { showControls = !showControls }
                             )
                         }
@@ -365,7 +432,9 @@ fun ReaderScreen(
                         state = pagerState,
                         reverseLayout = isRtl,
                         userScrollEnabled = currentScale <= 1.05f,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(readerBgColor)
                     ) { pageIndex ->
                         val isBookmarked = pageIndex in state.bookmarkedPages
                         ZoomableMangaPage(
@@ -373,6 +442,7 @@ fun ReaderScreen(
                             pageIndex = pageIndex,
                             isBookmarked = isBookmarked,
                             contentScale = fitMode,
+                            colorFilter = invertColorFilter,
                             externalScale = currentScale,
                             onScaleChanged = { currentScale = it },
                             onCenterTap = { showControls = !showControls },
@@ -441,17 +511,43 @@ fun ReaderScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Modo de leitura ativo discreto
-                        Text(
-                            text = when (currentMode) {
-                                "PAGED_RTL" -> "Mangá (RTL)"
-                                "PAGED_LTR" -> "Paginado (LTR)"
-                                else -> "Webtoon"
-                            },
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        // Modo de leitura ativo discreto + Relógio e Bateria (Fase 1.4)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = when (currentMode) {
+                                    "PAGED_RTL" -> "Mangá (RTL)"
+                                    "PAGED_LTR" -> "Paginado (LTR)"
+                                    else -> "Webtoon"
+                                },
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "•",
+                                color = Color.White.copy(alpha = 0.3f),
+                                fontSize = 10.sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = currentTime,
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 10.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.BatteryStd,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "$batteryPercent%",
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 9.sp
+                            )
+                        }
 
                         // Indicador de página elegante e sutil
                         Box(
@@ -564,6 +660,47 @@ fun ReaderScreen(
                             imageVector = Icons.Default.Height,
                             contentDescription = "Ajustar Enquadramento",
                             tint = if (fitMode == ContentScale.Fit) AccentGold else Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Botão de Inversão Noturna de Cores (Fase 1.4)
+                    IconButton(
+                        onClick = {
+                            onReaderInvertColorsChanged(!readerInvertColors)
+                        },
+                        modifier = Modifier.size(36.dp).testTag("toggle_reader_invert_colors")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.InvertColors,
+                            contentDescription = "Inverter Cores Noturno",
+                            tint = if (readerInvertColors) AccentGold else Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Botão de Alternância Rápida de Fundo (Fase 1.4)
+                    IconButton(
+                        onClick = {
+                            val nextBg = when (readerBackgroundColor) {
+                                "OLED" -> "DARK"
+                                "DARK" -> "SEPIA"
+                                "SEPIA" -> "LIGHT"
+                                else -> "OLED"
+                            }
+                            onReaderBackgroundColorChanged(nextBg)
+                        },
+                        modifier = Modifier.size(36.dp).testTag("toggle_reader_background")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "Alterar Fundo da Leitura",
+                            tint = when (readerBackgroundColor) {
+                                "SEPIA" -> Color(0xFFD4A373)
+                                "LIGHT" -> Color.White
+                                "DARK" -> Color.LightGray
+                                else -> PrimaryPurple
+                            },
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -867,6 +1004,7 @@ fun WebtoonContinuousPage(
     pageUrl: String,
     pageIndex: Int,
     isBookmarked: Boolean,
+    colorFilter: ColorFilter? = null,
     onCenterTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -983,6 +1121,7 @@ fun WebtoonContinuousPage(
             contentDescription = "Página ${pageIndex + 1}",
             contentScale = ContentScale.FillWidth,
             alignment = Alignment.TopCenter,
+            colorFilter = colorFilter,
             loading = {
                 Box(
                     modifier = Modifier
@@ -1064,6 +1203,7 @@ fun ZoomableMangaPage(
     pageIndex: Int,
     isBookmarked: Boolean,
     contentScale: ContentScale = ContentScale.FillWidth,
+    colorFilter: ColorFilter? = null,
     externalScale: Float = 1.0f,
     onScaleChanged: (Float) -> Unit = {},
     onCenterTap: () -> Unit,
@@ -1208,6 +1348,7 @@ fun ZoomableMangaPage(
                 model = pageUrl,
                 contentDescription = "Página ${pageIndex + 1}",
                 contentScale = contentScale,
+                colorFilter = colorFilter,
                 loading = {
                     Box(
                         modifier = Modifier

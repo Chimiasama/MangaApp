@@ -493,43 +493,69 @@ fun MangaDetailScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Capítulos (${state.chapters.size})",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    val langTag = when (selectedLanguage.lowercase()) {
-                                        "pt-br" -> "🇧🇷 PT-BR"
-                                        "en" -> "🇺🇸 EN"
-                                        "es" -> "🇪🇸 ES"
-                                        else -> "🌐 Todas"
-                                    }
-                                    Text(
-                                        text = langTag,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = CrimsonRed,
-                                        modifier = Modifier
-                                            .background(CrimsonRed.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            .testTag("detail_language_badge")
-                                    )
-                                }
-                                // Botão de ordenação dos capítulos
-                                IconButton(
-                                    onClick = { sortAscending = !sortAscending },
+                                Text(
+                                    text = "Capítulos (${state.chapters.size})",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                // Botão claro de ordenação dos capítulos
+                                Row(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .testTag("toggle_sort_order_button")
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(PrimaryPurple.copy(alpha = 0.12f))
+                                        .clickable { sortAscending = !sortAscending }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .testTag("toggle_sort_order_button"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.SwapVert,
                                         contentDescription = if (sortAscending) "Ordenar: Mais Recentes Primeiro" else "Ordenar: Do Começo",
                                         tint = PrimaryPurple,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (sortAscending) "Crescente ⬆" else "Decrescente ⬇",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = PrimaryPurple
+                                    )
+                                }
+                            }
+
+                            // Chips de seleção rápida de idioma
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val languages = listOf(
+                                    "pt-br" to "🇧🇷 PT-BR",
+                                    "en" to "🇺🇸 EN",
+                                    "es" to "🇪🇸 ES",
+                                    "all" to "🌐 Todas"
+                                )
+                                languages.forEach { (code, label) ->
+                                    val isSelected = if (code == "all") {
+                                        selectedLanguage.lowercase() !in listOf("pt-br", "en", "es") || selectedLanguage.isEmpty() || selectedLanguage == "all"
+                                    } else {
+                                        selectedLanguage.equals(code, ignoreCase = true)
+                                    }
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { onLanguageSelected(code) },
+                                        label = { Text(label, fontSize = 12.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = CrimsonRed.copy(alpha = 0.2f),
+                                            selectedLabelColor = CrimsonRed
+                                        ),
+                                        modifier = Modifier.testTag("filter_chip_$code")
                                     )
                                 }
                             }
