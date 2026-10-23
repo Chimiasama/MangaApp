@@ -415,6 +415,35 @@ class MangaRepository(
             }
         }
 
+        // If after querying secondary sources we still have fewer than 10 chapters, try querying secondary sources with "en" / global language
+        if (chapterMap.size < 10 && language != "en") {
+            val fallbackDeferred = secondarySources.map { src ->
+                async {
+                    try {
+                        if (mangaUrl.contains(src.id, ignoreCase = true)) {
+                            src.getChapters(mangaUrl, "en")
+                        } else if (mangaTitle.isNotBlank()) {
+                            val searchResults = src.searchManga(mangaTitle, "en")
+                            val match = searchResults.firstOrNull {
+                                it.title.equals(mangaTitle, ignoreCase = true) || it.title.contains(mangaTitle, ignoreCase = true)
+                            } ?: searchResults.firstOrNull()
+                            if (match != null) src.getChapters(match.url, "en") else emptyList()
+                        } else {
+                            emptyList()
+                        }
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+            }
+            val fallbackResults = fallbackDeferred.flatMap { it.await() }
+            for (ch in fallbackResults) {
+                if (ch.chapterNumber >= 0f && !chapterMap.containsKey(ch.chapterNumber)) {
+                    chapterMap[ch.chapterNumber] = ch
+                }
+            }
+        }
+
         val mergedList = if (chapterMap.isNotEmpty()) {
             chapterMap.values.sortedByDescending { it.chapterNumber }
         } else {

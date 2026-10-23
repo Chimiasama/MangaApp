@@ -15,7 +15,7 @@ class ComickSource(
 
     override val id: String = "comick"
     override val name: String = "Comick (Webtoons & Manhuas)"
-    override val baseUrl: String = "https://api.comick.fun"
+    override val baseUrl: String = "https://comick.io"
     override val isNsfw: Boolean = false
     override val lang: String = "PT-BR / Multi"
 
