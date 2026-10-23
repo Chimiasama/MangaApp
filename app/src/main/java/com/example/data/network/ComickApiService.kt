@@ -35,7 +35,7 @@ interface ComickApiService {
     suspend fun getComicChapters(
         @Path("hid") hid: String,
         @Query("lang") lang: String? = "pt-br",
-        @Query("limit") limit: Int = 100,
+        @Query("limit") limit: Int = 300,
         @Query("page") page: Int = 1
     ): ComickChapterListResponse
 
