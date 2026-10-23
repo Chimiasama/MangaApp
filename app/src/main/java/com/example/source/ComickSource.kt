@@ -127,16 +127,47 @@ class ComickSource(
                 else -> null
             }
 
-            var chapterResponse = apiService.getComicChapters(hid = hid, lang = targetLang, limit = 150)
-            var chapters = chapterResponse.chapters.orEmpty()
+            var page = 1
+            var hasMore = true
+            val rawChapters = mutableListOf<com.example.data.network.model.ComickChapterDto>()
+            val pageSize = 300
 
-            // If selected language had no chapters and wasn't English, fallback to English or all chapters
-            if (chapters.isEmpty() && targetLang != null) {
-                chapterResponse = apiService.getComicChapters(hid = hid, lang = null, limit = 150)
-                chapters = chapterResponse.chapters.orEmpty()
+            while (hasMore) {
+                val chapterResponse = apiService.getComicChapters(hid = hid, lang = targetLang, limit = pageSize, page = page)
+                val pageChapters = chapterResponse.chapters.orEmpty()
+                if (pageChapters.isEmpty()) {
+                    hasMore = false
+                } else {
+                    rawChapters.addAll(pageChapters)
+                    if (pageChapters.size < pageSize) {
+                        hasMore = false
+                    } else {
+                        page++
+                    }
+                }
             }
 
-            chapters.mapIndexed { index, ch ->
+            // If selected language had no chapters and wasn't English, fallback to English or all chapters
+            if (rawChapters.isEmpty() && targetLang != null) {
+                page = 1
+                hasMore = true
+                while (hasMore) {
+                    val chapterResponse = apiService.getComicChapters(hid = hid, lang = null, limit = pageSize, page = page)
+                    val pageChapters = chapterResponse.chapters.orEmpty()
+                    if (pageChapters.isEmpty()) {
+                        hasMore = false
+                    } else {
+                        rawChapters.addAll(pageChapters)
+                        if (pageChapters.size < pageSize) {
+                            hasMore = false
+                        } else {
+                            page++
+                        }
+                    }
+                }
+            }
+
+            rawChapters.mapIndexed { index, ch ->
                 val chapNum = ch.chap?.toFloatOrNull() ?: (index + 1).toFloat()
                 val title = buildString {
                     append("Cap. ")
@@ -157,6 +188,8 @@ class ComickSource(
                     dateUpload = ch.createdAt.orEmpty()
                 )
             }
+            .distinctBy { it.chapterNumber }
+            .sortedByDescending { it.chapterNumber }
         } catch (e: Exception) {
             emptyList()
         }
