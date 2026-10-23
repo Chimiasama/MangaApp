@@ -159,33 +159,8 @@ class MangaRepository(
     private val sourceRegistry = mutableMapOf<String, MangaSource>()
 
     init {
-        // Register default real sources
+        // Register default source (MangaDex as requested)
         registerSource(MangaDexSource())
-        registerSource(ComickSource())
-        registerSource(ConsumetMangaSource())
-        registerDefaultScraperRules()
-    }
-
-    private fun registerDefaultScraperRules() {
-        val defaultScraperConfig = SourceRuleConfig(
-            id = "jsoup_generic",
-            name = "Web HTML Scraper (Fallback)",
-            baseUrl = "https://mangalivre.blog",
-            isNsfw = false,
-            lang = "pt-BR",
-            listSelector = ".manga-item, .page-item, article",
-            titleSelector = ".manga-title, h3, h2, a",
-            coverAttrSelector = "img",
-            linkAttrSelector = "a",
-            detailDescSelector = ".description, .synopsis, p",
-            detailAuthorSelector = ".author, .meta-author",
-            chapterListSelector = ".chapter-item, li.wp-manga-chapter, .list-chapters li",
-            chapterTitleSelector = "a",
-            chapterLinkSelector = "a",
-            pageImageSelector = ".reader-area img, .page-break img, .reading-content img",
-            pageImageAttr = "src"
-        )
-        registerSource(DynamicJsoupSource(defaultScraperConfig))
     }
 
     fun registerSource(source: MangaSource) {
