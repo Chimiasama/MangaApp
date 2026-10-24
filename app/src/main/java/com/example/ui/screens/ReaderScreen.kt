@@ -394,79 +394,97 @@ fun ReaderScreen(
             var totalOverscrollY = 0f
             var totalOverscrollX = 0f
 
+            private fun checkOverscroll(delta: Offset, source: NestedScrollSource) {
+                if (source != NestedScrollSource.UserInput || isOverscrollTriggered || isSwitchingChapter) return
+                val totalItems = state.pages.size
+                if (totalItems <= 0) return
+
+                if (currentMode == "WEBTOON") {
+                    val atTop = !listState.canScrollBackward
+                    val atBottom = !listState.canScrollForward
+
+                    // Puxar no topo para baixo (delta.y > 0) -> capítulo anterior
+                    if (atTop && delta.y > 0) {
+                        totalOverscrollY += delta.y
+                        if (totalOverscrollY > 100f) {
+                            totalOverscrollY = 0f
+                            isOverscrollTriggered = true
+                            onNavigateChapter(false)
+                        }
+                    }
+                    // Puxar no fim para cima (delta.y < 0) -> próximo capítulo
+                    else if (atBottom && delta.y < 0) {
+                        totalOverscrollY += delta.y
+                        if (totalOverscrollY < -100f) {
+                            totalOverscrollY = 0f
+                            isOverscrollTriggered = true
+                            onNavigateChapter(true)
+                        }
+                    } else if (!atTop && !atBottom) {
+                        totalOverscrollY = 0f
+                    }
+                } else {
+                    val isRtl = currentMode == "PAGED_RTL"
+                    val isAtFirstPage = pagerState.currentPage == 0 || !pagerState.canScrollBackward
+                    val isAtLastPage = pagerState.currentPage == totalItems - 1 || !pagerState.canScrollForward
+
+                    if (isRtl) {
+                        // Mangá RTL: Primeira página puxando para a direita (delta.x > 0) ou arrastando -> capítulo anterior
+                        if (isAtFirstPage && delta.x > 0) {
+                            totalOverscrollX += delta.x
+                            if (totalOverscrollX > 100f) {
+                                totalOverscrollX = 0f
+                                isOverscrollTriggered = true
+                                onNavigateChapter(false)
+                            }
+                        }
+                        // Última página puxando para a esquerda (delta.x < 0) -> próximo capítulo
+                        else if (isAtLastPage && delta.x < 0) {
+                            totalOverscrollX += delta.x
+                            if (totalOverscrollX < -100f) {
+                                totalOverscrollX = 0f
+                                isOverscrollTriggered = true
+                                onNavigateChapter(true)
+                            }
+                        } else if (!isAtFirstPage && !isAtLastPage) {
+                            totalOverscrollX = 0f
+                        }
+                    } else {
+                        // Quadrinhos LTR: Primeira página puxando para a direita (delta.x > 0) -> capítulo anterior
+                        if (isAtFirstPage && delta.x > 0) {
+                            totalOverscrollX += delta.x
+                            if (totalOverscrollX > 100f) {
+                                totalOverscrollX = 0f
+                                isOverscrollTriggered = true
+                                onNavigateChapter(false)
+                            }
+                        }
+                        // Última página puxando para a esquerda (delta.x < 0) -> próximo capítulo
+                        else if (isAtLastPage && delta.x < 0) {
+                            totalOverscrollX += delta.x
+                            if (totalOverscrollX < -100f) {
+                                totalOverscrollX = 0f
+                                isOverscrollTriggered = true
+                                onNavigateChapter(true)
+                            }
+                        } else if (!isAtFirstPage && !isAtLastPage) {
+                            totalOverscrollX = 0f
+                        }
+                    }
+                }
+            }
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                checkOverscroll(available, source)
+                return Offset.Zero
+            }
+
             override fun onPostScroll(
                 consumed: Offset,
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                if (source == NestedScrollSource.UserInput && !isOverscrollTriggered && !isSwitchingChapter) {
-                    val totalItems = state.pages.size
-                    if (totalItems > 0) {
-                        if (currentMode == "WEBTOON") {
-                            val isAtFirstPage = listState.firstVisibleItemIndex == 0 &&
-                                    listState.firstVisibleItemScrollOffset == 0
-                            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                            val isAtLastPage = lastVisibleIndex >= totalItems - 1
-
-                            // Puxar no topo (disponível Y > 0) -> capítulo anterior
-                            if (isAtFirstPage && available.y > 0) {
-                                totalOverscrollY += available.y
-                                if (totalOverscrollY > 120f) {
-                                    totalOverscrollY = 0f
-                                    isOverscrollTriggered = true
-                                    onNavigateChapter(false)
-                                }
-                            }
-                            // Puxar no fim (disponível Y < 0) -> próximo capítulo
-                            else if (isAtLastPage && available.y < 0) {
-                                totalOverscrollY += available.y
-                                if (totalOverscrollY < -120f) {
-                                    totalOverscrollY = 0f
-                                    isOverscrollTriggered = true
-                                    onNavigateChapter(true)
-                                }
-                            }
-                        } else {
-                            val isRtl = currentMode == "PAGED_RTL"
-                            val isAtFirstPage = pagerState.currentPage == 0
-                            val isAtLastPage = pagerState.currentPage == totalItems - 1
-
-                            if (isRtl) {
-                                if (isAtLastPage && available.x < 0) {
-                                    totalOverscrollX += available.x
-                                    if (totalOverscrollX < -120f) {
-                                        totalOverscrollX = 0f
-                                        isOverscrollTriggered = true
-                                        onNavigateChapter(true)
-                                    }
-                                } else if (isAtFirstPage && available.x > 0) {
-                                    totalOverscrollX += available.x
-                                    if (totalOverscrollX > 120f) {
-                                        totalOverscrollX = 0f
-                                        isOverscrollTriggered = true
-                                        onNavigateChapter(false)
-                                    }
-                                }
-                            } else {
-                                if (isAtLastPage && available.x < 0) {
-                                    totalOverscrollX += available.x
-                                    if (totalOverscrollX < -120f) {
-                                        totalOverscrollX = 0f
-                                        isOverscrollTriggered = true
-                                        onNavigateChapter(true)
-                                    }
-                                } else if (isAtFirstPage && available.x > 0) {
-                                    totalOverscrollX += available.x
-                                    if (totalOverscrollX > 120f) {
-                                        totalOverscrollX = 0f
-                                        isOverscrollTriggered = true
-                                        onNavigateChapter(false)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                checkOverscroll(available, source)
                 return Offset.Zero
             }
 
