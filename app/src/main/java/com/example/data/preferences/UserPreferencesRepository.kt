@@ -16,15 +16,12 @@ class UserPreferencesRepository(private val context: Context) {
 
     companion object {
         const val DEFAULT_LANGUAGE = "pt-br"
-        val ADULT_CONTENT_ENABLED = booleanPreferencesKey("adult_content_enabled")
-        val AGE_VERIFIED = booleanPreferencesKey("age_verified")
         val CUSTOM_RULES_JSON = stringPreferencesKey("custom_rules_json")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val READER_MODE = stringPreferencesKey("reader_mode")
         val READER_ORIENTATION = stringPreferencesKey("reader_orientation")
         val DEFAULT_FULLSCREEN_READER = booleanPreferencesKey("default_fullscreen_reader")
         val AUTO_CLOUD_SYNC = booleanPreferencesKey("auto_cloud_sync")
-        val FILTER_ADULT_CONTENT_SEARCH = booleanPreferencesKey("filter_adult_content_search")
         val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
         val READER_BACKGROUND_COLOR = stringPreferencesKey("reader_background_color")
         val READER_INVERT_COLORS = booleanPreferencesKey("reader_invert_colors")
@@ -37,14 +34,6 @@ class UserPreferencesRepository(private val context: Context) {
 
     val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[SELECTED_LANGUAGE] ?: DEFAULT_LANGUAGE
-    }
-
-    val adultContentEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[ADULT_CONTENT_ENABLED] ?: false
-    }
-
-    val isAgeVerified: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[AGE_VERIFIED] ?: false
     }
 
     val customRulesJson: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -69,10 +58,6 @@ class UserPreferencesRepository(private val context: Context) {
 
     val autoCloudSync: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[AUTO_CLOUD_SYNC] ?: true
-    }
-
-    val filterAdultContentInSearch: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[FILTER_ADULT_CONTENT_SEARCH] ?: true
     }
 
     val readerBackgroundColor: Flow<String> = context.dataStore.data.map { prefs ->
@@ -101,18 +86,6 @@ class UserPreferencesRepository(private val context: Context) {
 
     val aniListAutoSync: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ANILIST_AUTO_SYNC] ?: true
-    }
-
-    suspend fun setAdultContentEnabled(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[ADULT_CONTENT_ENABLED] = enabled
-        }
-    }
-
-    suspend fun setAgeVerified(verified: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[AGE_VERIFIED] = verified
-        }
     }
 
     suspend fun saveCustomRulesJson(json: String) {
@@ -148,12 +121,6 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setAutoCloudSync(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[AUTO_CLOUD_SYNC] = enabled
-        }
-    }
-
-    suspend fun setFilterAdultContentInSearch(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[FILTER_ADULT_CONTENT_SEARCH] = enabled
         }
     }
 

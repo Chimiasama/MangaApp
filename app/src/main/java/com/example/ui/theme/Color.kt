@@ -16,6 +16,3 @@ val SurfaceDarkBorder = Color(0xFF49454F) // Surface outline
 val TextPrimaryDark = Color(0xFFE6E1E5) // High emphasis text
 val TextSecondaryDark = Color(0xFF938F99) // Medium emphasis text
 val AccentGold = Color(0xFFE8DEF8) // Elegant highlight
-val NsfwRedBadge = Color(0xFFFFB4AB) // Restricted badge red
-val OnNsfwBadge = Color(0xFF690005)
-

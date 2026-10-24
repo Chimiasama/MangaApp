@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -38,7 +37,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.source.MangaModel
 import com.example.ui.theme.AccentGold
-import com.example.ui.theme.NsfwRedBadge
+import com.example.ui.theme.CrimsonRed
 
 @Composable
 fun MangaCard(
@@ -88,19 +87,6 @@ fun MangaCard(
                         .align(Alignment.TopStart)
                         .padding(8.dp)
                 ) {
-                    if (manga.isNsfw) {
-                        Text(
-                            text = "+18",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .background(NsfwRedBadge, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                .testTag("nsfw_badge")
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
                     Text(
                         text = manga.sourceId.uppercase(),
                         color = Color.White,
@@ -126,7 +112,7 @@ fun MangaCard(
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = "Favorito",
-                            tint = if (isFavorite) NsfwRedBadge else Color.White,
+                            tint = if (isFavorite) CrimsonRed else Color.White,
                             modifier = Modifier.size(18.dp)
                         )
                     }

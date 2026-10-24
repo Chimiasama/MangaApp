@@ -1,9 +1,12 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.MangaRepository
+import com.example.util.ImageCacheConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -11,15 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-import android.content.Context
-import com.example.util.ImageCacheConfig
-import kotlinx.coroutines.Dispatchers
-
 data class SettingsUiState(
-    val adultContentEnabled: Boolean = false,
-    val filterAdultContentInSearch: Boolean = true,
-    val isAgeVerified: Boolean = false,
-    val showAgeModal: Boolean = false,
     val customRulesJson: String = "",
     val rulesUpdateSuccess: Boolean? = null,
     val themeMode: String = "DARK",
@@ -45,8 +40,6 @@ private data class ReaderPrefs(
 
 private data class SettingsUiFlags(
     val autoSync: Boolean,
-    val filterAdultSearch: Boolean,
-    val showModal: Boolean,
     val rulesStatus: Boolean?,
     val cacheSize: String
 )
@@ -56,19 +49,12 @@ class SettingsViewModel(
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
-    private val _showAgeModal = MutableStateFlow(false)
     private val _rulesStatus = MutableStateFlow<Boolean?>(null)
     private val _cacheSize = MutableStateFlow("0 B")
 
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(
-            combine(
-                preferencesRepository.adultContentEnabled,
-                preferencesRepository.isAgeVerified,
-                preferencesRepository.customRulesJson
-            ) { adultEnabled, ageVerified, customJson ->
-                Triple(adultEnabled, ageVerified, customJson)
-            },
+            preferencesRepository.customRulesJson,
             combine(
                 preferencesRepository.themeMode,
                 preferencesRepository.readerMode,
@@ -88,24 +74,19 @@ class SettingsViewModel(
                     preloadEnabled = args[6] as Boolean
                 )
             }
-        ) { (adultEnabled, ageVerified, customJson), reader ->
-            Triple(Triple(adultEnabled, ageVerified, customJson ?: ""), reader, null)
+        ) { customJson, reader ->
+            Pair(customJson ?: "", reader)
         },
         combine(
             preferencesRepository.autoCloudSync,
-            preferencesRepository.filterAdultContentInSearch,
-            _showAgeModal,
             _rulesStatus,
             _cacheSize
-        ) { autoSync, filterAdultSearch, showModal, rulesStatus, cacheSize ->
-            SettingsUiFlags(autoSync, filterAdultSearch, showModal, rulesStatus, cacheSize)
+        ) { autoSync, rulesStatus, cacheSize ->
+            SettingsUiFlags(autoSync, rulesStatus, cacheSize)
         }
-    ) { (account, reader, _), flags ->
+    ) { (customJson, reader), flags ->
         SettingsUiState(
-            adultContentEnabled = account.first,
-            filterAdultContentInSearch = flags.filterAdultSearch,
-            isAgeVerified = account.second,
-            customRulesJson = account.third,
+            customRulesJson = customJson,
             themeMode = reader.theme,
             readerMode = reader.mode,
             readerOrientation = reader.orientation,
@@ -115,7 +96,6 @@ class SettingsViewModel(
             pagePreloadEnabled = reader.preloadEnabled,
             cacheSizeFormatted = flags.cacheSize,
             autoCloudSync = flags.autoSync,
-            showAgeModal = flags.showModal,
             rulesUpdateSuccess = flags.rulesStatus
         )
     }.stateIn(
@@ -127,12 +107,6 @@ class SettingsViewModel(
     fun setThemeMode(mode: String) {
         viewModelScope.launch {
             preferencesRepository.setThemeMode(mode)
-        }
-    }
-
-    fun setFilterAdultContentInSearch(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.setFilterAdultContentInSearch(enabled)
         }
     }
 
@@ -158,35 +132,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             preferencesRepository.setAutoCloudSync(enabled)
         }
-    }
-
-    fun onAdultToggleClicked(targetEnabled: Boolean) {
-        viewModelScope.launch {
-            if (targetEnabled) {
-                // Check if user is already age verified
-                val isVerified = uiState.value.isAgeVerified
-                if (isVerified) {
-                    preferencesRepository.setAdultContentEnabled(true)
-                } else {
-                    // Trigger age verification modal dialog
-                    _showAgeModal.value = true
-                }
-            } else {
-                preferencesRepository.setAdultContentEnabled(false)
-            }
-        }
-    }
-
-    fun confirmAgeVerification() {
-        viewModelScope.launch {
-            preferencesRepository.setAgeVerified(true)
-            preferencesRepository.setAdultContentEnabled(true)
-            _showAgeModal.value = false
-        }
-    }
-
-    fun dismissAgeVerificationModal() {
-        _showAgeModal.value = false
     }
 
     fun importScraperRulesJson(json: String) {

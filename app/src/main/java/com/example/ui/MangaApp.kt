@@ -70,7 +70,6 @@ fun MangaApp(
     val bookmarks by mangaViewModel.bookmarks.collectAsStateWithLifecycle()
     val stats by mangaViewModel.readingStats.collectAsStateWithLifecycle()
     val cloudSyncState by mangaViewModel.cloudSyncState.collectAsStateWithLifecycle()
-    val adultContentEnabled by mangaViewModel.adultContentEnabled.collectAsStateWithLifecycle()
     val selectedLanguage by mangaViewModel.selectedLanguage.collectAsStateWithLifecycle()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -163,7 +162,6 @@ fun MangaApp(
             composable(MangaDestinations.BROWSE) {
                 BrowseScreen(
                     state = browseState,
-                    adultContentEnabled = adultContentEnabled,
                     onQueryChange = { query -> mangaViewModel.searchManga(query, saveToHistory = false) },
                     onSearchSubmit = { query -> mangaViewModel.submitSearch(query) },
                     onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
@@ -233,9 +231,6 @@ fun MangaApp(
                 SettingsScreen(
                     state = settingsState,
                     syncState = cloudSyncState,
-                    onAdultToggleClicked = { enabled -> settingsViewModel.onAdultToggleClicked(enabled) },
-                    onConfirmAge = { settingsViewModel.confirmAgeVerification() },
-                    onDismissAgeModal = { settingsViewModel.dismissAgeVerificationModal() },
                     onSaveRulesJson = { json -> settingsViewModel.importScraperRulesJson(json) },
                     onSyncClicked = { mangaViewModel.triggerCloudSync() },
                     onBackupClicked = { mangaViewModel.backupToCloud() },
@@ -246,7 +241,6 @@ fun MangaApp(
                     onReaderOrientationSelected = { orientation -> settingsViewModel.setReaderOrientation(orientation) },
                     onDefaultFullscreenToggled = { enabled -> settingsViewModel.setDefaultFullscreenReader(enabled) },
                     onAutoCloudSyncToggled = { enabled -> settingsViewModel.setAutoCloudSync(enabled) },
-                    onFilterAdultSearchToggled = { enabled -> settingsViewModel.setFilterAdultContentInSearch(enabled) },
                     onReaderBackgroundColorSelected = { color -> settingsViewModel.setReaderBackgroundColor(color) },
                     onReaderInvertColorsToggled = { inverted -> settingsViewModel.setReaderInvertColors(inverted) },
                     onPagePreloadToggled = { enabled -> settingsViewModel.setPagePreloadEnabled(enabled) },

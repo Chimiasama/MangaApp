@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Clear
@@ -35,8 +37,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -48,8 +48,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -67,22 +65,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.source.MangaModel
-import com.example.source.MangaSource
 import com.example.ui.components.MangaCard
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.CrimsonRed
-import com.example.ui.theme.NsfwRedBadge
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.BrowseUiState
 
 @Composable
 fun BrowseScreen(
     state: BrowseUiState,
-    adultContentEnabled: Boolean,
     onQueryChange: (String) -> Unit = {},
     onSearchSubmit: (String) -> Unit = {},
     onLanguageSelected: (String) -> Unit = {},
-    onSourceSelected: (String) -> Unit,
+    onSourceSelected: (String) -> Unit = {},
     onGenreSelected: (String) -> Unit = {},
     onMangaClick: (MangaModel) -> Unit,
     onFavoriteToggle: (MangaModel) -> Unit,
@@ -101,16 +96,25 @@ fun BrowseScreen(
             .fillMaxSize()
             .testTag("browse_screen")
     ) {
-        // Search Bar & Language Header
-        PaddingValues(16.dp).let {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        // Clean Minimal Header Area
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            // Search Bar & Compact Language Selector in Top Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
                     value = queryInput,
                     onValueChange = { queryInput = it },
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .testTag("search_input"),
-                    placeholder = { Text("Pesquisar mangá, autor... (Enter)") },
+                    placeholder = { Text("Buscar...", fontSize = 13.sp) },
                     leadingIcon = {
                         IconButton(
                             onClick = {
@@ -118,12 +122,15 @@ fun BrowseScreen(
                                 focusManager.clearFocus()
                                 onSearchSubmit(queryInput)
                             },
-                            modifier = Modifier.testTag("search_icon_button")
+                            modifier = Modifier
+                                .size(24.dp)
+                                .testTag("search_icon_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "Buscar",
-                                tint = CrimsonRed
+                                tint = CrimsonRed,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     },
@@ -135,37 +142,29 @@ fun BrowseScreen(
                                         queryInput = ""
                                         onSearchSubmit("")
                                     },
-                                    modifier = Modifier.testTag("search_clear_button")
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .testTag("search_clear_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Clear,
                                         contentDescription = "Limpar busca",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
                             IconButton(
-                                onClick = {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                    onSearchSubmit(queryInput)
-                                },
-                                modifier = Modifier.testTag("search_submit_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "Pesquisar",
-                                    tint = CrimsonRed
-                                )
-                            }
-                            IconButton(
                                 onClick = onRefresh,
-                                modifier = Modifier.testTag("refresh_catalog_button")
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .testTag("refresh_catalog_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "Recarregar catálogo",
-                                    tint = PrimaryPurple
+                                    tint = PrimaryPurple,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -186,247 +185,152 @@ fun BrowseScreen(
                     singleLine = true
                 )
 
-                // Filtro Fixo de Linguagem (PT-BR padrão, fixo no topo junto das pesquisas)
+                // Compact Language Selector Chips (Top Right)
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Idioma:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    val languages = listOf(
+                        "pt-br" to "PT",
+                        "en" to "US",
+                        "es" to "ES",
+                        "all" to "Todas"
                     )
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val languages = listOf(
-                            "pt-br" to "🇧🇷 PT-BR",
-                            "en" to "🇺🇸 EN",
-                            "es" to "🇪🇸 ES",
-                            "all" to "🌐 Todas"
-                        )
-                        languages.forEach { (code, label) ->
-                            val isSelected = state.selectedLanguage.equals(code, ignoreCase = true)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    if (!isSelected) {
-                                        onLanguageSelected(code)
-                                    }
-                                },
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                modifier = Modifier.testTag("lang_chip_$code"),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = CrimsonRed,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
-                        }
-                    }
-                }
-
-                // Recent Search History Chips
-                if (state.searchHistory.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Buscas Recentes",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        TextButton(
-                            onClick = onClearSearchHistory,
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .height(24.dp)
-                                .testTag("clear_history_button")
-                        ) {
-                            Text(
-                                text = "Limpar Tudo",
-                                fontSize = 11.sp,
-                                color = CrimsonRed
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        state.searchHistory.forEach { history ->
-                            InputChip(
-                                selected = false,
-                                onClick = {
-                                    queryInput = history.query
-                                    onSearchSubmit(history.query)
-                                },
-                                label = { Text(history.query, fontSize = 12.sp) },
-                                trailingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remover do histórico",
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clickable { onDeleteSearchHistoryItem(history.id) }
-                                    )
-                                },
-                                modifier = Modifier.testTag("search_history_chip_${history.id}")
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Source Filter Chips (apenas exibidos se houver mais de uma fonte configurada para manter a navegação limpa)
-                if (state.availableSources.size > 1) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    languages.forEach { (code, label) ->
+                        val isSelected = state.selectedLanguage.equals(code, ignoreCase = true)
                         FilterChip(
-                            selected = state.selectedSourceId == "all",
-                            onClick = { onSourceSelected("all") },
-                            label = { Text("Todas as Fontes (${state.availableSources.size})") },
-                            modifier = Modifier.testTag("source_chip_all"),
+                            selected = isSelected,
+                            onClick = {
+                                if (!isSelected) {
+                                    onLanguageSelected(code)
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            modifier = Modifier.testTag("lang_chip_$code"),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = CrimsonRed,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                             )
                         )
+                    }
+                }
+            }
 
-                        state.availableSources.forEach { source ->
-                            FilterChip(
-                                selected = state.selectedSourceId == source.id,
-                                onClick = { onSourceSelected(source.id) },
-                                label = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (source.isNsfw) {
-                                            Text(
-                                                text = "+18 ",
-                                                color = NsfwRedBadge,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                        Text(source.name)
-                                    }
-                                },
-                                modifier = Modifier.testTag("source_chip_${source.id}"),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = if (source.isNsfw) NsfwRedBadge else CrimsonRed,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
-                        }
+            // Recent Search History Chips (if present)
+            if (state.searchHistory.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Recentes",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onClearSearchHistory,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .height(20.dp)
+                            .testTag("clear_history_button")
+                    ) {
+                        Text(
+                            text = "Limpar",
+                            fontSize = 10.sp,
+                            color = CrimsonRed
+                        )
+                    }
                 }
 
-                // Genre / Category Filter Chips
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val genreCategories = listOf(
-                        "all" to "Todos Gêneros",
-                        "Shounen" to "Shounen",
-                        "Sci-Fi" to "Sci-Fi 🚀",
-                        "Shoujo" to "Shoujo",
-                        "Yuri" to "Yuri",
-                        "Ninja" to "Ninja 🥷",
-                        "Ação" to "Ação",
-                        "Aventura" to "Aventura",
-                        "Fantasia" to "Fantasia 🪄",
-                        "Isekai" to "Isekai",
-                        "Romance" to "Romance ❤️",
-                        "Seinen" to "Seinen",
-                        "Comédia" to "Comédia 🎭",
-                        "Sobrenatural" to "Sobrenatural 👻",
-                        "Escolar" to "Escolar 🏫"
-                    )
-
-                    genreCategories.forEach { (genreKey, label) ->
-                        val isSelected = state.selectedGenre == genreKey || (state.selectedGenre.isBlank() && genreKey == "all")
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { onGenreSelected(genreKey) },
-                            label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                            modifier = Modifier.testTag("genre_chip_$genreKey"),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = PrimaryPurple,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                            )
+                    state.searchHistory.forEach { history ->
+                        InputChip(
+                            selected = false,
+                            onClick = {
+                                queryInput = history.query
+                                onSearchSubmit(history.query)
+                            },
+                            label = { Text(history.query, fontSize = 11.sp) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remover do histórico",
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .clickable { onDeleteSearchHistoryItem(history.id) }
+                                )
+                            },
+                            modifier = Modifier.testTag("search_history_chip_${history.id}")
                         )
                     }
                 }
+            }
 
-                if (adultContentEnabled) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                NsfwRedBadge.copy(alpha = 0.15f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = NsfwRedBadge,
-                            modifier = Modifier.size(16.dp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Clean Genre Categories Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val genreCategories = listOf(
+                    "all" to "Todos Gêneros",
+                    "Shounen" to "Shounen",
+                    "Sci-Fi" to "Sci-Fi",
+                    "Shoujo" to "Shoujo",
+                    "Yuri" to "Yuri",
+                    "Ninja" to "Ninja",
+                    "Ação" to "Ação",
+                    "Aventura" to "Aventura",
+                    "Fantasia" to "Fantasia",
+                    "Isekai" to "Isekai",
+                    "Romance" to "Romance",
+                    "Seinen" to "Seinen",
+                    "Comédia" to "Comédia",
+                    "Sobrenatural" to "Sobrenatural",
+                    "Escolar" to "Escolar"
+                )
+
+                genreCategories.forEach { (genreKey, label) ->
+                    val isSelected = state.selectedGenre == genreKey || (state.selectedGenre.isBlank() && genreKey == "all")
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onGenreSelected(genreKey) },
+                        label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                        modifier = Modifier.testTag("genre_chip_$genreKey"),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = PrimaryPurple,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Modo +18 Ativado: Exibindo fontes adultas no catálogo.",
-                            color = NsfwRedBadge,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    )
                 }
             }
         }
@@ -447,7 +351,7 @@ fun BrowseScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = CrimsonRed)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Buscando fontes de mangá (MangaDex)...", fontSize = 14.sp)
+                    Text("Buscando fontes de mangá...", fontSize = 14.sp)
                 }
             }
         } else if (isFilterOrSearchActive && state.mangaList.isEmpty() && !state.isLoading) {
@@ -603,7 +507,7 @@ fun BrowseScreen(
                 }
             }
         } else {
-            // Home Carousels View (~20 mangas per carousel with "Mostrar mais")
+            // Home Carousels View
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -634,7 +538,6 @@ fun BrowseScreen(
                     }
                 }
 
-                // Render each genre carousel section
                 val sectionsToRender = if (state.carouselSections.isNotEmpty()) {
                     state.carouselSections
                 } else if (state.mangaList.isNotEmpty()) {
@@ -709,7 +612,7 @@ fun BrowseScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Horizontal carousel row with ~20 items
+                        // Horizontal carousel row
                         LazyRow(
                             modifier = Modifier
                                 .fillMaxWidth()

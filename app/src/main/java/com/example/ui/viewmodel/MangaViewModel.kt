@@ -86,12 +86,6 @@ class MangaViewModel(
     )
     private val _errorMessage = MutableStateFlow<String?>(null)
 
-    val adultContentEnabled: StateFlow<Boolean> = repository.preferencesRepository.adultContentEnabled
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    val filterAdultSearchEnabled: StateFlow<Boolean> = repository.preferencesRepository.filterAdultContentInSearch
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
-
     // Room Flows
     val favorites: StateFlow<List<MangaEntity>> = repository.favorites
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -147,10 +141,9 @@ class MangaViewModel(
             MangaData(list, carousels)
         },
         _errorMessage,
-        adultContentEnabled,
         searchHistory
-    ) { params, mangaData, error, adultEnabled, history ->
-        val sources = repository.getAvailableSources(includeAdult = adultEnabled)
+    ) { params, mangaData, error, history ->
+        val sources = repository.getAvailableSources()
         BrowseUiState(
             selectedSourceId = params.sourceId,
             selectedGenre = params.genre,
@@ -270,8 +263,6 @@ class MangaViewModel(
         viewModelScope.launch {
             _isLoadingBrowse.value = true
             _errorMessage.value = null
-            val adultEnabled = adultContentEnabled.value
-            val filterAdultSearch = filterAdultSearchEnabled.value
             val currentSource = _selectedSourceId.value
             val currentGenre = _selectedGenre.value
             val currentLanguage = selectedLanguage.value
@@ -279,21 +270,21 @@ class MangaViewModel(
 
             try {
                 if (query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")) {
-                    val popularList = repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    val popularList = repository.getPopularManga(currentSource, currentLanguage)
                     _mangaList.value = popularList
                     if (popularList.isNotEmpty()) {
                         _carouselSections.value = buildCarouselSections(popularList)
                     }
                 } else if (query.isNotBlank()) {
-                    val searchResults = repository.searchManga(query, currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    val searchResults = repository.searchManga(query, currentSource, currentLanguage)
                     _mangaList.value = searchResults
                 } else {
                     // Genre filter is active (e.g., clicked "Mostrar mais" or selected genre chip)
-                    val genreResults = repository.searchManga(currentGenre, currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                    val genreResults = repository.searchManga(currentGenre, currentSource, currentLanguage)
                     val baseList = if (genreResults.isNotEmpty()) {
                         genreResults
                     } else {
-                        repository.getPopularManga(currentSource, adultEnabled, filterAdultSearch, currentLanguage)
+                        repository.getPopularManga(currentSource, currentLanguage)
                     }
 
                     val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
