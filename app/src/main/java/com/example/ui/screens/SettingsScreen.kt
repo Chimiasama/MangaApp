@@ -52,10 +52,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.sync.CloudSyncState
-import com.example.ui.components.AgeVerificationDialog
 import com.example.ui.components.DynamicRulesDialog
 import com.example.ui.theme.CrimsonRed
-import com.example.ui.theme.NsfwRedBadge
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.SettingsUiState
 import java.text.SimpleDateFormat
@@ -80,9 +78,6 @@ import android.widget.Toast
 fun SettingsScreen(
     state: SettingsUiState,
     syncState: CloudSyncState = CloudSyncState.Idle(),
-    onAdultToggleClicked: (Boolean) -> Unit,
-    onConfirmAge: () -> Unit,
-    onDismissAgeModal: () -> Unit,
     onSaveRulesJson: (String) -> Unit,
     onSyncClicked: () -> Unit = {},
     onBackupClicked: () -> Unit = {},
@@ -93,7 +88,6 @@ fun SettingsScreen(
     onReaderOrientationSelected: (String) -> Unit = {},
     onDefaultFullscreenToggled: (Boolean) -> Unit = {},
     onAutoCloudSyncToggled: (Boolean) -> Unit = {},
-    onFilterAdultSearchToggled: (Boolean) -> Unit = {},
     onReaderBackgroundColorSelected: (String) -> Unit = {},
     onReaderInvertColorsToggled: (Boolean) -> Unit = {},
     onPagePreloadToggled: (Boolean) -> Unit = {},
@@ -881,88 +875,6 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Section 1: Adult Content Security Toggle
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = null,
-                        tint = NsfwRedBadge,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Controle de Conteúdo Restrito (+18)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Habilitar Conteúdo Adulto (+18)",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (state.adultContentEnabled) "Fontes e catálogos adultos visíveis." else "Fontes adultas estão bloqueadas.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Switch(
-                        checked = state.adultContentEnabled,
-                        onCheckedChange = { onAdultToggleClicked(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = NsfwRedBadge),
-                        modifier = Modifier.testTag("adult_content_switch")
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Filtrar Conteúdo Adulto na Busca",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (state.filterAdultContentInSearch) "Filtra e oculta mangás adultos dos resultados de pesquisa (DataStore)." else "Exibe mangás adultos nos resultados de busca.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Switch(
-                        checked = state.filterAdultContentInSearch,
-                        onCheckedChange = { onFilterAdultSearchToggled(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = PrimaryPurple),
-                        modifier = Modifier.testTag("filter_adult_search_switch")
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Section 2: Dynamic JSON Scraper Rules Engine
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1064,14 +976,6 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         }
-    }
-
-    // Modal Age Verification Dialog
-    if (state.showAgeModal) {
-        AgeVerificationDialog(
-            onConfirm = onConfirmAge,
-            onDismiss = onDismissAgeModal
-        )
     }
 
     // Modal Dynamic Rules JSON Editor

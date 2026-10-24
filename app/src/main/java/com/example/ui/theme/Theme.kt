@@ -20,8 +20,8 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = TextPrimaryDark,
     surfaceVariant = SurfaceDarkBorder,
     onSurfaceVariant = TextSecondaryDark,
-    error = NsfwRedBadge,
-    onError = OnNsfwBadge
+    error = Color(0xFFF2B8B5),
+    onError = Color(0xFF601410)
 )
 
 private val LightColorScheme = lightColorScheme(

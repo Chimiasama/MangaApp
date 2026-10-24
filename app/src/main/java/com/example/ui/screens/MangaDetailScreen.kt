@@ -51,7 +51,6 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,7 +82,6 @@ import com.example.source.ChapterModel
 import com.example.source.MangaModel
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.CrimsonRed
-import com.example.ui.theme.NsfwRedBadge
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.MangaDetailUiState
 
@@ -237,18 +235,6 @@ fun MangaDetailScreen(
                         Spacer(modifier = Modifier.width(16.dp))
 
                         Column {
-                            if (manga.isNsfw) {
-                                Text(
-                                    text = "CONTEÚDO RESTRITO (+18)",
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .background(NsfwRedBadge, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                            }
                             Text(
                                 text = manga.title,
                                 color = Color.White,

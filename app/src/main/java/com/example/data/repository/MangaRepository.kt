@@ -188,10 +188,8 @@ class MangaRepository(
         }
     }
 
-    fun getAvailableSources(includeAdult: Boolean): List<MangaSource> {
-        return sourceRegistry.values.filter { source ->
-            if (!includeAdult && source.isNsfw) false else true
-        }
+    fun getAvailableSources(): List<MangaSource> {
+        return sourceRegistry.values.filter { source -> !source.isNsfw }
     }
 
     fun getSourceById(id: String): MangaSource? = sourceRegistry[id]
@@ -208,7 +206,7 @@ class MangaRepository(
                 sourceId = manga.sourceId,
                 genres = if (manga.genres.isNotEmpty()) manga.genres.joinToString(",") else (existing?.genres ?: ""),
                 isFavorite = existing?.isFavorite ?: false,
-                isNsfw = manga.isNsfw,
+                isNsfw = false,
                 addedTimestamp = existing?.addedTimestamp ?: System.currentTimeMillis()
             )
             mangaDao.insertManga(entity)
@@ -217,25 +215,22 @@ class MangaRepository(
 
     suspend fun getPopularManga(
         sourceId: String?,
-        includeAdult: Boolean,
-        filterAdultSearch: Boolean = false,
         language: String = "pt-br"
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
         } else {
-            getAvailableSources(includeAdult)
+            getAvailableSources()
         }
 
-        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw")
+        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch) {
             try {
                 val list = src.getPopularManga(language)
                 val filtered = list.filter { manga ->
-                    if (!includeAdult && manga.isNsfw) return@filter false
-                    if (filterAdultSearch && (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.lowercase()) })) return@filter false
+                    if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     true
                 }
                 cacheMangaToDb(filtered)
@@ -252,8 +247,7 @@ class MangaRepository(
                 mangaDao.getAllCachedMangasSync()
             }
             val filteredCached = cachedEntities.filter { entity ->
-                if (!includeAdult && entity.isNsfw) return@filter false
-                if (filterAdultSearch && (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) })) return@filter false
+                if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 true
             }
             return filteredCached.map { entity ->
@@ -265,7 +259,7 @@ class MangaRepository(
                     description = entity.description,
                     sourceId = entity.sourceId,
                     genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
-                    isNsfw = entity.isNsfw
+                    isNsfw = false
                 )
             }
         }
@@ -276,25 +270,22 @@ class MangaRepository(
     suspend fun searchManga(
         query: String,
         sourceId: String?,
-        includeAdult: Boolean,
-        filterAdultSearch: Boolean = false,
         language: String = "pt-br"
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
         } else {
-            getAvailableSources(includeAdult)
+            getAvailableSources()
         }
 
-        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw")
+        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch) {
             try {
                 val list = src.searchManga(query, language)
                 val filtered = list.filter { manga ->
-                    if (!includeAdult && manga.isNsfw) return@filter false
-                    if (filterAdultSearch && (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.lowercase()) })) return@filter false
+                    if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     true
                 }
                 cacheMangaToDb(filtered)
@@ -312,8 +303,7 @@ class MangaRepository(
             }
             val queryLower = query.lowercase(Locale.getDefault())
             val matched = cachedEntities.filter { entity ->
-                if (!includeAdult && entity.isNsfw) return@filter false
-                if (filterAdultSearch && (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) })) return@filter false
+                if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
                 entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
             }
@@ -326,7 +316,7 @@ class MangaRepository(
                     description = entity.description,
                     sourceId = entity.sourceId,
                     genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
-                    isNsfw = entity.isNsfw
+                    isNsfw = false
                 )
             }
         }
