@@ -18,6 +18,9 @@ interface ChapterDao {
     @Query("SELECT * FROM chapters WHERE id = :chapterId LIMIT 1")
     fun getChapterById(chapterId: String): Flow<ChapterEntity?>
 
+    @Query("SELECT * FROM chapters WHERE id = :chapterId LIMIT 1")
+    suspend fun getChapterByIdSync(chapterId: String): ChapterEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChapters(chapters: List<ChapterEntity>)
 

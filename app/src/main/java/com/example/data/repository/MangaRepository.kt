@@ -501,12 +501,53 @@ class MangaRepository(
             return localPages
         }
 
+        // Check if chapter exists in Room to retrieve real chapterUrl if empty
+        val resolvedChapterUrl = if (chapterUrl.isBlank()) {
+            chapterDao?.getChapterByIdSync(chapterId)?.chapterUrl ?: chapterId
+        } else {
+            chapterUrl
+        }
+
+        val resolvedSourceId = if (sourceId.isBlank() || sourceId == "mangadex") {
+            detectSourceIdFromUrl(resolvedChapterUrl) ?: sourceId.ifBlank { "mangadex" }
+        } else {
+            sourceId
+        }
+
         // Fetch online pages from source
-        val source = sourceRegistry[sourceId] ?: sourceRegistry.values.first()
+        val source = sourceRegistry[resolvedSourceId] ?: sourceRegistry.values.first()
         return try {
-            source.getPages(chapterUrl)
+            val pages = source.getPages(resolvedChapterUrl)
+            if (pages.isEmpty() && resolvedSourceId != "mangadex") {
+                sourceRegistry["mangadex"]?.getPages(chapterId) ?: emptyList()
+            } else {
+                pages
+            }
         } catch (e: Exception) {
-            emptyList()
+            try {
+                sourceRegistry["mangadex"]?.getPages(chapterId) ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun getMangaByUrlSync(url: String): MangaEntity? = mangaDao.getMangaByUrlSync(url)
+
+    suspend fun getChaptersForMangaSync(mangaUrl: String): List<ChapterEntity> = chapterDao?.getChaptersForMangaSync(mangaUrl) ?: emptyList()
+
+    suspend fun getChapterByIdSync(chapterId: String): ChapterEntity? = chapterDao?.getChapterByIdSync(chapterId)
+
+    fun detectSourceIdFromUrl(url: String): String? {
+        return when {
+            url.contains("tsundoku", ignoreCase = true) -> "tsundoku"
+            url.contains("lermanga", ignoreCase = true) -> "ler_manga"
+            url.contains("manga-easy", ignoreCase = true) -> "manga_easy"
+            url.contains("scansraw", ignoreCase = true) -> "scans_raw"
+            url.contains("comick", ignoreCase = true) -> "comick"
+            url.contains("consumet", ignoreCase = true) -> "consumet"
+            url.contains("mangadex", ignoreCase = true) -> "mangadex"
+            else -> null
         }
     }
 
@@ -580,6 +621,24 @@ class MangaRepository(
             timestamp = System.currentTimeMillis()
         )
         progressDao.saveProgress(progress)
+
+        // Ensure chapter record exists with the real chapterUrl in Room
+        val existingChapter = chapterDao?.getChapterByIdSync(chapterId)
+        if (existingChapter == null && chapterUrl.isNotBlank()) {
+            chapterDao?.insertChapter(
+                ChapterEntity(
+                    id = chapterId,
+                    mangaUrl = mangaUrl,
+                    title = chapterTitle,
+                    chapterUrl = chapterUrl,
+                    isRead = true,
+                    lastPageRead = lastPageRead,
+                    totalPages = totalPages
+                )
+            )
+        } else if (existingChapter != null) {
+            chapterDao?.updateChapterReadStatus(chapterId, true, lastPageRead, totalPages)
+        }
     }
 
     suspend fun deleteProgress(mangaUrl: String) {

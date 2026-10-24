@@ -11,7 +11,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -21,8 +23,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import kotlin.math.roundToInt
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -157,11 +162,12 @@ fun ReaderScreen(
     var showControls by remember { mutableStateOf(false) } // Iniciar limpo para foco na leitura
     var showModeDropdown by remember { mutableStateOf(false) }
     var showLongPressOverlay by remember { mutableStateOf(false) }
+    var longPressTrigger by remember { mutableStateOf(0L) }
 
-    // Auto-dismiss do overlay de navegação por toque longo após 5 segundos
-    LaunchedEffect(showLongPressOverlay) {
+    // Auto-dismiss do overlay de navegação por toque longo após 6 segundos (sutil e dá tempo de escolher)
+    LaunchedEffect(showLongPressOverlay, longPressTrigger) {
         if (showLongPressOverlay) {
-            kotlinx.coroutines.delay(5000)
+            kotlinx.coroutines.delay(6000)
             showLongPressOverlay = false
         }
     }
@@ -218,9 +224,27 @@ fun ReaderScreen(
         java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
     }
 
-    // Quick Zoom state aplicável globalmente ou por página
+    // Zoom state persistente global para todas as páginas (rolagem mantém mesmo zoom e pan)
     var currentScale by remember { mutableFloatStateOf(1f) }
+    var globalPanX by remember { mutableFloatStateOf(0f) }
     var fitMode by remember { mutableStateOf(ContentScale.FillWidth) }
+
+    val animatedScale by animateFloatAsState(
+        targetValue = currentScale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "globalReaderScale"
+    )
+    val animatedPanX by animateFloatAsState(
+        targetValue = if (currentScale > 1.05f) globalPanX else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "globalReaderPanX"
+    )
 
     // Orientation lock effect
     DisposableEffect(readerOrientation) {
@@ -279,28 +303,49 @@ fun ReaderScreen(
         pageCount = { state.pages.size }
     )
 
-    // Reseta/Aplica a posição de leitura quando o capítulo muda ou é carregado
-    var currentChapterId by remember { mutableStateOf(state.currentChapter?.id) }
+    // Controle rigoroso de troca de capítulo: sempre abrir no topo (página 0, offset 0)
+    var lastLoadedChapterId by remember { mutableStateOf<String?>(state.currentChapter?.id) }
+    var isSwitchingChapter by remember { mutableStateOf(false) }
+    var isOverscrollTriggered by remember { mutableStateOf(false) }
     var showResumedBadge by remember { mutableStateOf(false) }
 
+    // Quando o ID do capítulo mudar, força imediatamente a volta para o topo (página 0, offset 0)
+    LaunchedEffect(state.currentChapter?.id) {
+        val chapterId = state.currentChapter?.id
+        if (chapterId != null && chapterId != lastLoadedChapterId) {
+            lastLoadedChapterId = chapterId
+            isSwitchingChapter = true
+            isOverscrollTriggered = false
+            globalPanX = 0f
+            listState.scrollToItem(0, 0)
+            pagerState.scrollToPage(0)
+            isSwitchingChapter = false
+        }
+    }
+
+    // Aplica a posição correta quando as páginas do capítulo são carregadas
     LaunchedEffect(state.pages, state.currentChapter?.id) {
         if (state.pages.isNotEmpty()) {
-            val isNewChapter = currentChapterId != state.currentChapter?.id
+            val isNewChapter = lastLoadedChapterId != state.currentChapter?.id
             if (isNewChapter) {
-                currentChapterId = state.currentChapter?.id
-            }
-
-            val targetPage = state.currentPageIndex.coerceIn(0, state.pages.lastIndex)
-            val targetOffset = state.scrollOffset
-
-            if (currentMode == "WEBTOON") {
-                listState.scrollToItem(targetPage, targetOffset)
+                lastLoadedChapterId = state.currentChapter?.id
+                isSwitchingChapter = true
+                isOverscrollTriggered = false
+                globalPanX = 0f
+                listState.scrollToItem(0, 0)
+                pagerState.scrollToPage(0)
+                isSwitchingChapter = false
             } else {
-                pagerState.scrollToPage(targetPage)
-            }
-
-            if ((targetPage > 0 || targetOffset > 0) && !isNewChapter) {
-                showResumedBadge = true
+                val targetPage = state.currentPageIndex.coerceIn(0, state.pages.lastIndex)
+                val targetOffset = state.scrollOffset
+                if (currentMode == "WEBTOON") {
+                    listState.scrollToItem(targetPage, targetOffset)
+                } else {
+                    pagerState.scrollToPage(targetPage)
+                }
+                if (targetPage > 0 || targetOffset > 0) {
+                    showResumedBadge = true
+                }
             }
         }
     }
@@ -312,13 +357,13 @@ fun ReaderScreen(
         }
     }
 
-    // Sincroniza continuamente a posição exata de rolagem com o Room
-    LaunchedEffect(listState, currentMode) {
+    // Sincroniza continuamente a posição exata de rolagem com o Room (ignora emissões durante troca de capítulo)
+    LaunchedEffect(listState, currentMode, isSwitchingChapter) {
         if (currentMode == "WEBTOON") {
             snapshotFlow {
                 Pair(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
             }.collect { (index, offset) ->
-                if (index in state.pages.indices) {
+                if (!isSwitchingChapter && !state.isLoading && index in state.pages.indices) {
                     onScrollPositionChanged(index, offset)
                 }
             }
@@ -326,10 +371,10 @@ fun ReaderScreen(
     }
 
     // Salva o progresso no modo paginado horizontal
-    LaunchedEffect(pagerState, currentMode) {
+    LaunchedEffect(pagerState, currentMode, isSwitchingChapter) {
         if (currentMode != "WEBTOON") {
             snapshotFlow { pagerState.currentPage }.collect { page ->
-                if (page in state.pages.indices) {
+                if (!isSwitchingChapter && !state.isLoading && page in state.pages.indices) {
                     onScrollPositionChanged(page, 0)
                 }
             }
@@ -343,46 +388,81 @@ fun ReaderScreen(
         }
     }
 
-    // NestedScroll Connection para detecção precisa e natural de overscroll/puxar nas extremidades
-    val nestedScrollConnection = remember(currentMode, state.pages.size) {
+    // NestedScroll Connection para navegação por puxar/overscroll nas extremidades do capítulo
+    val nestedScrollConnection = remember(currentMode, state.pages.size, isOverscrollTriggered, isSwitchingChapter) {
         object : NestedScrollConnection {
             var totalOverscrollY = 0f
+            var totalOverscrollX = 0f
 
             override fun onPostScroll(
                 consumed: Offset,
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                if (source == NestedScrollSource.UserInput) {
+                if (source == NestedScrollSource.UserInput && !isOverscrollTriggered && !isSwitchingChapter) {
                     val totalItems = state.pages.size
                     if (totalItems > 0) {
-                        val isAtFirstPage = if (currentMode == "WEBTOON") {
-                            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                        } else {
-                            pagerState.currentPage == 0
-                        }
+                        if (currentMode == "WEBTOON") {
+                            val isAtFirstPage = listState.firstVisibleItemIndex == 0 &&
+                                    listState.firstVisibleItemScrollOffset == 0
+                            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            val isAtLastPage = lastVisibleIndex >= totalItems - 1
 
-                        val lastVisibleIndex = if (currentMode == "WEBTOON") {
-                            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        } else {
-                            pagerState.currentPage
-                        }
-                        val isAtLastPage = lastVisibleIndex == totalItems - 1
-
-                        // Puxar para baixo no topo (disponível Y > 0) -> capítulo anterior
-                        if (isAtFirstPage && available.y > 0) {
-                            totalOverscrollY += available.y
-                            if (totalOverscrollY > 160f) {
-                                totalOverscrollY = 0f
-                                onNavigateChapter(false)
+                            // Puxar no topo (disponível Y > 0) -> capítulo anterior
+                            if (isAtFirstPage && available.y > 0) {
+                                totalOverscrollY += available.y
+                                if (totalOverscrollY > 120f) {
+                                    totalOverscrollY = 0f
+                                    isOverscrollTriggered = true
+                                    onNavigateChapter(false)
+                                }
                             }
-                        }
-                        // Puxar para cima no fim (disponível Y < 0) -> próximo capítulo
-                        else if (isAtLastPage && available.y < 0) {
-                            totalOverscrollY += available.y
-                            if (totalOverscrollY < -160f) {
-                                totalOverscrollY = 0f
-                                onNavigateChapter(true)
+                            // Puxar no fim (disponível Y < 0) -> próximo capítulo
+                            else if (isAtLastPage && available.y < 0) {
+                                totalOverscrollY += available.y
+                                if (totalOverscrollY < -120f) {
+                                    totalOverscrollY = 0f
+                                    isOverscrollTriggered = true
+                                    onNavigateChapter(true)
+                                }
+                            }
+                        } else {
+                            val isRtl = currentMode == "PAGED_RTL"
+                            val isAtFirstPage = pagerState.currentPage == 0
+                            val isAtLastPage = pagerState.currentPage == totalItems - 1
+
+                            if (isRtl) {
+                                if (isAtLastPage && available.x < 0) {
+                                    totalOverscrollX += available.x
+                                    if (totalOverscrollX < -120f) {
+                                        totalOverscrollX = 0f
+                                        isOverscrollTriggered = true
+                                        onNavigateChapter(true)
+                                    }
+                                } else if (isAtFirstPage && available.x > 0) {
+                                    totalOverscrollX += available.x
+                                    if (totalOverscrollX > 120f) {
+                                        totalOverscrollX = 0f
+                                        isOverscrollTriggered = true
+                                        onNavigateChapter(false)
+                                    }
+                                }
+                            } else {
+                                if (isAtLastPage && available.x < 0) {
+                                    totalOverscrollX += available.x
+                                    if (totalOverscrollX < -120f) {
+                                        totalOverscrollX = 0f
+                                        isOverscrollTriggered = true
+                                        onNavigateChapter(true)
+                                    }
+                                } else if (isAtFirstPage && available.x > 0) {
+                                    totalOverscrollX += available.x
+                                    if (totalOverscrollX > 120f) {
+                                        totalOverscrollX = 0f
+                                        isOverscrollTriggered = true
+                                        onNavigateChapter(false)
+                                    }
+                                }
                             }
                         }
                     }
@@ -392,6 +472,7 @@ fun ReaderScreen(
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                 totalOverscrollY = 0f
+                totalOverscrollX = 0f
                 return super.onPostFling(consumed, available)
             }
         }
@@ -492,10 +573,20 @@ fun ReaderScreen(
                                 pageIndex = index,
                                 isBookmarked = isBookmarked,
                                 colorFilter = invertColorFilter,
-                                externalScale = currentScale,
-                                onScaleChanged = { currentScale = it },
+                                scale = animatedScale,
+                                panX = animatedPanX,
+                                onScaleChanged = { newScale ->
+                                    currentScale = newScale
+                                    if (newScale <= 1.05f) globalPanX = 0f
+                                },
+                                onPanXChanged = { newPan ->
+                                    globalPanX = newPan
+                                },
                                 onCenterTap = { showControls = !showControls },
-                                onLongPress = { showLongPressOverlay = true }
+                                onLongPress = {
+                                    showLongPressOverlay = true
+                                    longPressTrigger = System.currentTimeMillis()
+                                }
                             )
                         }
                     }
@@ -505,7 +596,7 @@ fun ReaderScreen(
                     HorizontalPager(
                         state = pagerState,
                         reverseLayout = isRtl,
-                        userScrollEnabled = currentScale <= 1.05f,
+                        userScrollEnabled = animatedScale <= 1.05f,
                         modifier = Modifier
                             .fillMaxSize()
                             .background(readerBgColor)
@@ -517,10 +608,20 @@ fun ReaderScreen(
                             isBookmarked = isBookmarked,
                             contentScale = fitMode,
                             colorFilter = invertColorFilter,
-                            externalScale = currentScale,
-                            onScaleChanged = { currentScale = it },
+                            scale = animatedScale,
+                            panX = animatedPanX,
+                            onScaleChanged = { newScale ->
+                                currentScale = newScale
+                                if (newScale <= 1.05f) globalPanX = 0f
+                            },
+                            onPanXChanged = { newPan ->
+                                globalPanX = newPan
+                            },
                             onCenterTap = { showControls = !showControls },
-                            onLongPress = { showLongPressOverlay = true },
+                            onLongPress = {
+                                showLongPressOverlay = true
+                                longPressTrigger = System.currentTimeMillis()
+                            },
                             onLeftTap = {
                                 coroutineScope.launch {
                                     if (isRtl) {
@@ -653,134 +754,34 @@ fun ReaderScreen(
             }
         }
 
-        // Quick Zoom Floating Dock (Facilitador de zoom para cima e para baixo acessível)
+        // Barra de rolagem lateral bem suave (visível apenas ao segurar na tela para abrir os controles e some junto com eles)
         AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(200)),
+            visible = showLongPressOverlay && state.pages.size > 1,
+            enter = fadeIn(animationSpec = tween(250)) + slideInHorizontally(initialOffsetX = { it }),
+            exit = fadeOut(animationSpec = tween(250)) + slideOutHorizontally(targetOffsetX = { it }),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 12.dp)
+                .padding(end = 4.dp)
+                .zIndex(20f)
+                .testTag("smooth_lateral_scrollbar")
         ) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.85f)),
-                shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(8.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Zoom In (+)
-                    IconButton(
-                        onClick = {
-                            currentScale = (currentScale + 0.5f).coerceAtMost(4.5f)
-                        },
-                        modifier = Modifier.size(36.dp).testTag("zoom_in_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Aumentar Zoom",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+            SmoothLateralScrollbar(
+                currentPage = state.currentPageIndex,
+                totalPages = state.pages.size,
+                onPageSelected = { targetPage ->
+                    onPageSelected(targetPage)
+                    coroutineScope.launch {
+                        if (currentMode == "WEBTOON") {
+                            listState.scrollToItem(targetPage, 0)
+                        } else {
+                            pagerState.scrollToPage(targetPage)
+                        }
                     }
-
-                    // Porcentagem atual / Reset para 100% com 1 toque
-                    val zoomPercent = (currentScale * 100).toInt()
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                currentScale = getNextZoomScale(currentScale)
-                            }
-                            .background(
-                                if (currentScale > 1.05f) CrimsonRed.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.15f)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${zoomPercent}%",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    // Zoom Out (-)
-                    IconButton(
-                        onClick = {
-                            currentScale = (currentScale - 0.5f).coerceAtLeast(1.0f)
-                        },
-                        modifier = Modifier.size(36.dp).testTag("zoom_out_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Remove,
-                            contentDescription = "Diminuir Zoom",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Botão para alternar Enquadramento: Ajustar Largura vs Altura
-                    IconButton(
-                        onClick = {
-                            fitMode = if (fitMode == ContentScale.FillWidth) ContentScale.Fit else ContentScale.FillWidth
-                        },
-                        modifier = Modifier.size(36.dp).testTag("toggle_fit_mode_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Height,
-                            contentDescription = "Ajustar Enquadramento",
-                            tint = if (fitMode == ContentScale.Fit) AccentGold else Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    // Botão de Inversão Noturna de Cores (Fase 1.4)
-                    IconButton(
-                        onClick = {
-                            onReaderInvertColorsChanged(!readerInvertColors)
-                        },
-                        modifier = Modifier.size(36.dp).testTag("toggle_reader_invert_colors")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.InvertColors,
-                            contentDescription = "Inverter Cores Noturno",
-                            tint = if (readerInvertColors) AccentGold else Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    // Botão de Alternância Rápida de Fundo (Fase 1.4)
-                    IconButton(
-                        onClick = {
-                            val nextBg = when (readerBackgroundColor) {
-                                "OLED" -> "DARK"
-                                "DARK" -> "SEPIA"
-                                "SEPIA" -> "LIGHT"
-                                else -> "OLED"
-                            }
-                            onReaderBackgroundColorChanged(nextBg)
-                        },
-                        modifier = Modifier.size(36.dp).testTag("toggle_reader_background")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Palette,
-                            contentDescription = "Alterar Fundo da Leitura",
-                            tint = when (readerBackgroundColor) {
-                                "SEPIA" -> Color(0xFFD4A373)
-                                "LIGHT" -> Color.White
-                                "DARK" -> Color.LightGray
-                                else -> PrimaryPurple
-                            },
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                },
+                onInteracting = {
+                    longPressTrigger = System.currentTimeMillis()
                 }
-            }
+            )
         }
 
         // Subtle Top Navigation Bar triggered by Long Press
@@ -790,19 +791,19 @@ fun ReaderScreen(
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 16.dp, start = 16.dp, end = 16.dp)
-                .zIndex(10f)
+                .padding(top = 28.dp, start = 16.dp, end = 16.dp)
+                .zIndex(25f)
                 .testTag("long_press_navigation_bar")
         ) {
             Surface(
-                color = Color.Black.copy(alpha = 0.85f),
+                color = Color(0xEE121218),
                 shape = RoundedCornerShape(32.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                shadowElevation = 12.dp
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                shadowElevation = 16.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Voltar um capítulo
@@ -812,15 +813,21 @@ fun ReaderScreen(
                             onNavigateChapter(false)
                         },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(46.dp)
                             .testTag("long_press_prev_chapter")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.NavigateBefore,
-                            contentDescription = "Capítulo Anterior",
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NavigateBefore,
+                                contentDescription = "Capítulo Anterior",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text("Anterior", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
 
                     // Ir pro início do capítulo
@@ -837,15 +844,21 @@ fun ReaderScreen(
                             }
                         },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(46.dp)
                             .testTag("long_press_chapter_start")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.VerticalAlignTop,
-                            contentDescription = "Início do Capítulo",
-                            tint = AccentGold,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VerticalAlignTop,
+                                contentDescription = "Início do Capítulo",
+                                tint = AccentGold,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text("Início", color = AccentGold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     // Voltar pra tela de capítulos (detalhes/listagem)
@@ -855,15 +868,21 @@ fun ReaderScreen(
                             onBack()
                         },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(46.dp)
                             .testTag("long_press_back_to_list")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.FormatListNumbered,
-                            contentDescription = "Tela de Capítulos",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FormatListNumbered,
+                                contentDescription = "Tela de Capítulos",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text("Capítulos", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
 
                     // Ir para o próximo capítulo
@@ -873,15 +892,21 @@ fun ReaderScreen(
                             onNavigateChapter(true)
                         },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(46.dp)
                             .testTag("long_press_next_chapter")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.NavigateNext,
-                            contentDescription = "Próximo Capítulo",
-                            tint = CrimsonRed,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NavigateNext,
+                                contentDescription = "Próximo Capítulo",
+                                tint = CrimsonRed,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text("Próximo", color = CrimsonRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -1021,112 +1046,6 @@ fun ReaderScreen(
             }
         }
 
-        // Overlay Inferior de Controles (Bottom Bar: navegação de capítulos e scrub bar)
-        AnimatedVisibility(
-            visible = showControls,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.90f))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                val totalPages = state.pages.size
-                val currentPage = (state.currentPageIndex + 1).coerceAtMost(totalPages)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = { onNavigateChapter(false) },
-                        modifier = Modifier.testTag("prev_chapter_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.NavigateBefore,
-                            contentDescription = "Capítulo Anterior",
-                            tint = Color.White
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Página $currentPage / ${if (totalPages == 0) 1 else totalPages}",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            modifier = Modifier
-                                .background(CrimsonRed, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-
-                        // Botão de reset de zoom rápido se ampliado
-                        if (currentScale > 1.05f) {
-                            IconButton(
-                                onClick = { currentScale = 1.0f },
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.RestartAlt,
-                                    contentDescription = "Resetar Zoom",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    IconButton(
-                        onClick = { onNavigateChapter(true) },
-                        modifier = Modifier.testTag("next_chapter_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.NavigateNext,
-                            contentDescription = "Próximo Capítulo",
-                            tint = Color.White
-                        )
-                    }
-                }
-
-                // Slider suave para troca rápida de página
-                if (totalPages > 1) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Slider(
-                        value = state.currentPageIndex.toFloat(),
-                        onValueChange = { targetFloat ->
-                            val targetPage = targetFloat.toInt().coerceIn(0, totalPages - 1)
-                            onPageSelected(targetPage)
-                            coroutineScope.launch {
-                                if (currentMode == "WEBTOON") {
-                                    listState.scrollToItem(targetPage)
-                                } else {
-                                    pagerState.scrollToPage(targetPage)
-                                }
-                            }
-                        },
-                        valueRange = 0f..(totalPages - 1).toFloat(),
-                        steps = if (totalPages > 2) totalPages - 2 else 0,
-                        colors = SliderDefaults.colors(
-                            thumbColor = CrimsonRed,
-                            activeTrackColor = CrimsonRed,
-                            inactiveTrackColor = Color.Gray.copy(alpha = 0.5f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("page_slider")
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1184,34 +1103,16 @@ fun WebtoonContinuousPage(
     pageIndex: Int,
     isBookmarked: Boolean,
     colorFilter: ColorFilter? = null,
-    externalScale: Float = 1.0f,
+    scale: Float = 1.0f,
+    panX: Float = 0f,
     onScaleChanged: (Float) -> Unit = {},
+    onPanXChanged: (Float) -> Unit = {},
     onCenterTap: () -> Unit,
     onLongPress: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val scaleAnim = remember { Animatable(1f) }
-    val offsetXAnim = remember { Animatable(0f) }
-    val offsetYAnim = remember { Animatable(0f) }
     var pageSize by remember { mutableStateOf(IntSize.Zero) }
-
-    // Sincronização de zoom global em todas as páginas no modo Webtoon
-    LaunchedEffect(externalScale) {
-        if (kotlin.math.abs(scaleAnim.value - externalScale) > 0.05f) {
-            if (externalScale <= 1.05f) {
-                coroutineScope.launch {
-                    launch { scaleAnim.animateTo(1.0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
-                    launch { offsetXAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
-                    launch { offsetYAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
-                }
-            } else {
-                scaleAnim.animateTo(externalScale, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
-            }
-        }
-    }
-
-    val isZoomed = scaleAnim.value > 1.05f
+    val isZoomed = scale > 1.05f
 
     Box(
         modifier = modifier
@@ -1220,97 +1121,42 @@ fun WebtoonContinuousPage(
             .zIndex(if (isZoomed) 2f else 0f)
             .onSizeChanged { pageSize = it }
             .testTag("webtoon_page_$pageIndex")
-            .pointerInput(isZoomed, pageSize) {
+            .pointerInput(isZoomed, pageSize, panX, scale) {
                 if (isZoomed) {
-                    // Quando ampliado, permite segurar a página com 1 dedo e mover livremente em 2D
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val width = pageSize.width.toFloat().coerceAtLeast(1f)
-                        val height = pageSize.height.toFloat().coerceAtLeast(1f)
-
-                        val currentScale = scaleAnim.value
-                        val newScale = (currentScale * zoom).coerceIn(1.0f, 4.5f)
-                        onScaleChanged(newScale)
-
-                        val maxOffsetX = ((newScale - 1f) * width) / 2f
-                        val maxOffsetY = ((newScale - 1f) * height) / 2f
-
-                        val newX = (offsetXAnim.value + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                        val newY = (offsetYAnim.value + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-
-                        coroutineScope.launch {
-                            scaleAnim.snapTo(newScale)
-                            offsetXAnim.snapTo(newX)
-                            offsetYAnim.snapTo(newY)
-                        }
-                    }
-                } else {
-                    // Quando em 1.0x, permite zoom de pinça com 2 dedos sem bloquear o scroll vertical da LazyColumn
-                    detectPinchZoomOnly { zoomChange ->
-                        val newScale = (scaleAnim.value * zoomChange).coerceIn(1.0f, 4.5f)
-                        onScaleChanged(newScale)
-                        coroutineScope.launch {
-                            scaleAnim.snapTo(newScale)
-                        }
+                    val width = pageSize.width.toFloat().coerceAtLeast(1f)
+                    val maxOffsetX = ((scale - 1f) * width) / 2f
+                    detectHorizontalDragGestures { change, dragAmount ->
+                        change.consume()
+                        val newPan = (panX + dragAmount).coerceIn(-maxOffsetX, maxOffsetX)
+                        onPanXChanged(newPan)
                     }
                 }
             }
-            .pointerInput(pageSize) {
-                // Duplo toque em etapas, toque longo e toque simples
+            .pointerInput(scale) {
+                detectPinchZoomOnly { zoomChange ->
+                    val newScale = (scale * zoomChange).coerceIn(1.0f, 4.5f)
+                    onScaleChanged(newScale)
+                    if (newScale <= 1.05f) {
+                        onPanXChanged(0f)
+                    }
+                }
+            }
+            .pointerInput(scale, pageSize) {
                 detectTapGestures(
                     onLongPress = {
                         onLongPress()
                     },
                     onDoubleTap = { tapOffset ->
-                        val width = pageSize.width.toFloat().coerceAtLeast(1f)
-                        val height = pageSize.height.toFloat().coerceAtLeast(1f)
-
-                        val nextScale = getNextZoomScale(scaleAnim.value)
+                        val nextScale = getNextZoomScale(scale)
                         onScaleChanged(nextScale)
-
-                        val targetX: Float
-                        val targetY: Float
                         if (nextScale <= 1.05f) {
-                            targetX = 0f
-                            targetY = 0f
+                            onPanXChanged(0f)
                         } else {
+                            val width = pageSize.width.toFloat().coerceAtLeast(1f)
                             val maxOffsetX = ((nextScale - 1f) * width) / 2f
-                            val maxOffsetY = ((nextScale - 1f) * height) / 2f
                             val centerX = width / 2f
-                            val centerY = height / 2f
                             val desiredX = (centerX - tapOffset.x) * (nextScale - 1f)
-                            val desiredY = (centerY - tapOffset.y) * (nextScale - 1f)
-                            targetX = desiredX.coerceIn(-maxOffsetX, maxOffsetX)
-                            targetY = desiredY.coerceIn(-maxOffsetY, maxOffsetY)
-                        }
-
-                        coroutineScope.launch {
-                            launch {
-                                scaleAnim.animateTo(
-                                    targetValue = nextScale,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                )
-                            }
-                            launch {
-                                offsetXAnim.animateTo(
-                                    targetValue = targetX,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                )
-                            }
-                            launch {
-                                offsetYAnim.animateTo(
-                                    targetValue = targetY,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                )
-                            }
+                            onPanXChanged(desiredX.coerceIn(-maxOffsetX, maxOffsetX))
                         }
                     },
                     onTap = {
@@ -1358,11 +1204,10 @@ fun WebtoonContinuousPage(
                 .fillMaxWidth()
                 .wrapContentHeight()
                 .graphicsLayer {
-                    scaleX = scaleAnim.value
-                    scaleY = scaleAnim.value
-                    translationX = offsetXAnim.value
-                    translationY = offsetYAnim.value
-                    clip = scaleAnim.value > 1.05f
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = panX
+                    clip = scale > 1.05f
                 }
         )
 
@@ -1395,10 +1240,10 @@ fun WebtoonContinuousPage(
 }
 
 /**
- * Visualizador de Página com Zoom Avançado (Pinch + Pan livre 2D)
- * - Duplo toque inteligente em etapas (1.75x -> 2.75x -> 4.0x -> 1.0x) com transições suaves
- * - Segurar e mover livremente em qualquer direção enquanto em zoom com clamping elegante
+ * Visualizador de Página com Zoom Avançado (Pinch + Pan livre horizontal)
+ * - Zoom persistente global compartilhado entre todas as páginas
  * - Tap Zones invisíveis (Esquerda = voltar, Direita = avançar, Centro = controles)
+ * - Toque longo aciona menu de navegação sutil
  */
 @Composable
 fun ZoomableMangaPage(
@@ -1407,35 +1252,17 @@ fun ZoomableMangaPage(
     isBookmarked: Boolean,
     contentScale: ContentScale = ContentScale.FillWidth,
     colorFilter: ColorFilter? = null,
-    externalScale: Float = 1.0f,
+    scale: Float = 1.0f,
+    panX: Float = 0f,
     onScaleChanged: (Float) -> Unit = {},
+    onPanXChanged: (Float) -> Unit = {},
     onCenterTap: () -> Unit,
     onLongPress: () -> Unit = {},
     onLeftTap: () -> Unit,
     onRightTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val scaleAnim = remember { Animatable(1f) }
-    val offsetXAnim = remember { Animatable(0f) }
-    val offsetYAnim = remember { Animatable(0f) }
-
-    // Sincroniza se o dock de zoom externo alterar o scale
-    LaunchedEffect(externalScale) {
-        if (kotlin.math.abs(scaleAnim.value - externalScale) > 0.05f) {
-            if (externalScale <= 1.05f) {
-                coroutineScope.launch {
-                    launch { scaleAnim.animateTo(1.0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
-                    launch { offsetXAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
-                    launch { offsetYAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) }
-                }
-            } else {
-                scaleAnim.animateTo(externalScale, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
-            }
-        }
-    }
-
-    val isZoomed = scaleAnim.value > 1.05f
+    val isZoomed = scale > 1.05f
 
     BoxWithConstraints(
         modifier = modifier
@@ -1444,100 +1271,48 @@ fun ZoomableMangaPage(
             .testTag("reader_page_$pageIndex")
     ) {
         val containerWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val containerHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(isZoomed, containerWidth, containerHeight) {
+                .pointerInput(isZoomed, containerWidth, panX, scale) {
                     if (isZoomed) {
-                        // Detecção de gestos quando ampliado: segurar com 1 dedo e mover livremente em 2D
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            val currentScale = scaleAnim.value
-                            val newScale = (currentScale * zoom).coerceIn(1.0f, 4.5f)
-                            onScaleChanged(newScale)
-
-                            val maxOffsetX = ((newScale - 1f) * containerWidth) / 2f
-                            val maxOffsetY = ((newScale - 1f) * containerHeight) / 2f
-
-                            val newX = (offsetXAnim.value + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
-                            val newY = (offsetYAnim.value + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-
-                            coroutineScope.launch {
-                                scaleAnim.snapTo(newScale)
-                                offsetXAnim.snapTo(newX)
-                                offsetYAnim.snapTo(newY)
-                            }
-                        }
-                    } else {
-                        // Quando em 1.0x, permite pinça com 2 dedos sem interceptar o swipe horizontal do pager
-                        detectPinchZoomOnly { zoomChange ->
-                            val newScale = (scaleAnim.value * zoomChange).coerceIn(1.0f, 4.5f)
-                            onScaleChanged(newScale)
-                            coroutineScope.launch {
-                                scaleAnim.snapTo(newScale)
-                            }
+                        val maxOffsetX = ((scale - 1f) * containerWidth) / 2f
+                        detectHorizontalDragGestures { change, dragAmount ->
+                            change.consume()
+                            val newPan = (panX + dragAmount).coerceIn(-maxOffsetX, maxOffsetX)
+                            onPanXChanged(newPan)
                         }
                     }
                 }
-                .pointerInput(containerWidth, containerHeight) {
-                    // Toques rápidos, duplo toque em etapas, toque longo e zonas de navegação invisíveis
+                .pointerInput(scale) {
+                    detectPinchZoomOnly { zoomChange ->
+                        val newScale = (scale * zoomChange).coerceIn(1.0f, 4.5f)
+                        onScaleChanged(newScale)
+                        if (newScale <= 1.05f) {
+                            onPanXChanged(0f)
+                        }
+                    }
+                }
+                .pointerInput(scale, containerWidth) {
                     detectTapGestures(
                         onLongPress = {
                             onLongPress()
                         },
                         onDoubleTap = { tapOffset ->
-                            val nextScale = getNextZoomScale(scaleAnim.value)
+                            val nextScale = getNextZoomScale(scale)
                             onScaleChanged(nextScale)
-
-                            val targetX: Float
-                            val targetY: Float
                             if (nextScale <= 1.05f) {
-                                targetX = 0f
-                                targetY = 0f
+                                onPanXChanged(0f)
                             } else {
                                 val maxOffsetX = ((nextScale - 1f) * containerWidth) / 2f
-                                val maxOffsetY = ((nextScale - 1f) * containerHeight) / 2f
                                 val centerX = containerWidth / 2f
-                                val centerY = containerHeight / 2f
                                 val desiredX = (centerX - tapOffset.x) * (nextScale - 1f)
-                                val desiredY = (centerY - tapOffset.y) * (nextScale - 1f)
-                                targetX = desiredX.coerceIn(-maxOffsetX, maxOffsetX)
-                                targetY = desiredY.coerceIn(-maxOffsetY, maxOffsetY)
-                            }
-
-                            coroutineScope.launch {
-                                launch {
-                                    scaleAnim.animateTo(
-                                        targetValue = nextScale,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
-                                launch {
-                                    offsetXAnim.animateTo(
-                                        targetValue = targetX,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
-                                launch {
-                                    offsetYAnim.animateTo(
-                                        targetValue = targetY,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
+                                onPanXChanged(desiredX.coerceIn(-maxOffsetX, maxOffsetX))
                             }
                         },
                         onTap = { tapOffset ->
-                            if (scaleAnim.value <= 1.1f) {
+                            if (scale <= 1.1f) {
                                 val xPercent = tapOffset.x / containerWidth
                                 when {
                                     xPercent < 0.28f -> onLeftTap()
@@ -1587,11 +1362,10 @@ fun ZoomableMangaPage(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        scaleX = scaleAnim.value
-                        scaleY = scaleAnim.value
-                        translationX = offsetXAnim.value
-                        translationY = offsetYAnim.value
-                        clip = scaleAnim.value > 1.05f
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = panX
+                        clip = scale > 1.05f
                     }
             )
 
@@ -1625,71 +1399,137 @@ fun ZoomableMangaPage(
 }
 
 /**
- * Card minimalista ao fim do capítulo para transição fácil e rápida para o próximo
+ * Barra de Rolagem Lateral Suave e Elegante
+ * - Substitui a antiga barra inferior com slider de bolinhas.
+ * - Fica visível apenas ao segurar na tela para abrir os controles e some junto com eles.
+ * - Permite arrastar verticalmente de forma contínua e suave para navegar pelas páginas do capítulo.
+ * - Exibe uma badge flutuante sutil ao lado do polegar com o número da página atual.
  */
 @Composable
-private fun EndOfChapterCard(
-    onNextChapter: () -> Unit,
-    onBack: () -> Unit
+fun SmoothLateralScrollbar(
+    currentPage: Int,
+    totalPages: Int,
+    onPageSelected: (Int) -> Unit,
+    onInteracting: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Fim do Capítulo 🎉",
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Você concluiu todas as páginas deste capítulo.",
-                fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.7f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onBack() },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
-                ) {
-                    Box(modifier = Modifier.padding(12.dp), contentAlignment = Alignment.Center) {
-                        Text("Voltar", color = Color.White, fontSize = 13.sp)
-                    }
-                }
+    if (totalPages <= 1) return
 
-                Card(
-                    modifier = Modifier
-                        .weight(1.5f)
-                        .clickable { onNextChapter() },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = CrimsonRed)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text("Próximo Capítulo", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Default.NavigateNext, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var isDragging by remember { mutableStateOf(false) }
+    var trackHeightPx by remember { mutableFloatStateOf(1f) }
+    var dragProgress by remember { mutableFloatStateOf(0f) }
+
+    // Sincroniza progresso visual com a página atual quando não está arrastando
+    val targetProgress = if (totalPages > 1) {
+        (currentPage.toFloat() / (totalPages - 1).toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    val effectiveProgress = if (isDragging) dragProgress else targetProgress
+    val animatedProgress by animateFloatAsState(
+        targetValue = effectiveProgress,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "lateralScrollProgress"
+    )
+
+    val displayedPage = if (isDragging) {
+        (dragProgress * (totalPages - 1)).roundToInt().coerceIn(0, totalPages - 1)
+    } else currentPage
+
+    Row(
+        modifier = modifier
+            .padding(end = 4.dp)
+            .pointerInput(totalPages, trackHeightPx) {
+                detectVerticalDragGestures(
+                    onDragStart = { offset ->
+                        isDragging = true
+                        onInteracting()
+                        val newProgress = (offset.y / trackHeightPx).coerceIn(0f, 1f)
+                        dragProgress = newProgress
+                        val target = (newProgress * (totalPages - 1)).roundToInt().coerceIn(0, totalPages - 1)
+                        onPageSelected(target)
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        onInteracting()
+                        val deltaProgress = dragAmount / trackHeightPx
+                        dragProgress = (dragProgress + deltaProgress).coerceIn(0f, 1f)
+                        val target = (dragProgress * (totalPages - 1)).roundToInt().coerceIn(0, totalPages - 1)
+                        onPageSelected(target)
                     }
+                )
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End
+    ) {
+        // Badge flutuante sutil com o número da página durante arrasto ou interação
+        AnimatedVisibility(
+            visible = isDragging,
+            enter = fadeIn(tween(150)) + slideInHorizontally(initialOffsetX = { it / 2 }),
+            exit = fadeOut(tween(150)) + slideOutHorizontally(targetOffsetX = { it / 2 }),
+            modifier = Modifier.padding(end = 12.dp)
+        ) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.85f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.6f)),
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Pág. ${displayedPage + 1} / $totalPages",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
+        }
+
+        // Pista da barra de rolagem (Track) e indicador deslizante (Thumb)
+        Box(
+            modifier = Modifier
+                .width(32.dp) // Área de toque confortável para o polegar
+                .height(260.dp)
+                .onSizeChanged { size ->
+                    trackHeightPx = size.height.toFloat().coerceAtLeast(1f)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            // Linha suave de fundo
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(Color.White.copy(alpha = 0.20f), CircleShape)
+            )
+
+            // Thumb deslizante suave
+            val thumbHeightDp = 38.dp
+            val thumbHeightPx = with(density) { thumbHeightDp.toPx() }
+            val availableTravelPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
+            val thumbOffsetY = with(density) { (animatedProgress * availableTravelPx).toDp() }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = thumbOffsetY)
+                    .width(if (isDragging) 8.dp else 5.dp)
+                    .height(thumbHeightDp)
+                    .background(
+                        if (isDragging) CrimsonRed else Color.White.copy(alpha = 0.85f),
+                        CircleShape
+                    )
+            )
         }
     }
 }

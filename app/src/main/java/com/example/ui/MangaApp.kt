@@ -192,15 +192,8 @@ fun MangaApp(
                         navController.navigate(MangaDestinations.DETAIL)
                     },
                     onContinueReading = { progress ->
-                        val dummyManga = MangaModel(
-                            url = progress.mangaUrl,
-                            id = progress.mangaUrl.hashCode().toString(),
-                            title = "",
-                            coverUrl = "",
-                            sourceId = "mangadex"
-                        )
-                        mangaViewModel.openMangaDetails(dummyManga)
-                        navController.navigate(MangaDestinations.DETAIL)
+                        mangaViewModel.resumeReadingFromProgress(progress)
+                        navController.navigate(MangaDestinations.READER)
                     },
                     onReadDownloadedChapter = { manga, chapter ->
                         mangaViewModel.openReader(manga, chapter, listOf(chapter))

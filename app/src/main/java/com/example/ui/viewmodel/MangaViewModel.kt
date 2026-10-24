@@ -612,26 +612,158 @@ class MangaViewModel(
         }
     }
 
+    fun resumeReadingFromProgress(progress: ProgressEntity) {
+        viewModelScope.launch {
+            val cachedManga = repository.getMangaByUrlSync(progress.mangaUrl)
+            val cachedChapter = repository.getChapterByIdSync(progress.chapterId)
+            val cachedChapters = repository.getChaptersForMangaSync(progress.mangaUrl)
+            val detectedSource = repository.detectSourceIdFromUrl(progress.mangaUrl)
+                ?: repository.detectSourceIdFromUrl(progress.chapterUrl)
+                ?: repository.detectSourceIdFromUrl(cachedChapter?.chapterUrl ?: "")
+                ?: "mangadex"
+            val realSourceId = cachedManga?.sourceId?.takeIf { it.isNotBlank() && it != "mangadex" } ?: detectedSource
+
+            val realChapterUrl = progress.chapterUrl.ifBlank {
+                cachedChapter?.chapterUrl ?: progress.chapterId
+            }
+
+            val mangaTitle = cachedManga?.title?.takeIf { it.isNotBlank() }
+                ?: progress.chapterTitle.substringBefore(" - Cap").takeIf { it.isNotBlank() }
+                ?: "Mangá"
+
+            val manga = MangaModel(
+                url = progress.mangaUrl,
+                id = cachedManga?.id ?: progress.mangaUrl.hashCode().toString(),
+                title = mangaTitle,
+                coverUrl = cachedManga?.coverUrl ?: "",
+                description = cachedManga?.description ?: "",
+                sourceId = realSourceId,
+                genres = if (!cachedManga?.genres.isNullOrBlank()) cachedManga!!.genres.split(",") else emptyList()
+            )
+
+            val chapter = ChapterModel(
+                id = progress.chapterId,
+                title = progress.chapterTitle.ifBlank { cachedChapter?.title ?: "Capítulo" },
+                chapterUrl = realChapterUrl
+            )
+
+            val chaptersList = cachedChapters.map { entity ->
+                ChapterModel(
+                    id = entity.id,
+                    title = entity.title,
+                    chapterUrl = entity.chapterUrl,
+                    chapterNumber = entity.chapterNumber,
+                    dateUpload = entity.dateUpload
+                )
+            }.ifEmpty { listOf(chapter) }
+
+            _detailManga.value = manga
+            _detailChapters.value = chaptersList
+
+            openReader(
+                manga = manga,
+                chapter = chapter,
+                chaptersList = chaptersList,
+                initialPage = progress.lastPageRead,
+                initialScrollOffset = progress.scrollOffset
+            )
+
+            if (cachedChapters.isEmpty()) {
+                launch(Dispatchers.IO) {
+                    try {
+                        val currentLang = selectedLanguage.value
+                        val fullChapters = repository.getAggregatedChapters(
+                            mangaTitle = manga.title,
+                            mangaUrl = manga.url,
+                            primarySourceId = manga.sourceId,
+                            language = currentLang
+                        )
+                        if (fullChapters.isNotEmpty()) {
+                            _detailChapters.value = fullChapters
+                            val readerCurrent = _readerState.value
+                            if (readerCurrent.mangaUrl == manga.url) {
+                                _readerState.value = readerCurrent.copy(chaptersList = fullChapters)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     fun openBookmark(bookmark: BookmarkEntity) {
-        val dummyManga = MangaModel(
-            url = bookmark.mangaUrl,
-            id = bookmark.mangaUrl.hashCode().toString(),
-            title = bookmark.mangaTitle,
-            coverUrl = bookmark.mangaCoverUrl,
-            sourceId = "mangadex"
-        )
-        val dummyChapter = ChapterModel(
-            id = bookmark.chapterId,
-            title = bookmark.chapterTitle,
-            chapterUrl = ""
-        )
-        openReader(
-            manga = dummyManga,
-            chapter = dummyChapter,
-            chaptersList = listOf(dummyChapter),
-            initialPage = bookmark.pageIndex,
-            initialScrollOffset = bookmark.scrollOffset
-        )
+        viewModelScope.launch {
+            val cachedManga = repository.getMangaByUrlSync(bookmark.mangaUrl)
+            val cachedChapter = repository.getChapterByIdSync(bookmark.chapterId)
+            val cachedChapters = repository.getChaptersForMangaSync(bookmark.mangaUrl)
+            val detectedSource = repository.detectSourceIdFromUrl(bookmark.mangaUrl)
+                ?: repository.detectSourceIdFromUrl(cachedChapter?.chapterUrl ?: "")
+                ?: "mangadex"
+            val realSourceId = cachedManga?.sourceId?.takeIf { it.isNotBlank() && it != "mangadex" } ?: detectedSource
+
+            val realChapterUrl = cachedChapter?.chapterUrl?.ifBlank { bookmark.chapterId } ?: bookmark.chapterId
+
+            val mangaTitle = bookmark.mangaTitle.ifBlank { cachedManga?.title ?: "Mangá" }
+            val mangaCover = bookmark.mangaCoverUrl.ifBlank { cachedManga?.coverUrl ?: "" }
+
+            val manga = MangaModel(
+                url = bookmark.mangaUrl,
+                id = cachedManga?.id ?: bookmark.mangaUrl.hashCode().toString(),
+                title = mangaTitle,
+                coverUrl = mangaCover,
+                description = cachedManga?.description ?: "",
+                sourceId = realSourceId,
+                genres = if (!cachedManga?.genres.isNullOrBlank()) cachedManga!!.genres.split(",") else emptyList()
+            )
+
+            val chapter = ChapterModel(
+                id = bookmark.chapterId,
+                title = bookmark.chapterTitle.ifBlank { cachedChapter?.title ?: "Capítulo" },
+                chapterUrl = realChapterUrl
+            )
+
+            val chaptersList = cachedChapters.map { entity ->
+                ChapterModel(
+                    id = entity.id,
+                    title = entity.title,
+                    chapterUrl = entity.chapterUrl,
+                    chapterNumber = entity.chapterNumber,
+                    dateUpload = entity.dateUpload
+                )
+            }.ifEmpty { listOf(chapter) }
+
+            _detailManga.value = manga
+            _detailChapters.value = chaptersList
+
+            openReader(
+                manga = manga,
+                chapter = chapter,
+                chaptersList = chaptersList,
+                initialPage = bookmark.pageIndex,
+                initialScrollOffset = bookmark.scrollOffset
+            )
+
+            if (cachedChapters.isEmpty()) {
+                launch(Dispatchers.IO) {
+                    try {
+                        val currentLang = selectedLanguage.value
+                        val fullChapters = repository.getAggregatedChapters(
+                            mangaTitle = manga.title,
+                            mangaUrl = manga.url,
+                            primarySourceId = manga.sourceId,
+                            language = currentLang
+                        )
+                        if (fullChapters.isNotEmpty()) {
+                            _detailChapters.value = fullChapters
+                            val readerCurrent = _readerState.value
+                            if (readerCurrent.mangaUrl == manga.url) {
+                                _readerState.value = readerCurrent.copy(chaptersList = fullChapters)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
     }
 
     private var scrollSyncJob: kotlinx.coroutines.Job? = null
@@ -721,26 +853,51 @@ class MangaViewModel(
         val currentState = _readerState.value
         val chapters = currentState.chaptersList
         val currentCh = currentState.currentChapter ?: return
+        if (chapters.isEmpty()) return
         val currentIndex = chapters.indexOfFirst { it.id == currentCh.id }
         if (currentIndex == -1) return
 
-        val targetIndex = if (next) currentIndex - 1 else currentIndex + 1
-        if (targetIndex in chapters.indices) {
-            val targetChapter = chapters[targetIndex]
-            val mockManga = MangaModel(
-                url = currentState.mangaUrl,
-                id = currentState.mangaUrl.hashCode().toString(),
-                title = currentState.mangaTitle,
-                coverUrl = currentState.mangaCoverUrl,
-                sourceId = currentState.sourceId
-            )
-            openReader(
-                manga = mockManga,
-                chapter = targetChapter,
-                chaptersList = chapters,
-                initialPage = 0,
-                initialScrollOffset = 0
-            )
+        val isDescending = if (chapters.size >= 2) {
+            chapters.first().chapterNumber > chapters.last().chapterNumber
+        } else false
+
+        val targetIndex = if (next) {
+            // Próximo capítulo: número de capítulo maior
+            if (isDescending) currentIndex - 1 else currentIndex + 1
+        } else {
+            // Capítulo anterior: número de capítulo menor
+            if (isDescending) currentIndex + 1 else currentIndex - 1
         }
+
+        if (targetIndex !in chapters.indices) {
+            // Se for o último/primeiro disponível, não faz nada
+            return
+        }
+
+        val targetChapter = chapters[targetIndex]
+        val mockManga = MangaModel(
+            url = currentState.mangaUrl,
+            id = currentState.mangaUrl.hashCode().toString(),
+            title = currentState.mangaTitle,
+            coverUrl = currentState.mangaCoverUrl,
+            sourceId = currentState.sourceId
+        )
+
+        // Reseta explicitamente para página 0 e scroll 0 do novo capítulo antes de carregar
+        _readerState.value = _readerState.value.copy(
+            currentChapter = targetChapter,
+            pages = emptyList(),
+            currentPageIndex = 0,
+            scrollOffset = 0,
+            isLoading = true
+        )
+
+        openReader(
+            manga = mockManga,
+            chapter = targetChapter,
+            chaptersList = chapters,
+            initialPage = 0,
+            initialScrollOffset = 0
+        )
     }
 }
