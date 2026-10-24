@@ -74,6 +74,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.SyncAlt
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
+
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -92,12 +100,18 @@ fun SettingsScreen(
     onReaderInvertColorsToggled: (Boolean) -> Unit = {},
     onPagePreloadToggled: (Boolean) -> Unit = {},
     onClearCacheClicked: () -> Unit = {},
-    onRefreshCacheSize: () -> Unit = {}
+    onRefreshCacheSize: () -> Unit = {},
+    onConnectAniList: (String) -> Unit = {},
+    onDisconnectAniList: () -> Unit = {},
+    onAniListAutoSyncToggled: (Boolean) -> Unit = {},
+    onClearAniListError: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showRulesModal by remember { mutableStateOf(false) }
     var syncKeyInput by remember { mutableStateOf("") }
     var showKeyEditor by remember { mutableStateOf(false) }
+    var showAniListDialog by remember { mutableStateOf(false) }
+    var aniListTokenInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         onRefreshCacheSize()
@@ -875,6 +889,147 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Section: AniList Progress Synchronization (Fase 3.1)
+        val isAniListConnected = !state.aniListToken.isNullOrBlank() && !state.aniListUsername.isNullOrBlank()
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("anilist_card")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.SyncAlt,
+                        contentDescription = null,
+                        tint = Color(0xFF02A9FF),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Sincronização com AniList (Nuvem)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Rastreie seu progresso de leitura automaticamente.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (isAniListConnected) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF02A9FF).copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!state.aniListAvatar.isNullOrBlank()) {
+                            AsyncImage(
+                                model = state.aniListAvatar,
+                                contentDescription = "Avatar AniList",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF02A9FF),
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = state.aniListUsername ?: "Conectado",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Conta conectada via GraphQL",
+                                fontSize = 11.sp,
+                                color = Color(0xFF4CAF50)
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onDisconnectAniList,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("anilist_disconnect_button")
+                        ) {
+                            Text("Sair", fontSize = 12.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Sincronizar Progresso Automaticamente",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "Atualiza o capítulo lido no AniList ao concluir a página.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Switch(
+                            checked = state.aniListAutoSync,
+                            onCheckedChange = { onAniListAutoSyncToggled(it) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF02A9FF)),
+                            modifier = Modifier.testTag("anilist_auto_sync_switch")
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Conecte sua conta AniList para sincronizar seus capítulos lidos na nuvem de forma transparente.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Button(
+                        onClick = {
+                            onClearAniListError()
+                            showAniListDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF02A9FF)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("anilist_connect_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SyncAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Conectar Conta AniList", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Section 2: Dynamic JSON Scraper Rules Engine
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -987,6 +1142,96 @@ fun SettingsScreen(
                 showRulesModal = false
             },
             onDismiss = { showRulesModal = false }
+        )
+    }
+
+    // Modal AniList Authentication Dialog
+    if (showAniListDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                if (!state.isCheckingAniList) {
+                    showAniListDialog = false
+                    onClearAniListError()
+                }
+            },
+            title = {
+                Text("Conectar Conta AniList", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Para autorizar o aplicativo a registrar seu progresso de leitura, você pode gerar um Personal Token no AniList:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://anilist.co/settings/developer"))
+                            context.startActivity(intent)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Abrir AniList Developer ↗", fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Cole o token de acesso pessoal abaixo:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = aniListTokenInput,
+                        onValueChange = { aniListTokenInput = it },
+                        placeholder = { Text("Cole o token do AniList...", fontSize = 12.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("anilist_token_input"),
+                        maxLines = 3
+                    )
+                    if (state.aniListErrorMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = state.aniListErrorMessage,
+                            color = CrimsonRed,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onConnectAniList(aniListTokenInput)
+                    },
+                    enabled = !state.isCheckingAniList && aniListTokenInput.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF02A9FF)),
+                    modifier = Modifier.testTag("anilist_dialog_submit_button")
+                ) {
+                    if (state.isCheckingAniList) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Validar e Conectar")
+                    }
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showAniListDialog = false
+                        onClearAniListError()
+                    },
+                    enabled = !state.isCheckingAniList
+                ) {
+                    Text("Cancelar")
+                }
+            }
         )
     }
 }

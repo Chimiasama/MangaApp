@@ -96,7 +96,8 @@ fun MangaDetailScreen(
     onChapterClick: (ChapterModel) -> Unit,
     onDownloadChapter: (ChapterModel) -> Unit,
     onDownloadMultipleChapters: (List<ChapterModel>) -> Unit = {},
-    onDeleteDownload: (String) -> Unit
+    onDeleteDownload: (String) -> Unit,
+    onSearchRecommendation: (String) -> Unit = {}
 ) {
     val manga = state.manga ?: return
     val context = LocalContext.current
@@ -367,6 +368,79 @@ fun MangaDetailScreen(
                                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Ler Agora")
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // Recomendações MyAnimeList via Jikan API (Fase 3.2)
+                    if (state.malRecommendations.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Recomendações (MyAnimeList)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "MAL",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .background(Color(0xFF2E51A2), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            state.malRecommendations.forEach { rec ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .width(110.dp)
+                                        .clickable { onSearchRecommendation(rec.title) }
+                                        .testTag("mal_rec_${rec.malId}")
+                                ) {
+                                    Column {
+                                        AsyncImage(
+                                            model = rec.imageUrl,
+                                            contentDescription = rec.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(140.dp)
+                                                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                                        )
+                                        Column(modifier = Modifier.padding(6.dp)) {
+                                            Text(
+                                                text = rec.title,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 2,
+                                                lineHeight = 14.sp
+                                            )
+                                            if (rec.votes > 0) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "★ ${rec.votes} votos",
+                                                    fontSize = 9.sp,
+                                                    color = AccentGold
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

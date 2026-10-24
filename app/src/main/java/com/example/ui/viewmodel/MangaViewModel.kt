@@ -23,6 +23,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.data.network.RetrofitClient
+import com.example.data.network.model.MalRecommendationItem
+import com.example.data.sync.AniListSyncManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
+
 data class BrowseUiState(
     val selectedSourceId: String = "all",
     val selectedGenre: String = "all",
@@ -41,7 +47,8 @@ data class MangaDetailUiState(
     val chapters: List<ChapterModel> = emptyList(),
     val isLoading: Boolean = false,
     val isFavorite: Boolean = false,
-    val readingProgress: ProgressEntity? = null
+    val readingProgress: ProgressEntity? = null,
+    val malRecommendations: List<MalRecommendationItem> = emptyList()
 )
 
 data class ReaderUiState(
@@ -165,19 +172,25 @@ class MangaViewModel(
     private val _isFavorite = MutableStateFlow(false)
     private val _currentMangaProgress = MutableStateFlow<ProgressEntity?>(null)
 
+    private val _detailMalRecommendations = MutableStateFlow<List<MalRecommendationItem>>(emptyList())
+    private val aniListSyncManager = AniListSyncManager()
+
     val detailUiState: StateFlow<MangaDetailUiState> = combine(
         _detailManga,
         _detailChapters,
         _isLoadingDetail,
         _isFavorite,
-        _currentMangaProgress
-    ) { manga, chapters, loading, isFav, progress ->
+        combine(_currentMangaProgress, _detailMalRecommendations) { progress, recs ->
+            Pair(progress, recs)
+        }
+    ) { manga, chapters, loading, isFav, (progress, recs) ->
         MangaDetailUiState(
             manga = manga,
             chapters = chapters,
             isLoading = loading,
             isFavorite = isFav,
-            readingProgress = progress
+            readingProgress = progress,
+            malRecommendations = recs
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
 
@@ -434,6 +447,33 @@ class MangaViewModel(
                 _isLoadingDetail.value = false
             }
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _detailMalRecommendations.value = emptyList()
+                val cleanTitle = manga.title.replace(Regex("""(?i)\(pt-br\)|\[pt-br\]|\(color\)|\[color\]|manhwa|webtoon"""), "").trim()
+                val searchRes = RetrofitClient.jikanApiService.searchManga(query = cleanTitle, limit = 1)
+                val malId = searchRes.data?.firstOrNull()?.malId
+                if (malId != null) {
+                    val recRes = RetrofitClient.jikanApiService.getRecommendations(malId)
+                    val recs = recRes.data.orEmpty().take(15).mapNotNull { rec ->
+                        val entry = rec.entry ?: return@mapNotNull null
+                        val imageUrl = entry.images?.jpg?.largeImageUrl
+                            ?: entry.images?.jpg?.imageUrl
+                            ?: entry.images?.webp?.imageUrl
+                            ?: "https://picsum.photos/300/450"
+                        MalRecommendationItem(
+                            malId = entry.malId,
+                            title = entry.title ?: "Sem título",
+                            imageUrl = imageUrl,
+                            votes = rec.votes ?: 0
+                        )
+                    }
+                    _detailMalRecommendations.value = recs
+                }
+            } catch (e: Exception) {
+                _detailMalRecommendations.value = emptyList()
+            }
+        }
     }
 
     fun toggleFavorite(manga: MangaModel) {
@@ -655,6 +695,22 @@ class MangaViewModel(
             pageUrl = pageUrl,
             scrollOffset = scrollOffset
         )
+
+        // 3. AniList Cloud Progress Sync (Fase 3.1)
+        syncProgressToAniList(mangaTitle, chapter.chapterNumber)
+    }
+
+    private fun syncProgressToAniList(mangaTitle: String, chapterNumber: Float) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val token = repository.preferencesRepository.aniListToken.firstOrNull()
+                val autoSync = repository.preferencesRepository.aniListAutoSync.firstOrNull() ?: true
+                if (!token.isNullOrBlank() && autoSync) {
+                    aniListSyncManager.syncProgress(token, mangaTitle, chapterNumber)
+                }
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun updateReaderPageIndex(pageIndex: Int) {

@@ -245,7 +245,11 @@ fun MangaApp(
                     onReaderInvertColorsToggled = { inverted -> settingsViewModel.setReaderInvertColors(inverted) },
                     onPagePreloadToggled = { enabled -> settingsViewModel.setPagePreloadEnabled(enabled) },
                     onClearCacheClicked = { settingsViewModel.clearImageCache(context) },
-                    onRefreshCacheSize = { settingsViewModel.refreshCacheSize(context) }
+                    onRefreshCacheSize = { settingsViewModel.refreshCacheSize(context) },
+                    onConnectAniList = { token -> settingsViewModel.connectAniList(token) },
+                    onDisconnectAniList = { settingsViewModel.disconnectAniList() },
+                    onAniListAutoSyncToggled = { enabled -> settingsViewModel.setAniListAutoSync(enabled) },
+                    onClearAniListError = { settingsViewModel.clearAniListError() }
                 )
             }
 
@@ -281,6 +285,12 @@ fun MangaApp(
                     },
                     onDeleteDownload = { chapterId ->
                         mangaViewModel.deleteDownload(chapterId)
+                    },
+                    onSearchRecommendation = { title ->
+                        mangaViewModel.searchManga(title, saveToHistory = true)
+                        navController.navigate(MangaDestinations.BROWSE) {
+                            popUpTo(MangaDestinations.BROWSE) { inclusive = false }
+                        }
                     }
                 )
             }

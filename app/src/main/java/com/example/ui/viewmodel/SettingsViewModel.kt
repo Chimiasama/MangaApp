@@ -25,7 +25,13 @@ data class SettingsUiState(
     val readerBackgroundColor: String = "OLED",
     val readerInvertColors: Boolean = false,
     val pagePreloadEnabled: Boolean = true,
-    val cacheSizeFormatted: String = "0 B"
+    val cacheSizeFormatted: String = "0 B",
+    val aniListToken: String? = null,
+    val aniListUsername: String? = null,
+    val aniListAvatar: String? = null,
+    val aniListAutoSync: Boolean = true,
+    val isCheckingAniList: Boolean = false,
+    val aniListErrorMessage: String? = null
 )
 
 private data class ReaderPrefs(
@@ -38,19 +44,31 @@ private data class ReaderPrefs(
     val preloadEnabled: Boolean
 )
 
+private data class AniListPrefs(
+    val token: String?,
+    val username: String?,
+    val avatar: String?,
+    val autoSync: Boolean
+)
+
 private data class SettingsUiFlags(
     val autoSync: Boolean,
     val rulesStatus: Boolean?,
-    val cacheSize: String
+    val cacheSize: String,
+    val isCheckingAniList: Boolean,
+    val aniListError: String?
 )
 
 class SettingsViewModel(
     private val repository: MangaRepository,
-    private val preferencesRepository: UserPreferencesRepository
+    private val preferencesRepository: UserPreferencesRepository,
+    private val aniListSyncManager: com.example.data.sync.AniListSyncManager = com.example.data.sync.AniListSyncManager()
 ) : ViewModel() {
 
     private val _rulesStatus = MutableStateFlow<Boolean?>(null)
     private val _cacheSize = MutableStateFlow("0 B")
+    private val _isCheckingAniList = MutableStateFlow(false)
+    private val _aniListErrorMessage = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(
@@ -73,18 +91,28 @@ class SettingsViewModel(
                     invertColors = args[5] as Boolean,
                     preloadEnabled = args[6] as Boolean
                 )
+            },
+            combine(
+                preferencesRepository.aniListToken,
+                preferencesRepository.aniListUsername,
+                preferencesRepository.aniListAvatar,
+                preferencesRepository.aniListAutoSync
+            ) { token, username, avatar, autoSync ->
+                AniListPrefs(token, username, avatar, autoSync)
             }
-        ) { customJson, reader ->
-            Pair(customJson ?: "", reader)
+        ) { customJson, reader, anilist ->
+            Triple(customJson ?: "", reader, anilist)
         },
         combine(
             preferencesRepository.autoCloudSync,
             _rulesStatus,
-            _cacheSize
-        ) { autoSync, rulesStatus, cacheSize ->
-            SettingsUiFlags(autoSync, rulesStatus, cacheSize)
+            _cacheSize,
+            _isCheckingAniList,
+            _aniListErrorMessage
+        ) { autoSync, rulesStatus, cacheSize, isCheckingAniList, aniListError ->
+            SettingsUiFlags(autoSync, rulesStatus, cacheSize, isCheckingAniList, aniListError)
         }
-    ) { (customJson, reader), flags ->
+    ) { (customJson, reader, anilist), flags ->
         SettingsUiState(
             customRulesJson = customJson,
             themeMode = reader.theme,
@@ -96,7 +124,13 @@ class SettingsViewModel(
             pagePreloadEnabled = reader.preloadEnabled,
             cacheSizeFormatted = flags.cacheSize,
             autoCloudSync = flags.autoSync,
-            rulesUpdateSuccess = flags.rulesStatus
+            rulesUpdateSuccess = flags.rulesStatus,
+            aniListToken = anilist.token,
+            aniListUsername = anilist.username,
+            aniListAvatar = anilist.avatar,
+            aniListAutoSync = anilist.autoSync,
+            isCheckingAniList = flags.isCheckingAniList,
+            aniListErrorMessage = flags.aniListError
         )
     }.stateIn(
         scope = viewModelScope,
@@ -181,5 +215,46 @@ class SettingsViewModel(
         viewModelScope.launch {
             preferencesRepository.setPagePreloadEnabled(enabled)
         }
+    }
+
+    fun connectAniList(token: String) {
+        val cleanToken = token.trim().removePrefix("Bearer ").trim()
+        if (cleanToken.isBlank()) {
+            _aniListErrorMessage.value = "O token não pode ser vazio."
+            return
+        }
+        viewModelScope.launch {
+            _isCheckingAniList.value = true
+            _aniListErrorMessage.value = null
+            val result = aniListSyncManager.validateToken(cleanToken)
+            result.onSuccess { viewer ->
+                preferencesRepository.saveAniListAuth(
+                    token = cleanToken,
+                    username = viewer.name,
+                    avatarUrl = viewer.avatar?.large ?: viewer.avatar?.medium
+                )
+                _isCheckingAniList.value = false
+            }.onFailure { ex ->
+                _aniListErrorMessage.value = ex.message ?: "Falha ao validar conta AniList"
+                _isCheckingAniList.value = false
+            }
+        }
+    }
+
+    fun disconnectAniList() {
+        viewModelScope.launch {
+            preferencesRepository.clearAniListAuth()
+            _aniListErrorMessage.value = null
+        }
+    }
+
+    fun setAniListAutoSync(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAniListAutoSync(enabled)
+        }
+    }
+
+    fun clearAniListError() {
+        _aniListErrorMessage.value = null
     }
 }
