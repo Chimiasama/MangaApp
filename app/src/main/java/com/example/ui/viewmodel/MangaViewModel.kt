@@ -674,11 +674,17 @@ class MangaViewModel(
             val mockManga = MangaModel(
                 url = currentState.mangaUrl,
                 id = currentState.mangaUrl.hashCode().toString(),
-                title = "",
-                coverUrl = "",
+                title = currentState.mangaTitle,
+                coverUrl = currentState.mangaCoverUrl,
                 sourceId = currentState.sourceId
             )
-            openReader(mockManga, targetChapter, chapters)
+            openReader(
+                manga = mockManga,
+                chapter = targetChapter,
+                chaptersList = chapters,
+                initialPage = 0,
+                initialScrollOffset = 0
+            )
         }
     }
 }
