@@ -28,6 +28,8 @@ class GreetingScreenshotTest {
       }
     }
 
-    composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
+    val output = java.io.File("build/outputs/roborazzi/greeting.png")
+    output.parentFile?.mkdirs()
+    composeTestRule.onRoot().captureRoboImage(filePath = output.path)
   }
 }

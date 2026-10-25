@@ -524,9 +524,13 @@ class MangaRepository(
             } else {
                 pages
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             try {
                 sourceRegistry["mangadex"]?.getPages(chapterId) ?: emptyList()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 emptyList()
             }

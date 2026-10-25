@@ -22,6 +22,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import com.example.ui.reader.ReaderViewport
+import com.example.ui.reader.adjacentChapter
 
 import com.example.data.network.RetrofitClient
 import com.example.data.network.model.MalRecommendationItem
@@ -63,7 +68,12 @@ data class ReaderUiState(
     val isLoading: Boolean = false,
     val chaptersList: List<ChapterModel> = emptyList(),
     val isOfflineDownloaded: Boolean = false,
-    val bookmarkedPages: Set<Int> = emptySet()
+    val bookmarkedPages: Set<Int> = emptySet(),
+    val viewport: ReaderViewport? = null,
+    val contentVersion: Long = 0,
+    val pendingChapter: ChapterModel? = null,
+    val errorMessage: String? = null,
+    val nextChapterFirstPages: List<String> = emptyList()
 )
 
 private data class MangaData(
@@ -80,7 +90,11 @@ private data class BrowseParams(
 )
 
 class MangaViewModel(
-    val repository: MangaRepository
+    val repository: MangaRepository,
+    private val loadBrowseOnInit: Boolean = true,
+    private val readerPages: suspend (ChapterModel, String) -> List<String> = { chapter, source ->
+        repository.getPages(chapter.chapterUrl, chapter.id, source)
+    }
 ) : ViewModel() {
 
     private val _selectedSourceId = MutableStateFlow("all")
@@ -200,7 +214,7 @@ class MangaViewModel(
 
     init {
         // Initial load of browse items
-        loadBrowseManga()
+        if (loadBrowseOnInit) loadBrowseManga()
     }
 
     private fun buildCarouselSections(allMangas: List<MangaModel>): List<GenreCarouselSection> {
@@ -536,49 +550,117 @@ class MangaViewModel(
         }
     }
 
+    private var readerJob: Job? = null
+    private var readerBookmarksJob: Job? = null
+    private var chapterPrefetchJob: Job? = null
+    private var readerRequestId = 0L
+    private var retryReaderRequest: (() -> Unit)? = null
+    private var prefetchedChapter: Pair<String, List<String>>? = null
+
     fun openReader(
         manga: MangaModel,
         chapter: ChapterModel,
         chaptersList: List<ChapterModel>,
         initialPage: Int? = null,
-        initialScrollOffset: Int? = null
+        initialScrollOffset: Int? = null,
+        restoreViewport: Boolean = initialPage == null
     ) {
-        viewModelScope.launch {
-            _readerState.value = ReaderUiState(
-                mangaUrl = manga.url,
-                mangaTitle = manga.title,
-                mangaCoverUrl = manga.coverUrl,
-                sourceId = manga.sourceId,
-                currentChapter = chapter,
-                isLoading = true,
-                chaptersList = chaptersList
-            )
-
-            // Collect bookmarked pages for this chapter
-            viewModelScope.launch {
-                repository.getBookmarksForChapter(chapter.id).collect { chapterBookmarks ->
-                    val set = chapterBookmarks.map { it.pageIndex }.toSet()
-                    _readerState.value = _readerState.value.copy(bookmarkedPages = set)
+        val previous = _readerState.value
+        val request = ++readerRequestId
+        readerJob?.cancel()
+        if (previous.mangaUrl != manga.url) readerBookmarksJob?.cancel()
+        chapterPrefetchJob?.cancel()
+        scrollSyncJob?.cancel()
+        retryReaderRequest = { openReader(manga, chapter, chaptersList, initialPage, initialScrollOffset, restoreViewport) }
+        val retained = if (previous.mangaUrl == manga.url) previous else ReaderUiState(
+            mangaUrl = manga.url, mangaTitle = manga.title, mangaCoverUrl = manga.coverUrl,
+            sourceId = manga.sourceId, chaptersList = chaptersList
+        )
+        _readerState.value = retained.copy(isLoading = true, pendingChapter = chapter, errorMessage = null)
+        readerJob = viewModelScope.launch {
+            try {
+                if (previous.pages.isNotEmpty()) persistReaderSnapshot(previous)
+                val cacheKey = "${manga.url}|${manga.sourceId}|${chapter.id}"
+                val pages = prefetchedChapter?.takeIf { it.first == cacheKey }?.second
+                    ?: readerPages(chapter, manga.sourceId)
+                ensureActive()
+                if (request != readerRequestId) return@launch
+                check(pages.isNotEmpty()) { "Nenhuma página disponível. Verifique a conexão ou tente outra fonte." }
+                val progress = repository.getProgressForManga(manga.url).first()
+                val saved = repository.preferencesRepository.getReaderViewport(manga.url)
+                    ?.takeIf { it.chapterId == chapter.id && restoreViewport }
+                val savedPage = if (progress?.chapterId == chapter.id) progress.lastPageRead else 0
+                val savedOffset = if (progress?.chapterId == chapter.id) progress.scrollOffset else 0
+                val scale = if (previous.mangaUrl == manga.url) previous.viewport?.scale
+                    ?: repository.preferencesRepository.readerOptions.first().preferredScale
+                    else repository.preferencesRepository.readerOptions.first().preferredScale
+                val target = (saved?.pageIndex ?: initialPage ?: savedPage).coerceIn(0, pages.lastIndex)
+                _readerState.value = ReaderUiState(
+                    mangaUrl = manga.url, mangaTitle = manga.title, mangaCoverUrl = manga.coverUrl,
+                    sourceId = manga.sourceId, currentChapter = chapter, pages = pages,
+                    currentPageIndex = target, scrollOffset = initialScrollOffset ?: savedOffset,
+                    chaptersList = chaptersList, isOfflineDownloaded = pages.any { it.startsWith("file:") },
+                    viewport = saved?.copy(pageIndex = target) ?: ReaderViewport(chapter.id, target, scale = scale),
+                    contentVersion = request
+                )
+                readerBookmarksJob?.cancel()
+                readerBookmarksJob = viewModelScope.launch {
+                    repository.getBookmarksForChapter(chapter.id).collect { bookmarks ->
+                        if (_readerState.value.currentChapter?.id == chapter.id) {
+                            _readerState.value = _readerState.value.copy(bookmarkedPages = bookmarks.map { it.pageIndex }.toSet())
+                        }
+                    }
                 }
+                prefetchNextChapter()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (request == readerRequestId) _readerState.value = _readerState.value.copy(
+                    isLoading = false, errorMessage = error.message ?: "Não foi possível carregar o capítulo.",
+                    pendingChapter = chapter
+                )
             }
+        }
+    }
 
-            val pages = repository.getPages(chapter.chapterUrl, chapter.id, manga.sourceId)
-            val isOffline = pages.any { it.startsWith("file://") }
-            
-            // Get last saved page and exact scroll offset if available from Room
-            val progress = repository.getProgressForManga(manga.url).first()
-            val savedPage = if (progress?.chapterId == chapter.id) progress.lastPageRead else 0
-            val savedOffset = if (progress?.chapterId == chapter.id) progress.scrollOffset else 0
-            val targetPage = initialPage ?: savedPage
-            val targetOffset = initialScrollOffset ?: savedOffset
+    fun retryReaderChapter() { if (!_readerState.value.isLoading) retryReaderRequest?.invoke() }
 
-            _readerState.value = _readerState.value.copy(
-                pages = pages,
-                currentPageIndex = if (targetPage in pages.indices) targetPage else 0,
-                scrollOffset = targetOffset,
-                isLoading = false,
-                isOfflineDownloaded = isOffline
-            )
+    fun selectReaderChapter(chapter: ChapterModel) {
+        val state = _readerState.value
+        if (state.isLoading || chapter.id == state.currentChapter?.id) return
+        openReader(MangaModel(url = state.mangaUrl, id = state.mangaUrl, title = state.mangaTitle,
+            coverUrl = state.mangaCoverUrl, sourceId = state.sourceId), chapter, state.chaptersList, 0, 0)
+    }
+
+    fun updateReaderOptions(options: com.example.ui.reader.ReaderOptions) {
+        viewModelScope.launch { repository.preferencesRepository.setReaderOptions(options) }
+    }
+
+    fun updateReaderViewport(viewport: ReaderViewport) {
+        val state = _readerState.value
+        if (state.isLoading || state.currentChapter?.id != viewport.chapterId) return
+        _readerState.value = state.copy(viewport = viewport)
+        scheduleReaderSave()
+    }
+
+    private fun prefetchNextChapter() {
+        val state = _readerState.value
+        if (state.isLoading || state.currentPageIndex < state.pages.size - 2) return
+        val next = adjacentChapter(state.chaptersList, state.currentChapter?.id, true) ?: return
+        val key = "${state.mangaUrl}|${state.sourceId}|${next.id}"
+        if (prefetchedChapter?.first == key || chapterPrefetchJob?.isActive == true) return
+        chapterPrefetchJob = viewModelScope.launch {
+            if (!repository.preferencesRepository.pagePreloadEnabled.first() ||
+                repository.preferencesRepository.batterySaverEnabled.first()) return@launch
+            try {
+                val pages = readerPages(next, state.sourceId)
+                ensureActive()
+                if (_readerState.value.currentChapter?.id == state.currentChapter?.id && pages.isNotEmpty()) {
+                    prefetchedChapter = key to pages
+                    _readerState.value = _readerState.value.copy(nextChapterFirstPages = pages.take(2))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Speculative loading must never interrupt reading. */ }
         }
     }
 
@@ -665,7 +747,8 @@ class MangaViewModel(
                 chapter = chapter,
                 chaptersList = chaptersList,
                 initialPage = progress.lastPageRead,
-                initialScrollOffset = progress.scrollOffset
+                initialScrollOffset = progress.scrollOffset,
+                restoreViewport = true
             )
 
             if (cachedChapters.isEmpty()) {
@@ -769,67 +852,39 @@ class MangaViewModel(
     private var scrollSyncJob: kotlinx.coroutines.Job? = null
 
     fun updateReaderScrollPosition(pageIndex: Int, scrollOffset: Int) {
-        val currentState = _readerState.value
-        val chapter = currentState.currentChapter ?: return
-        val totalPages = currentState.pages.size
-        if (totalPages == 0) return
+        val state = _readerState.value
+        if (state.isLoading || state.pages.isEmpty()) return
+        _readerState.value = state.copy(currentPageIndex = pageIndex.coerceIn(state.pages.indices), scrollOffset = scrollOffset)
+        scheduleReaderSave()
+        prefetchNextChapter()
+    }
 
-        val newIndex = pageIndex.coerceIn(0, totalPages - 1)
-        _readerState.value = currentState.copy(
-            currentPageIndex = newIndex,
-            scrollOffset = scrollOffset
-        )
-
+    private fun scheduleReaderSave() {
         scrollSyncJob?.cancel()
+        val snapshot = _readerState.value
         scrollSyncJob = viewModelScope.launch {
             kotlinx.coroutines.delay(300)
-            persistCurrentScrollPosition(newIndex, scrollOffset)
+            persistReaderSnapshot(snapshot)
         }
     }
 
     fun flushReaderScrollPosition() {
         scrollSyncJob?.cancel()
-        val currentState = _readerState.value
-        if (currentState.pages.isNotEmpty()) {
-            viewModelScope.launch {
-                persistCurrentScrollPosition(currentState.currentPageIndex, currentState.scrollOffset)
-            }
-        }
+        val snapshot = _readerState.value
+        if (snapshot.pages.isNotEmpty()) viewModelScope.launch { persistReaderSnapshot(snapshot) }
     }
 
-    private suspend fun persistCurrentScrollPosition(pageIndex: Int, scrollOffset: Int) {
-        val currentState = _readerState.value
-        val chapter = currentState.currentChapter ?: return
-        val totalPages = currentState.pages.size
-        if (totalPages == 0) return
-
-        // 1. Sync reading progress with exact scroll offset to local Room
-        repository.saveReadingProgress(
-            mangaUrl = currentState.mangaUrl,
-            chapterId = chapter.id,
-            chapterTitle = chapter.title,
-            chapterUrl = chapter.chapterUrl,
-            lastPageRead = pageIndex,
-            totalPages = totalPages,
-            scrollOffset = scrollOffset
-        )
-
-        // 2. Automatically sync bookmark for exact scroll position to local Room
-        val pageUrl = currentState.pages.getOrElse(pageIndex) { "" }
-        val mangaTitle = if (currentState.mangaTitle.isBlank()) "Mangá" else currentState.mangaTitle
-        repository.saveAutoScrollBookmark(
-            mangaUrl = currentState.mangaUrl,
-            mangaTitle = mangaTitle,
-            mangaCoverUrl = currentState.mangaCoverUrl,
-            chapterId = chapter.id,
-            chapterTitle = chapter.title,
-            pageIndex = pageIndex,
-            pageUrl = pageUrl,
-            scrollOffset = scrollOffset
-        )
-
-        // 3. AniList Cloud Progress Sync (Fase 3.1)
-        syncProgressToAniList(mangaTitle, chapter.chapterNumber)
+    private suspend fun persistReaderSnapshot(state: ReaderUiState) {
+        val chapter = state.currentChapter ?: return
+        if (state.pages.isEmpty()) return
+        state.viewport?.let { repository.preferencesRepository.saveReaderViewport(state.mangaUrl, it) }
+        repository.saveReadingProgress(state.mangaUrl, chapter.id, chapter.title, chapter.chapterUrl,
+            state.currentPageIndex, state.pages.size, state.scrollOffset)
+        repository.saveAutoScrollBookmark(mangaUrl = state.mangaUrl, mangaTitle = state.mangaTitle.ifBlank { "Mangá" },
+            mangaCoverUrl = state.mangaCoverUrl, chapterId = chapter.id, chapterTitle = chapter.title,
+            pageIndex = state.currentPageIndex, pageUrl = state.pages.getOrElse(state.currentPageIndex) { "" },
+            scrollOffset = state.scrollOffset)
+        syncProgressToAniList(state.mangaTitle, chapter.chapterNumber)
     }
 
     private fun syncProgressToAniList(mangaTitle: String, chapterNumber: Float) {
@@ -850,54 +905,8 @@ class MangaViewModel(
     }
 
     fun navigateChapter(next: Boolean) {
-        val currentState = _readerState.value
-        val chapters = currentState.chaptersList
-        val currentCh = currentState.currentChapter ?: return
-        if (chapters.isEmpty()) return
-        val currentIndex = chapters.indexOfFirst { it.id == currentCh.id }
-        if (currentIndex == -1) return
-
-        val isDescending = if (chapters.size >= 2) {
-            chapters.first().chapterNumber > chapters.last().chapterNumber
-        } else false
-
-        val targetIndex = if (next) {
-            // Próximo capítulo: número de capítulo maior
-            if (isDescending) currentIndex - 1 else currentIndex + 1
-        } else {
-            // Capítulo anterior: número de capítulo menor
-            if (isDescending) currentIndex + 1 else currentIndex - 1
-        }
-
-        if (targetIndex !in chapters.indices) {
-            // Se for o último/primeiro disponível, não faz nada
-            return
-        }
-
-        val targetChapter = chapters[targetIndex]
-        val mockManga = MangaModel(
-            url = currentState.mangaUrl,
-            id = currentState.mangaUrl.hashCode().toString(),
-            title = currentState.mangaTitle,
-            coverUrl = currentState.mangaCoverUrl,
-            sourceId = currentState.sourceId
-        )
-
-        // Reseta explicitamente para página 0 e scroll 0 do novo capítulo antes de carregar
-        _readerState.value = _readerState.value.copy(
-            currentChapter = targetChapter,
-            pages = emptyList(),
-            currentPageIndex = 0,
-            scrollOffset = 0,
-            isLoading = true
-        )
-
-        openReader(
-            manga = mockManga,
-            chapter = targetChapter,
-            chaptersList = chapters,
-            initialPage = 0,
-            initialScrollOffset = 0
-        )
+        val state = _readerState.value
+        if (state.isLoading) return
+        adjacentChapter(state.chaptersList, state.currentChapter?.id, next)?.let(::selectReaderChapter)
     }
 }

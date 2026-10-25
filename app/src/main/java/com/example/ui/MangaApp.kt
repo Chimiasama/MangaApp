@@ -43,6 +43,7 @@ import com.example.ui.theme.PrimaryPurple
 import com.example.ui.theme.TextSecondaryDark
 import com.example.ui.viewmodel.MangaViewModel
 import com.example.ui.viewmodel.SettingsViewModel
+import com.example.ui.reader.ReaderOptions
 
 object MangaDestinations {
     const val BROWSE = "browse"
@@ -62,6 +63,7 @@ fun MangaApp(
     val browseState by mangaViewModel.browseUiState.collectAsStateWithLifecycle()
     val detailState by mangaViewModel.detailUiState.collectAsStateWithLifecycle()
     val readerState by mangaViewModel.readerUiState.collectAsStateWithLifecycle()
+    val readerOptions by mangaViewModel.repository.preferencesRepository.readerOptions.collectAsStateWithLifecycle(initialValue = ReaderOptions())
     val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
 
     val favorites by mangaViewModel.favorites.collectAsStateWithLifecycle()
@@ -312,6 +314,11 @@ fun MangaApp(
             ) {
                 ReaderScreen(
                     state = readerState,
+                    options = readerOptions,
+                    onOptionsChanged = mangaViewModel::updateReaderOptions,
+                    onViewportChanged = mangaViewModel::updateReaderViewport,
+                    onChapterSelected = mangaViewModel::selectReaderChapter,
+                    onRetryChapter = mangaViewModel::retryReaderChapter,
                     readerMode = settingsState.readerMode,
                     readerOrientation = settingsState.readerOrientation,
                     defaultFullscreen = settingsState.defaultFullscreenReader,

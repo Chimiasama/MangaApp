@@ -10,10 +10,58 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
+import androidx.datastore.preferences.core.floatPreferencesKey
+import com.example.ui.reader.ReaderOptions
+import com.example.ui.reader.ReaderViewport
+import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_preferences")
 
 class UserPreferencesRepository(private val context: Context) {
+
+    private val steppedZoom = booleanPreferencesKey("reader_stepped_zoom")
+    private val controlsTimeout = intPreferencesKey("reader_controls_timeout")
+    private val preferredScale = floatPreferencesKey("reader_preferred_scale")
+
+    val readerOptions: Flow<ReaderOptions> = context.dataStore.data.map { prefs ->
+        ReaderOptions(prefs[steppedZoom] ?: false, (prefs[controlsTimeout] ?: 4).coerceIn(0, 15),
+            (prefs[preferredScale] ?: 1f).coerceIn(1f, 4.5f))
+    }
+
+    suspend fun setReaderOptions(options: ReaderOptions) {
+        context.dataStore.edit {
+            it[steppedZoom] = options.steppedDoubleTap
+            it[controlsTimeout] = options.controlsTimeoutSeconds.coerceIn(0, 15)
+            it[preferredScale] = options.preferredScale.coerceIn(1f, 4.5f)
+        }
+    }
+
+    private fun viewportKey(mangaUrl: String) = stringPreferencesKey("reader_viewport_" +
+        java.security.MessageDigest.getInstance("SHA-256").digest(mangaUrl.toByteArray()).joinToString("") { "%02x".format(it) })
+
+    suspend fun getReaderViewport(mangaUrl: String): ReaderViewport? {
+        val json = context.dataStore.data.first()[viewportKey(mangaUrl)] ?: return null
+        return runCatching {
+        val value = JSONObject(json)
+        ReaderViewport(value.getString("chapter"), value.getInt("page"),
+            value.optDouble("offset", 0.0).toFloat().coerceIn(0f, 1f),
+            value.optDouble("scale", 1.0).toFloat().coerceIn(1f, 4.5f),
+            value.optDouble("x", 0.0).toFloat().coerceIn(-1f, 1f),
+            value.optDouble("y", 0.0).toFloat().coerceIn(-1f, 1f),
+            value.optString("mode", "WEBTOON"))
+        }.getOrNull()
+    }
+
+    suspend fun saveReaderViewport(mangaUrl: String, viewport: ReaderViewport) {
+        val json = JSONObject().put("chapter", viewport.chapterId).put("page", viewport.pageIndex)
+            .put("offset", viewport.offsetFraction).put("scale", viewport.scale)
+            .put("x", viewport.panXFraction).put("y", viewport.panYFraction).put("mode", viewport.mode)
+        context.dataStore.edit {
+            it[viewportKey(mangaUrl)] = json.toString()
+            it[preferredScale] = viewport.scale.coerceIn(1f, 4.5f)
+        }
+    }
 
     companion object {
         const val DEFAULT_LANGUAGE = "pt-br"

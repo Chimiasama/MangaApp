@@ -27,8 +27,8 @@ object PagePreloaderManager {
         forwardCount: Int = 3,
         backwardCount: Int = 1,
         nextChapterFirstPages: List<String> = emptyList()
-    ) {
-        if (pages.isEmpty()) return
+    ): Job? {
+        if (pages.isEmpty()) return null
 
         prefetchJob?.cancel()
         prefetchJob = scope.launch(Dispatchers.IO) {
@@ -93,5 +93,6 @@ object PagePreloaderManager {
                 }
             }
         }
+        return prefetchJob
     }
 }
