@@ -20,10 +20,18 @@ class MangaDashSource(private val pdfPages: suspend (String) -> List<String>,
     override suspend fun getPopularManga() = getPopularManga(lang)
     override suspend fun getPopularManga(language: String) = searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)
-    override suspend fun searchManga(query: String, language: String): List<MangaModel> {
+    override suspend fun searchManga(query: String, language: String): List<MangaModel> = searchManga(query, language, "all")
+    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
         if (!supportsLanguage(language)) return emptyList()
+        val categoryValue = if (MangaCategories.isAll(category)) null else {
+            val filters = Jsoup.parse(fetch("$baseUrl/mangas"), baseUrl)
+            filters.select("#filterCategoria option").firstOrNull {
+                MangaCategories.key(it.text().replace(Regex("\\s*\\(\\d+\\)$"), "")) == MangaCategories.key(category)
+            }?.attr("value")?.takeIf { it.isNotBlank() } ?: return emptyList()
+        }
         val url = "$baseUrl/api/mangas/list".toHttpUrl().newBuilder().addQueryParameter("page", "1")
-            .addQueryParameter("q", query).addQueryParameter("sort", "populares").build().toString()
+            .addQueryParameter("q", query).addQueryParameter("sort", "populares")
+            .apply { if (categoryValue != null) addQueryParameter("categoria", categoryValue) }.build().toString()
         val response = json(fetch(url))
         val items = response["items"] as? List<*> ?: throw IOException("MangaDash não entregou o catálogo.")
         return items.mapNotNull { item ->
@@ -34,7 +42,8 @@ class MangaDashSource(private val pdfPages: suspend (String) -> List<String>,
             val title = data["nome"] as? String ?: return@mapNotNull null
             val cover = data["capa"] as? String ?: ""
             MangaModel("$baseUrl/manga/$key-$slug", "$id:$key", title,
-                if (cover.startsWith("http")) cover else absolute(if (cover.startsWith("/")) cover else "/static/covers/$cover"), sourceId = id)
+                if (cover.startsWith("http")) cover else absolute(if (cover.startsWith("/")) cover else "/static/covers/$cover"), sourceId = id,
+                genres = if (categoryValue == null) emptyList() else listOf(MangaCategories.key(category)))
         }
     }
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel {

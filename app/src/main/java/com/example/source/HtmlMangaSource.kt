@@ -41,26 +41,45 @@ class HtmlMangaSource(
     override suspend fun getPopularManga(language: String): List<MangaModel> =
         if (!ChapterLanguage.matches(lang, language)) emptyList() else searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)
-    override suspend fun searchManga(query: String, language: String): List<MangaModel> {
+    override suspend fun searchManga(query: String, language: String): List<MangaModel> = searchManga(query, language, "all")
+    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
         if (!ChapterLanguage.matches(lang, language)) return emptyList()
+        val categoryValue = if (MangaCategories.isAll(category)) null else {
+            val filters = document(if (site == Site.WEEBCENTRAL) "$baseUrl/search" else "$baseUrl/manga/")
+            when (site) {
+                Site.WEEBCENTRAL -> filters.select("input[id$=-value]").firstOrNull {
+                    MangaCategories.key(it.attr("value")) == MangaCategories.key(category)
+                }?.attr("value")
+                Site.LEERCAPITULO -> filters.select("select[name=genre] option").firstOrNull {
+                    MangaCategories.key(it.text()) == MangaCategories.key(category)
+                }?.attr("value")?.let { baseUrl.toHttpUrl().resolve(it)?.queryParameter("genre") }
+            } ?: return emptyList()
+        }
         val url = when (site) {
             Site.WEEBCENTRAL -> "$baseUrl/search/data".toHttpUrl().newBuilder()
                 .addQueryParameter("text", query).addQueryParameter("limit", "50")
                 .addQueryParameter("offset", "0").addQueryParameter("display_mode", "Full Display")
+                .apply { if (categoryValue != null) addQueryParameter("included_tag", categoryValue) }
                 .addQueryParameter("sort", "Popularity").addQueryParameter("order", "Descending").build().toString()
-            Site.LEERCAPITULO -> "$baseUrl/manga/".toHttpUrl().newBuilder().addQueryParameter("q", query).build().toString()
+            Site.LEERCAPITULO -> "$baseUrl/manga/".toHttpUrl().newBuilder().addQueryParameter("q", query)
+                .apply { if (categoryValue != null) addQueryParameter("genre", categoryValue) }.build().toString()
         }
         val doc = document(url)
         return when (site) {
             Site.WEEBCENTRAL -> doc.select("article > section > a[href*=/series/]").mapNotNull { a ->
                 val title = a.selectFirst("img")?.attr("alt")?.removeSuffix(" cover")?.trim().orEmpty()
-                if (title.isEmpty()) null else model(a.absUrl("href"), title, image(a))
+                val genres = a.closest("article")?.select("div:has(> strong:contains(Tag)) > span")
+                    ?.map { it.text().trim().trimEnd(',') }.orEmpty()
+                if (title.isEmpty()) null else model(a.absUrl("href"), title, image(a), genres)
             }
             Site.LEERCAPITULO -> doc.select("article.lc-card").mapNotNull { card ->
                 val a = card.selectFirst("a.lc-card-name") ?: return@mapNotNull null
                 model(a.absUrl("href"), a.text(), image(card))
             }
-        }.distinctBy { it.url }
+        }.distinctBy { it.url }.map { manga ->
+            if (categoryValue == null || manga.genres.isNotEmpty()) manga
+            else manga.copy(genres = listOf(MangaCategories.key(category)))
+        }
     }
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel {
         val doc = document(mangaUrl)

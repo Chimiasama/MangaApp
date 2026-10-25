@@ -166,16 +166,37 @@ class MangaDexSource(
         emptyList()
     }
 
+    private var categoryTags: List<com.example.data.network.model.MangaDexTagDto>? = null
+
+    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
+        if (MangaCategories.isAll(category)) return if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
+        val key = MangaCategories.key(category)
+        val demographic = when (key) {
+            "Shounen" -> "shounen"; "Shoujo" -> "shoujo"; "Seinen" -> "seinen"; "Josei" -> "josei"
+            else -> null
+        }
+        val tags = if (demographic != null) null else {
+            val available = categoryTags ?: apiService.getMangaTags().data.also { categoryTags = it }
+            val tag = available.firstOrNull { tag ->
+                tag.attributes?.name?.values.orEmpty().any { MangaCategories.key(it) == key }
+            }?.id ?: return emptyList()
+            listOf(tag)
+        }
+        val languages = when (language) {
+            "pt-br" -> listOf("pt-br", "pt"); "en" -> listOf("en"); "es" -> listOf("es", "es-la"); else -> null
+        }
+        // Keep category and language constraints even when the API returns no matches.
+        return apiService.getFilteredMangaList(title = query.trim().takeIf { it.isNotEmpty() },
+            demographics = demographic?.let(::listOf), includedTags = tags, translatedLanguages = languages)
+            .data.orEmpty().map { it.toMangaModel(baseUrl, id) }
+            .filter { MangaCategories.matches(it.genres, category) }
+    }
+
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel = withContext(Dispatchers.IO) {
         val mangaId = mangaUrl.substringAfterLast("/").trim()
-        try {
-            val response = apiService.getMangaDetails(mangaId, includes = listOf("cover_art", "author"))
-            val dto = response.data ?: return@withContext createFallbackDetails(mangaId)
-            dto.toMangaModel(baseUrl, id)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            createFallbackDetails(mangaId)
-        }
+        val response = apiService.getMangaDetails(mangaId, includes = listOf("cover_art", "author"))
+        val dto = response.data ?: throw java.io.IOException("MangaDex não entregou os detalhes desta obra.")
+        dto.toMangaModel(baseUrl, id)
     }
 
     override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, "pt-br")
@@ -383,17 +404,6 @@ class MangaDexSource(
     }
 
     private suspend fun fetchMergedChapters(mangaId: String) = fetchChaptersForLanguage(mangaId, "all")
-
-    private fun createFallbackDetails(mangaId: String): MangaModel {
-        return MangaModel(
-            url = "$baseUrl/manga/$mangaId",
-            id = mangaId,
-            title = "Manga #$mangaId",
-            coverUrl = "https://placehold.co/300x450/1e293b/ffffff.png?text=Manga",
-            description = "Detalhes carregados via API MangaDex.",
-            sourceId = id
-        )
-    }
 
     companion object {
         val STARTER_FALLBACK_MANGAS = listOf(

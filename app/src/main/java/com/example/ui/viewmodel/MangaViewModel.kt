@@ -225,23 +225,8 @@ class MangaViewModel(
 
         val highlights = allMangas.take(20)
 
-        fun getForGenre(genreKey: String, keywords: List<String>): List<MangaModel> {
-            val matched = allMangas.filter { manga ->
-                val gLower = manga.genres.map { it.lowercase() }
-                val tLower = manga.title.lowercase()
-                val dLower = manga.description.lowercase()
-                keywords.any { kw ->
-                    gLower.any { it.contains(kw) } || tLower.contains(kw) || dLower.contains(kw)
-                }
-            }
-            return if (matched.size >= 5) {
-                matched.take(20)
-            } else {
-                (matched + allMangas.shuffled(java.util.Random(genreKey.hashCode().toLong())))
-                    .distinctBy { it.id }
-                    .take(20)
-            }
-        }
+        fun getForGenre(categories: List<String>): List<MangaModel> =
+            allMangas.filter { manga -> categories.any { com.example.source.MangaCategories.matches(manga.genres, it) } }.take(20)
 
         return listOf(
             GenreCarouselSection(
@@ -254,37 +239,37 @@ class MangaViewModel(
                 id = "shounen",
                 title = "⚔️ Shounen Épico",
                 genreKey = "Shounen",
-                items = getForGenre("Shounen", listOf("shounen", "shonen", "ninja", "herói", "luta", "one piece", "naruto", "jujutsu", "chainsaw", "bleach", "hero"))
+                items = getForGenre(listOf("Shounen"))
             ),
             GenreCarouselSection(
                 id = "action",
                 title = "💥 Ação & Aventura",
                 genreKey = "Ação",
-                items = getForGenre("Ação", listOf("ação", "action", "aventura", "adventure", "batalha", "combate", "caçador", "hunter"))
+                items = getForGenre(listOf("Ação", "Aventura"))
             ),
             GenreCarouselSection(
                 id = "fantasy_isekai",
                 title = "🪄 Fantasia & Isekai",
                 genreKey = "Fantasia",
-                items = getForGenre("Fantasia", listOf("fantasia", "fantasy", "isekai", "magia", "magic", "elfa", "slime", "reencarna"))
+                items = getForGenre(listOf("Fantasia", "Isekai"))
             ),
             GenreCarouselSection(
                 id = "romance_comedy",
                 title = "❤️ Romance & Comédia Escolar",
                 genreKey = "Romance",
-                items = getForGenre("Romance", listOf("romance", "comédia", "comedy", "escolar", "school", "escola", "amor"))
+                items = getForGenre(listOf("Romance", "Comédia", "Escolar"))
             ),
             GenreCarouselSection(
                 id = "scifi_supernatural",
                 title = "🚀 Sci-Fi & Sobrenatural",
                 genreKey = "Sci-Fi",
-                items = getForGenre("Sci-Fi", listOf("sci-fi", "science fiction", "ficção", "sobrenatural", "supernatural", "demônios", "psíquico", "tempo", "pedra"))
+                items = getForGenre(listOf("Sci-Fi", "Sobrenatural"))
             ),
             GenreCarouselSection(
                 id = "seinen",
                 title = "🗡️ Seinen & Histórias Maduras",
                 genreKey = "Seinen",
-                items = getForGenre("Seinen", listOf("seinen", "sombrio", "dark", "medieval", "espada", "guerra", "vingança"))
+                items = getForGenre(listOf("Seinen"))
             )
         )
     }
@@ -302,43 +287,8 @@ class MangaViewModel(
                 if (debounceMillis > 0) kotlinx.coroutines.delay(debounceMillis)
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
                 val popular = query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")
-                val results = when {
-                    popular -> repository.getPopularManga(currentSource, currentLanguage)
-                    query.isNotBlank() -> repository.searchManga(query, currentSource, currentLanguage)
-                    else -> {
-                        val genreResults = repository.searchManga(currentGenre, currentSource, currentLanguage)
-                        val baseList = if (genreResults.isNotEmpty()) genreResults
-                            else repository.getPopularManga(currentSource, currentLanguage)
-                        val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
-                        val tagEquivalents = when (genreLower) {
-                            "ação" -> listOf("action", "ação", "combate", "luta", "batalha")
-                            "aventura" -> listOf("adventure", "aventura", "jornada")
-                            "fantasia" -> listOf("fantasy", "magic", "fantasia", "magia")
-                            "comédia" -> listOf("comedy", "comédia", "engraçado")
-                            "romance" -> listOf("romance", "amor")
-                            "sci-fi" -> listOf("sci-fi", "science fiction", "ficção", "futuro")
-                            "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural", "demônio", "espírito")
-                            "escolar" -> listOf("school life", "school", "escolar", "escola")
-                            "ninja" -> listOf("ninja", "martial arts", "shinobi")
-                            "shounen" -> listOf("shounen", "shonen")
-                            "seinen" -> listOf("seinen")
-                            "shoujo" -> listOf("shoujo", "shojo")
-                            "isekai" -> listOf("isekai", "reencarnação", "outro mundo")
-                            else -> listOf(genreLower)
-                        }
-
-                        val filtered = baseList.filter { manga ->
-                            manga.genres.any { g ->
-                                val gLower = g.lowercase(java.util.Locale.getDefault())
-                                tagEquivalents.any { eq -> gLower.contains(eq) } || gLower.contains(genreLower)
-                            } ||
-                            manga.title.lowercase(java.util.Locale.getDefault()).contains(genreLower) ||
-                            manga.description.lowercase(java.util.Locale.getDefault()).contains(genreLower)
-                        }
-
-                        if (filtered.isNotEmpty()) filtered else baseList
-                    }
-                }
+                val results = if (popular) repository.getPopularManga(currentSource, currentLanguage)
+                    else repository.searchManga(query, currentSource, currentLanguage, currentGenre)
                 ensureActive()
                 if (request != browseRequestId) return@launch
                 _mangaList.value = results
@@ -462,10 +412,20 @@ class MangaViewModel(
             }
         }
         loadDetailChapters(manga)
-        if (repository.getSourceById(manga.sourceId).let { it is com.example.source.HtmlMangaSource || it is com.example.source.MangaDashSource }) {
+        if (manga.sourceId != com.example.source.LocalPdfSource.ID) {
             viewModelScope.launch {
-                val detailed = repository.getMangaDetails(manga.url, manga.sourceId)
-                if (_detailManga.value?.url == manga.url) _detailManga.value = detailed
+                try {
+                    val detailed = repository.getMangaDetails(manga.url, manga.sourceId)
+                    if (_detailManga.value?.url == manga.url) _detailManga.value = detailed.copy(
+                        genres = detailed.genres.ifEmpty { manga.genres },
+                        description = detailed.description.ifBlank { manga.description },
+                        author = detailed.author.ifBlank { manga.author },
+                        coverUrl = detailed.coverUrl.ifBlank { manga.coverUrl })
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Keep the selected work and its known metadata if detail refresh is unavailable.
+                }
             }
         }
 

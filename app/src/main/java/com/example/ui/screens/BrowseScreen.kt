@@ -119,7 +119,7 @@ fun BrowseScreen(
                             label = { Text(source.name + when (source.lang) { "en" -> " · EN"; "es" -> " · ES"; else -> "" }) }, modifier = Modifier.testTag("source_chip_${source.id}"))
                     }
                 }
-                Text("Gênero", modifier = Modifier.padding(top = 16.dp))
+                Text("Categorias", modifier = Modifier.padding(top = 16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("all" to "Todos", "Shounen" to "Shounen", "Sci-Fi" to "Sci-Fi", "Shoujo" to "Shoujo", "Yuri" to "Yuri",
                         "Ninja" to "Ninja", "Ação" to "Ação", "Aventura" to "Aventura", "Fantasia" to "Fantasia", "Isekai" to "Isekai",
@@ -128,6 +128,8 @@ fun BrowseScreen(
                             label = { Text(label) }, modifier = Modifier.testTag("genre_chip_$key"))
                     }
                 }
+                Text("Categorias usam a classificação de cada fonte. Nome e categoria são combinados; a disponibilidade varia por fonte e idioma.",
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 Button(onClick = { showFilters = false }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
             }
         }

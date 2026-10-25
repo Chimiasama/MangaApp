@@ -114,6 +114,34 @@ class MangaRepositoryTest {
     }
 
     @Test
+    fun `category search routes native constraints and rejects title-only matches`() = runBlocking {
+        var calls = 0
+        repository.registerSource(object : MangaSource {
+            override val id = "categories"
+            override val name = "Categories"
+            override val baseUrl = "https://categories.test"
+            override val isNsfw = false
+            override val lang = "pt-br"
+            override suspend fun getPopularManga(): List<MangaModel> = error("Must not fall back to popular")
+            override suspend fun searchManga(query: String): List<MangaModel> = error("Must not search category as title")
+            override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
+                calls++
+                assertEquals("dragon ball", query)
+                assertEquals("pt-br", language)
+                assertEquals("Shounen", category)
+                return listOf(
+                    MangaModel("db", "db", "Dragon Ball", "", genres = listOf("Shounen"), sourceId = id),
+                    MangaModel("fake", "fake", "Shounen in name", "", genres = listOf("Seinen"), sourceId = id))
+            }
+            override suspend fun getMangaDetails(mangaUrl: String): MangaModel = error("unused")
+            override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = emptyList()
+            override suspend fun getPages(chapterUrl: String): List<String> = emptyList()
+        })
+        assertEquals(listOf("Dragon Ball"), repository.searchManga("dragon ball", "categories", "pt-br", "Shounen").map { it.title })
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun `sparse Portuguese chapters do not trigger an English fallback`() = runBlocking {
         // Primary source returns sparse PT-BR list (only recent chapters 114, 115)
         val primarySource = object : MangaSource {

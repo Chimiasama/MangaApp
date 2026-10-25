@@ -209,7 +209,8 @@ class MangaRepository(
                 coverUrl = manga.coverUrl,
                 description = manga.description.ifBlank { existing?.description ?: "" },
                 sourceId = manga.sourceId,
-                genres = if (manga.genres.isNotEmpty()) manga.genres.joinToString(",") else (existing?.genres ?: ""),
+                genres = (manga.genres + existing?.genres.orEmpty().split(",")).map { it.trim() }
+                    .filter { it.isNotBlank() }.distinct().joinToString(","),
                 isFavorite = existing?.isFavorite ?: false,
                 isNsfw = false,
                 addedTimestamp = existing?.addedTimestamp ?: System.currentTimeMillis()
@@ -277,7 +278,8 @@ class MangaRepository(
     suspend fun searchManga(
         query: String,
         sourceId: String?,
-        language: String = "pt-br"
+        language: String = "pt-br",
+        category: String = "all"
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
@@ -292,10 +294,11 @@ class MangaRepository(
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
             try {
-                val list = src.searchManga(query, language)
+                val list = if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
+                    else src.searchManga(query, language, category)
                 val filtered = list.filter { manga ->
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
-                    true
+                    com.example.source.MangaCategories.matches(manga.genres, category)
                 }
                 results.addAll(filtered)
                 completedSources++
@@ -308,7 +311,7 @@ class MangaRepository(
             }
         }
 
-        if (results.isEmpty() && query.isNotBlank()) {
+        if (results.isEmpty() && (query.isNotBlank() || !com.example.source.MangaCategories.isAll(category))) {
             val cachedEntities = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
                 mangaDao.getCachedMangasBySourceSync(sourceId)
             } else {
@@ -317,8 +320,9 @@ class MangaRepository(
             val queryLower = query.lowercase(Locale.getDefault())
             val matched = cachedEntities.filter { entity ->
                 if (entity.sourceId == com.example.source.LocalPdfSource.ID || entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
-                entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
-                entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
+                sourceRegistry[entity.sourceId]?.supportsLanguage(language) == true &&
+                    com.example.source.MangaCategories.matches(entity.genres.split(","), category) &&
+                    (queryLower.isBlank() || entity.title.lowercase(Locale.getDefault()).contains(queryLower))
             }
             if (matched.isEmpty() && completedSources == 0 && lastFailure != null) {
                 throw java.io.IOException("Não foi possível consultar as fontes de mangá. Verifique sua conexão e tente novamente.", lastFailure)
@@ -346,6 +350,8 @@ class MangaRepository(
             val networkManga = source.getMangaDetails(mangaUrl)
             cacheMangaToDb(listOf(networkManga))
             networkManga
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             val cached = mangaDao.getMangaByUrlSync(mangaUrl)
             if (cached != null) {
@@ -360,14 +366,7 @@ class MangaRepository(
                     isNsfw = cached.isNsfw
                 )
             } else {
-                MangaModel(
-                    url = mangaUrl,
-                    id = mangaUrl.hashCode().toString(),
-                    title = "Manga",
-                    coverUrl = "https://picsum.photos/300/450",
-                    description = "Erro ao carregar detalhes.",
-                    sourceId = sourceId
-                )
+                throw e
             }
         }
     }

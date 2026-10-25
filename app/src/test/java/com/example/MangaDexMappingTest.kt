@@ -157,6 +157,8 @@ class MangaDexMappingTest {
     @Test
     fun `test MangaDexSource using mock Retrofit ApiService returns mapped data`() = runBlocking {
         val fakeApiService = object : MangaDexApiService {
+            override suspend fun getMangaTags(): com.example.data.network.model.MangaDexTagListResponse = error("unused")
+            override suspend fun getFilteredMangaList(title: String?, demographics: List<String>?, includedTags: List<String>?, translatedLanguages: List<String>?, limit: Int, order: String, includes: List<String>, ratings: List<String>): MangaDexMangaListResponse = error("unused")
             override suspend fun getMangaList(
                 limit: Int,
                 offset: Int,
@@ -282,6 +284,8 @@ class MangaDexMappingTest {
     @Test
     fun `sparse Portuguese chapters never include English fallback chapters`() = runBlocking {
         val fakeApiService = object : MangaDexApiService {
+            override suspend fun getMangaTags(): com.example.data.network.model.MangaDexTagListResponse = error("unused")
+            override suspend fun getFilteredMangaList(title: String?, demographics: List<String>?, includedTags: List<String>?, translatedLanguages: List<String>?, limit: Int, order: String, includes: List<String>, ratings: List<String>): MangaDexMangaListResponse = error("unused")
             override suspend fun getMangaList(
                 limit: Int, offset: Int, title: String?, translatedLanguages: List<String>?,
                 orderFollowedCount: String?, orderRelevance: String?, includes: List<String>,

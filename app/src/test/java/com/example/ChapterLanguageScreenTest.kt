@@ -23,6 +23,18 @@ class ChapterLanguageScreenTest {
     private val manga = MangaModel("manga", "manga", "Teste", "", sourceId = "mangadex")
     private val russian = ChapterModel("ru", "Конец. [RU]", "ru", 115f, language = "ru")
     private val portuguese = ChapterModel("pt", "Epílogo", "pt", 115.5f, language = "pt-br")
+    @Test fun `detail shows normalized categories supplied by the source`() {
+        compose.setContent {
+            MaterialTheme { MangaDetailScreen(state = MangaDetailUiState(
+                manga = manga.copy(genres = listOf("Shonen", "Action", "Adventure"))),
+                downloads = emptyList(), selectedLanguage = "pt-br", onBack = {}, onToggleFavorite = {},
+                onChapterClick = {}, onDownloadChapter = {}, onDeleteDownload = {}) }
+        }
+        compose.onNodeWithTag("manga_categories").performScrollTo().assertExists()
+        compose.onNodeWithText("Shounen").assertExists()
+        compose.onNodeWithText("Ação").assertExists()
+        compose.onNodeWithText("Aventura").assertExists()
+    }
     @Test fun `read now uses Portuguese even when the supplied list contains a lower Russian chapter`() {
         var opened = ""
         compose.setContent {

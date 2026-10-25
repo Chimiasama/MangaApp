@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,6 +87,7 @@ import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.MangaDetailUiState
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MangaDetailScreen(
     state: MangaDetailUiState,
@@ -263,6 +266,22 @@ fun MangaDetailScreen(
             // Description & Action
             item {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    val categories = com.example.source.MangaCategories.display(manga.genres)
+                    if (categories.isNotEmpty()) {
+                        Text("Categorias", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.testTag("manga_categories")) {
+                            categories.forEach { category ->
+                                androidx.compose.material3.Surface(shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.padding(vertical = 4.dp)) {
+                                    Text(category, style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
                     Text(
                         text = "Sinopse",
                         fontWeight = FontWeight.Bold,

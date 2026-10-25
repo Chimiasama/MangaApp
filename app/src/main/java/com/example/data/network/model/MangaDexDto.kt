@@ -166,3 +166,6 @@ class LenientStringMapAdapter {
         writer.endObject()
     }
 }
+
+@JsonClass(generateAdapter = true)
+data class MangaDexTagListResponse(val data: List<MangaDexTagDto> = emptyList())
