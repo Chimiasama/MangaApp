@@ -10,6 +10,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
@@ -57,6 +61,7 @@ object MangaDestinations {
     const val READER = "reader"
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MangaApp(
     mangaViewModel: MangaViewModel,
@@ -114,9 +119,10 @@ fun MangaApp(
         MangaDestinations.SETTINGS
     )
 
+    val browsingWithKeyboard = currentRoute == MangaDestinations.BROWSE && WindowInsets.isImeVisible
     Scaffold(
         bottomBar = {
-            if (currentRoute in bottomNavRoutes) {
+            if (currentRoute in bottomNavRoutes && !browsingWithKeyboard) {
                 NavigationBar(
                     containerColor = androidx.compose.ui.graphics.Color(0xFF211F26),
                     modifier = Modifier.testTag("bottom_nav_bar")
@@ -186,7 +192,7 @@ fun MangaApp(
         NavHost(
             navController = navController,
             startDestination = MangaDestinations.BROWSE,
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
             enterTransition = { fadeIn(animationSpec = tween(250)) },
             exitTransition = { fadeOut(animationSpec = tween(250)) },
             popEnterTransition = { fadeIn(animationSpec = tween(250)) },

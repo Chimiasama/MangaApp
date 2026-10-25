@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -39,6 +40,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.verticalScroll
@@ -98,6 +102,11 @@ fun BrowseScreen(
 
     var searchFocused by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
+    val keyboardVisible = WindowInsets.isImeVisible
+    fun dismissSearchKeyboard() {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+    }
 
     if (showFilters) {
         ModalBottomSheet(onDismissRequest = { showFilters = false }) {
@@ -138,6 +147,7 @@ fun BrowseScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .testTag("browse_screen")
     ) {
         // Clean Minimal Header Area
@@ -153,20 +163,26 @@ fun BrowseScreen(
                     modifier = Modifier.weight(1f).onFocusChanged { searchFocused = it.isFocused }.testTag("search_input"),
                     placeholder = { Text("Buscar mangás") },
                     leadingIcon = {
-                        IconButton(onClick = { keyboardController?.hide(); focusManager.clearFocus(); onSearchSubmit(queryInput) }, modifier = Modifier.testTag("search_icon_button")) {
+                        IconButton(onClick = { dismissSearchKeyboard(); onSearchSubmit(queryInput) }, modifier = Modifier.testTag("search_icon_button")) {
                             Icon(Icons.Default.Search, contentDescription = "Buscar")
                         }
                     },
                     trailingIcon = {
-                        if (queryInput.isNotEmpty()) IconButton(onClick = { queryInput = ""; onSearchSubmit("") }, modifier = Modifier.testTag("search_clear_button")) {
-                            Icon(Icons.Default.Clear, contentDescription = "Limpar busca")
+                        Row {
+                            if (queryInput.isNotEmpty()) IconButton(onClick = { queryInput = ""; onSearchSubmit("") }, modifier = Modifier.testTag("search_clear_button")) {
+                                Icon(Icons.Default.Clear, contentDescription = "Limpar busca")
+                            }
+                            if (searchFocused || keyboardVisible) IconButton(onClick = { dismissSearchKeyboard() },
+                                modifier = Modifier.testTag("hide_search_keyboard")) {
+                                Icon(Icons.Default.KeyboardHide, contentDescription = "Ocultar teclado")
+                            }
                         }
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide(); focusManager.clearFocus(); onSearchSubmit(queryInput) }),
+                    keyboardActions = KeyboardActions(onSearch = { dismissSearchKeyboard(); onSearchSubmit(queryInput) }),
                     shape = RoundedCornerShape(16.dp), singleLine = true
                 )
-                IconButton(onClick = { keyboardController?.hide(); focusManager.clearFocus(); showFilters = true }, modifier = Modifier.testTag("open_filters_button")) {
+                IconButton(onClick = { dismissSearchKeyboard(); showFilters = true }, modifier = Modifier.testTag("open_filters_button")) {
                     Icon(Icons.Default.FilterList, contentDescription = "Filtros")
                 }
             }
@@ -231,8 +247,7 @@ fun BrowseScreen(
                         InputChip(
                             selected = false,
                             onClick = {
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
+                                dismissSearchKeyboard()
                                 queryInput = history.query
                                 onSearchSubmit(history.query)
                             },
@@ -252,9 +267,10 @@ fun BrowseScreen(
 
         val isFilterOrSearchActive = state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all"
 
-        // Intercept back button to return to full carousel view when filtering
-        BackHandler(enabled = isFilterOrSearchActive && !showFilters) {
-            onClearFilters()
+        // Some IMEs/OEMs dispatch Back to the app before dismissing the keyboard.
+        // Editing must end before Back can clear the current search or filters.
+        BackHandler(enabled = !showFilters && (searchFocused || keyboardVisible || isFilterOrSearchActive)) {
+            if (searchFocused || keyboardVisible) dismissSearchKeyboard() else onClearFilters()
         }
 
         PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
@@ -372,7 +388,7 @@ fun BrowseScreen(
                         val isFav = favoriteUrls.contains(manga.url)
                         MangaCard(
                             manga = manga,
-                            onClick = { onMangaClick(manga) },
+                            onClick = { dismissSearchKeyboard(); onMangaClick(manga) },
                             isFavorite = isFav,
                             onFavoriteToggle = { onFavoriteToggle(manga) },
                             showSource = state.mangaList.map { it.sourceId }.distinct().size > 1
@@ -498,7 +514,7 @@ fun BrowseScreen(
                                 val isFav = favoriteUrls.contains(manga.url)
                                 MangaCard(
                                     manga = manga,
-                                    onClick = { onMangaClick(manga) },
+                                    onClick = { dismissSearchKeyboard(); onMangaClick(manga) },
                                     isFavorite = isFav,
                                     onFavoriteToggle = { onFavoriteToggle(manga) },
                                     showSource = section.items.map { it.sourceId }.distinct().size > 1,

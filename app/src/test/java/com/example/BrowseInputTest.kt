@@ -18,6 +18,50 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BrowseInputTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun `back ends search editing before clearing the query or category`() {
+        var cleared = 0
+        lateinit var back: androidx.activity.OnBackPressedDispatcher
+        compose.setContent {
+            back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
+            MaterialTheme { BrowseScreen(state = BrowseUiState(searchQuery = "dragon ball", selectedGenre = "Shounen"),
+                onClearFilters = { cleared++ }, onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("search_input").performClick().assertIsFocused()
+        compose.runOnIdle { back.onBackPressed() }
+        compose.onNodeWithTag("search_input").assertIsNotFocused().assertTextContains("dragon ball")
+        compose.onNodeWithText("Shounen").assertExists()
+        compose.runOnIdle { assertEquals(0, cleared) }
+        compose.runOnIdle { back.onBackPressed() }
+        compose.runOnIdle { assertEquals(1, cleared) }
+    }
+
+    @Test fun `explicit keyboard dismissal keeps results and search on a narrow screen`() {
+        checkDismissButton()
+    }
+
+    @Test
+    @Config(qualifiers = "w673dp-h841dp-port")
+    fun `keyboard dismissal works after widening the available screen`() {
+        checkDismissButton()
+    }
+
+    private fun checkDismissButton() {
+        var cleared = 0
+        var submitted = 0
+        val book = com.example.source.MangaModel("db", "db", "Dragon Ball", "", sourceId = "mangadex")
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(searchQuery = "dragon ball", mangaList = listOf(book)),
+                onClearFilters = { cleared++ }, onSearchSubmit = { submitted++ },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("search_input").performClick()
+        compose.onNodeWithTag("hide_search_keyboard").performClick()
+        compose.onNodeWithTag("search_input").assertIsNotFocused().assertTextContains("dragon ball")
+        compose.onNodeWithText("Dragon Ball", substring = false).assertExists()
+        compose.onNodeWithTag("hide_search_keyboard").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, cleared); assertEquals(0, submitted) }
+    }
+
     @Test fun `typing Dragon Ball dispatches a query without needing to find the search icon`() {
         var typed = ""
         var submitted = ""
