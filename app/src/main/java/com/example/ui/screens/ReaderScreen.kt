@@ -168,7 +168,20 @@ fun ReaderScreen(
     var isFullscreen by remember { mutableStateOf(defaultFullscreen) }
     var currentMode by remember { mutableStateOf(readerMode) }
     var showControls by remember { mutableStateOf(false) } // Iniciar limpo para foco na leitura
+    var controlsInteractionTrigger by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     var showModeDropdown by remember { mutableStateOf(false) }
+
+    fun resetControlsTimer() {
+        controlsInteractionTrigger = System.currentTimeMillis()
+    }
+
+    // Auto-hide controls after 2 seconds of inactivity
+    LaunchedEffect(showControls, controlsInteractionTrigger) {
+        if (showControls) {
+            kotlinx.coroutines.delay(2000L)
+            showControls = false
+        }
+    }
     var showOverscrollIndicatorTop by remember { mutableStateOf(false) }
     var showOverscrollIndicatorBottom by remember { mutableStateOf(false) }
     var pullDistanceTop by remember { mutableFloatStateOf(0f) }
@@ -752,7 +765,15 @@ fun ReaderScreen(
                                 onPanXChanged = { newPan ->
                                     globalPanX = newPan
                                 },
-                                onCenterTap = { showControls = !showControls }
+                                isControlsVisible = showControls,
+                                onCenterTap = {
+                                    if (showControls) {
+                                        showControls = false
+                                    } else {
+                                        showControls = true
+                                        resetControlsTimer()
+                                    }
+                                }
                             )
                         }
                     }
@@ -790,41 +811,53 @@ fun ReaderScreen(
                             onPanYChanged = { newPan ->
                                 globalPanY = newPan
                             },
-                            onCenterTap = { showControls = !showControls },
+                            isControlsVisible = showControls,
+                            onCenterTap = {
+                                if (showControls) {
+                                    showControls = false
+                                } else {
+                                    showControls = true
+                                    resetControlsTimer()
+                                }
+                            },
                             onLeftTap = {
-                                coroutineScope.launch {
-                                    if (isRtl) {
-                                        // No RTL, esquerda significa avançar para a próxima página
-                                        if (pageIndex < state.pages.lastIndex) {
-                                            pagerState.animateScrollToPage(pageIndex + 1)
+                                if (showControls) {
+                                    showControls = false
+                                } else {
+                                    coroutineScope.launch {
+                                        if (isRtl) {
+                                            if (pageIndex < state.pages.lastIndex) {
+                                                pagerState.animateScrollToPage(pageIndex + 1)
+                                            } else {
+                                                onNavigateChapter(true)
+                                            }
                                         } else {
-                                            onNavigateChapter(true)
-                                        }
-                                    } else {
-                                        // No LTR, esquerda volta
-                                        if (pageIndex > 0) {
-                                            pagerState.animateScrollToPage(pageIndex - 1)
-                                        } else {
-                                            onNavigateChapter(false)
+                                            if (pageIndex > 0) {
+                                                pagerState.animateScrollToPage(pageIndex - 1)
+                                            } else {
+                                                onNavigateChapter(false)
+                                            }
                                         }
                                     }
                                 }
                             },
                             onRightTap = {
-                                coroutineScope.launch {
-                                    if (isRtl) {
-                                        // No RTL, direita significa voltar
-                                        if (pageIndex > 0) {
-                                            pagerState.animateScrollToPage(pageIndex - 1)
+                                if (showControls) {
+                                    showControls = false
+                                } else {
+                                    coroutineScope.launch {
+                                        if (isRtl) {
+                                            if (pageIndex > 0) {
+                                                pagerState.animateScrollToPage(pageIndex - 1)
+                                            } else {
+                                                onNavigateChapter(false)
+                                            }
                                         } else {
-                                            onNavigateChapter(false)
-                                        }
-                                    } else {
-                                        // No LTR, direita avança
-                                        if (pageIndex < state.pages.lastIndex) {
-                                            pagerState.animateScrollToPage(pageIndex + 1)
-                                        } else {
-                                            onNavigateChapter(true)
+                                            if (pageIndex < state.pages.lastIndex) {
+                                                pagerState.animateScrollToPage(pageIndex + 1)
+                                            } else {
+                                                onNavigateChapter(true)
+                                            }
                                         }
                                     }
                                 }
@@ -964,6 +997,7 @@ fun ReaderScreen(
                 currentPage = state.currentPageIndex,
                 totalPages = state.pages.size,
                 onPageSelected = { targetPage ->
+                    resetControlsTimer()
                     onPageSelected(targetPage)
                     coroutineScope.launch {
                         if (currentMode == "WEBTOON") {
@@ -973,7 +1007,7 @@ fun ReaderScreen(
                         }
                     }
                 },
-                onInteracting = { }
+                onInteracting = { resetControlsTimer() }
             )
         }
 
@@ -1003,7 +1037,10 @@ fun ReaderScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = onBack,
+                            onClick = {
+                                resetControlsTimer()
+                                onBack()
+                            },
                             modifier = Modifier.testTag("reader_back_button")
                         ) {
                             Icon(
@@ -1050,7 +1087,10 @@ fun ReaderScreen(
                         // Seletor de Modo de Leitura Rápido (Dropdown / Menu)
                         Box {
                             IconButton(
-                                onClick = { showModeDropdown = !showModeDropdown },
+                                onClick = {
+                                    resetControlsTimer()
+                                    showModeDropdown = !showModeDropdown
+                                },
                                 modifier = Modifier.testTag("reader_mode_menu_button")
                             ) {
                                 Icon(
@@ -1073,6 +1113,7 @@ fun ReaderScreen(
                                     text = { Text("Webtoon (Cascata Vertical)") },
                                     leadingIcon = { Icon(Icons.Default.ViewStream, contentDescription = null) },
                                     onClick = {
+                                        resetControlsTimer()
                                         currentMode = "WEBTOON"
                                         onReaderModeChanged("WEBTOON")
                                         showModeDropdown = false
@@ -1082,6 +1123,7 @@ fun ReaderScreen(
                                     text = { Text("Mangá (Página Direita → Esquerda)") },
                                     leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
                                     onClick = {
+                                        resetControlsTimer()
                                         currentMode = "PAGED_RTL"
                                         onReaderModeChanged("PAGED_RTL")
                                         showModeDropdown = false
@@ -1091,6 +1133,7 @@ fun ReaderScreen(
                                     text = { Text("Quadrinhos (Esquerda → Direita)") },
                                     leadingIcon = { Icon(Icons.Default.ViewCarousel, contentDescription = null) },
                                     onClick = {
+                                        resetControlsTimer()
                                         currentMode = "PAGED_LTR"
                                         onReaderModeChanged("PAGED_LTR")
                                         showModeDropdown = false
@@ -1101,7 +1144,10 @@ fun ReaderScreen(
 
                         // Toggle Fullscreen Mode
                         IconButton(
-                            onClick = { isFullscreen = !isFullscreen },
+                            onClick = {
+                                resetControlsTimer()
+                                isFullscreen = !isFullscreen
+                            },
                             modifier = Modifier.testTag("toggle_fullscreen_button")
                         ) {
                             Icon(
@@ -1113,7 +1159,10 @@ fun ReaderScreen(
 
                         // Modo Economia de Bateria (Eco Mode)
                         IconButton(
-                            onClick = { onBatterySaverToggled(!batterySaverEnabled) },
+                            onClick = {
+                                resetControlsTimer()
+                                onBatterySaverToggled(!batterySaverEnabled)
+                            },
                             modifier = Modifier.testTag("reader_eco_mode_button")
                         ) {
                             Icon(
@@ -1125,7 +1174,10 @@ fun ReaderScreen(
 
                         // Marcador de Página
                         IconButton(
-                            onClick = { onToggleBookmark(state.currentPageIndex) },
+                            onClick = {
+                                resetControlsTimer()
+                                onToggleBookmark(state.currentPageIndex)
+                            },
                             modifier = Modifier.testTag("toggle_bookmark_button")
                         ) {
                             Icon(
@@ -1155,7 +1207,10 @@ fun ReaderScreen(
                         ) {
                             // Voltar um capítulo
                             IconButton(
-                                onClick = { onNavigateChapter(false) },
+                                onClick = {
+                                    resetControlsTimer()
+                                    onNavigateChapter(false)
+                                },
                                 modifier = Modifier
                                     .size(44.dp)
                                     .testTag("nav_prev_chapter")
@@ -1177,6 +1232,7 @@ fun ReaderScreen(
                             // Ir pro início do capítulo
                             IconButton(
                                 onClick = {
+                                    resetControlsTimer()
                                     coroutineScope.launch {
                                         onPageSelected(0)
                                         if (currentMode == "WEBTOON") {
@@ -1206,7 +1262,10 @@ fun ReaderScreen(
 
                             // Voltar pra tela de capítulos (detalhes/listagem)
                             IconButton(
-                                onClick = onBack,
+                                onClick = {
+                                    resetControlsTimer()
+                                    onBack()
+                                },
                                 modifier = Modifier
                                     .size(44.dp)
                                     .testTag("nav_back_to_list")
@@ -1227,7 +1286,10 @@ fun ReaderScreen(
 
                             // Ir para o próximo capítulo
                             IconButton(
-                                onClick = { onNavigateChapter(true) },
+                                onClick = {
+                                    resetControlsTimer()
+                                    onNavigateChapter(true)
+                                },
                                 modifier = Modifier
                                     .size(44.dp)
                                     .testTag("nav_next_chapter")
@@ -1302,6 +1364,7 @@ private suspend fun PointerInputScope.detectPinchZoomOnly(
  * sem reset de corrotina e permitindo movimentação fluida em qualquer direção.
  */
 private suspend fun PointerInputScope.detectZoomPanGestures(
+    isZoomed: () -> Boolean,
     onPan: (deltaX: Float, deltaY: Float) -> Unit
 ) {
     awaitEachGesture {
@@ -1309,7 +1372,7 @@ private suspend fun PointerInputScope.detectZoomPanGestures(
         do {
             val event = awaitPointerEvent()
             val pressedPointers = event.changes.filter { it.pressed }
-            if (pressedPointers.size == 1) {
+            if (pressedPointers.size == 1 && isZoomed()) {
                 val change = pressedPointers.first()
                 val deltaX = change.position.x - change.previousPosition.x
                 val deltaY = change.position.y - change.previousPosition.y
@@ -1340,6 +1403,7 @@ fun WebtoonContinuousPage(
     colorFilter: ColorFilter? = null,
     scale: Float = 1.0f,
     panX: Float = 0f,
+    isControlsVisible: Boolean = false,
     onScaleChanged: (Float) -> Unit = {},
     onPanXChanged: (Float) -> Unit = {},
     onCenterTap: () -> Unit,
@@ -1350,6 +1414,7 @@ fun WebtoonContinuousPage(
     val maxOffsetX = if (isZoomed) ((scale - 1f) * containerWidthPx) / 2f else 0f
 
     val currentScaleState = rememberUpdatedState(scale)
+    val isZoomedState = rememberUpdatedState(isZoomed)
     val currentPanXState = rememberUpdatedState(panX)
     val maxOffsetXState = rememberUpdatedState(maxOffsetX)
     val onScaleChangedState = rememberUpdatedState(onScaleChanged)
@@ -1365,6 +1430,7 @@ fun WebtoonContinuousPage(
             .testTag("webtoon_page_$pageIndex")
             .pointerInput(Unit) {
                 detectZoomPanGestures(
+                    isZoomed = { isZoomedState.value },
                     onPan = { deltaX, _ ->
                         if (currentScaleState.value > 1.05f) {
                             val max = maxOffsetXState.value
@@ -1492,6 +1558,7 @@ fun ZoomableMangaPage(
     scale: Float = 1.0f,
     panX: Float = 0f,
     panY: Float = 0f,
+    isControlsVisible: Boolean = false,
     onScaleChanged: (Float) -> Unit = {},
     onPanXChanged: (Float) -> Unit = {},
     onPanYChanged: (Float) -> Unit = {},
@@ -1514,6 +1581,8 @@ fun ZoomableMangaPage(
         val maxOffsetY = if (isZoomed) ((scale - 1f) * containerHeight) / 2f else 0f
 
         val currentScaleState = rememberUpdatedState(scale)
+        val isZoomedState = rememberUpdatedState(isZoomed)
+        val isControlsVisibleState = rememberUpdatedState(isControlsVisible)
         val currentPanXState = rememberUpdatedState(panX)
         val currentPanYState = rememberUpdatedState(panY)
         val maxOffsetXState = rememberUpdatedState(maxOffsetX)
@@ -1530,6 +1599,7 @@ fun ZoomableMangaPage(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectZoomPanGestures(
+                        isZoomed = { isZoomedState.value },
                         onPan = { deltaX, deltaY ->
                             if (currentScaleState.value > 1.05f) {
                                 val maxX = maxOffsetXState.value
@@ -1572,7 +1642,9 @@ fun ZoomableMangaPage(
                             }
                         },
                         onTap = { tapOffset ->
-                            if (currentScaleState.value <= 1.1f) {
+                            if (isControlsVisibleState.value) {
+                                onCenterTapState.value()
+                            } else if (currentScaleState.value <= 1.1f) {
                                 val xPercent = tapOffset.x / containerWidth
                                 when {
                                     xPercent < 0.28f -> onLeftTapState.value()
