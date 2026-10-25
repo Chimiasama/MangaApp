@@ -36,17 +36,22 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,7 +66,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.source.MangaModel
@@ -71,6 +75,7 @@ import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.BrowseUiState
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BrowseScreen(
     state: BrowseUiState,
@@ -91,6 +96,42 @@ fun BrowseScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var queryInput by remember(state.searchQuery) { mutableStateOf(state.searchQuery) }
 
+    var searchFocused by remember { mutableStateOf(false) }
+    var showFilters by remember { mutableStateOf(false) }
+
+    if (showFilters) {
+        ModalBottomSheet(onDismissRequest = { showFilters = false }) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+                Text("Filtros", style = MaterialTheme.typography.titleLarge)
+                Text("Idioma dos capítulos", modifier = Modifier.padding(top = 20.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("pt-br" to "Português", "en" to "Inglês", "es" to "Espanhol", "all" to "Todos").forEach { (code, label) ->
+                        FilterChip(selected = state.selectedLanguage == code, onClick = { onLanguageSelected(code) },
+                            label = { Text(label) }, modifier = Modifier.testTag("lang_chip_$code"))
+                    }
+                }
+                Text("Fonte", modifier = Modifier.padding(top = 16.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = state.selectedSourceId == "all", onClick = { onSourceSelected("all") }, label = { Text("Todas") })
+                    state.availableSources.forEach { source ->
+                        FilterChip(selected = state.selectedSourceId == source.id, onClick = { onSourceSelected(source.id) },
+                            label = { Text(source.name) }, modifier = Modifier.testTag("source_chip_${source.id}"))
+                    }
+                }
+                Text("Gênero", modifier = Modifier.padding(top = 16.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("all" to "Todos", "Shounen" to "Shounen", "Sci-Fi" to "Sci-Fi", "Shoujo" to "Shoujo", "Yuri" to "Yuri",
+                        "Ninja" to "Ninja", "Ação" to "Ação", "Aventura" to "Aventura", "Fantasia" to "Fantasia", "Isekai" to "Isekai",
+                        "Romance" to "Romance", "Seinen" to "Seinen", "Comédia" to "Comédia", "Sobrenatural" to "Sobrenatural", "Escolar" to "Escolar").forEach { (key, label) ->
+                        FilterChip(selected = state.selectedGenre == key, onClick = { onGenreSelected(key) },
+                            label = { Text(label) }, modifier = Modifier.testTag("genre_chip_$key"))
+                    }
+                }
+                Button(onClick = { showFilters = false }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -102,129 +143,44 @@ fun BrowseScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
-            // Search Bar & Compact Language Selector in Top Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = queryInput,
                     onValueChange = { queryInput = it; onQueryChange(it) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("search_input"),
-                    placeholder = { Text("Buscar...", fontSize = 13.sp) },
+                    modifier = Modifier.weight(1f).onFocusChanged { searchFocused = it.isFocused }.testTag("search_input"),
+                    placeholder = { Text("Buscar mangás") },
                     leadingIcon = {
-                        IconButton(
-                            onClick = {
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                                onSearchSubmit(queryInput)
-                            },
-                            modifier = Modifier
-                                .size(24.dp)
-                                .testTag("search_icon_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Buscar",
-                                tint = CrimsonRed,
-                                modifier = Modifier.size(18.dp)
-                            )
+                        IconButton(onClick = { keyboardController?.hide(); focusManager.clearFocus(); onSearchSubmit(queryInput) }, modifier = Modifier.testTag("search_icon_button")) {
+                            Icon(Icons.Default.Search, contentDescription = "Buscar")
                         }
                     },
                     trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (queryInput.isNotEmpty()) {
-                                IconButton(
-                                    onClick = {
-                                        queryInput = ""
-                                        onSearchSubmit("")
-                                    },
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .testTag("search_clear_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Limpar busca",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                            IconButton(
-                                onClick = onRefresh,
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .testTag("refresh_catalog_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Recarregar catálogo",
-                                    tint = PrimaryPurple,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                        if (queryInput.isNotEmpty()) IconButton(onClick = { queryInput = ""; onSearchSubmit("") }, modifier = Modifier.testTag("search_clear_button")) {
+                            Icon(Icons.Default.Clear, contentDescription = "Limpar busca")
                         }
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
-                            onSearchSubmit(queryInput)
-                        }
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CrimsonRed,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    singleLine = true
+                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide(); focusManager.clearFocus(); onSearchSubmit(queryInput) }),
+                    shape = RoundedCornerShape(16.dp), singleLine = true
                 )
-
-                // Compact Language Selector Chips (Top Right)
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val languages = listOf(
-                        "pt-br" to "PT",
-                        "en" to "US",
-                        "es" to "ES",
-                        "all" to "Todas"
-                    )
-                    languages.forEach { (code, label) ->
-                        val isSelected = state.selectedLanguage.equals(code, ignoreCase = true)
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                if (!isSelected) {
-                                    onLanguageSelected(code)
-                                }
-                            },
-                            label = {
-                                Text(
-                                    text = label,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            modifier = Modifier.testTag("lang_chip_$code"),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = CrimsonRed,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        )
-                    }
+                IconButton(onClick = { keyboardController?.hide(); focusManager.clearFocus(); showFilters = true }, modifier = Modifier.testTag("open_filters_button")) {
+                    Icon(Icons.Default.FilterList, contentDescription = "Filtros")
                 }
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.selectedLanguage != "all") {
+                    val label = when (state.selectedLanguage) { "pt-br" -> "Português"; "en" -> "Inglês"; "es" -> "Espanhol"; else -> state.selectedLanguage }
+                    InputChip(selected = false, onClick = { showFilters = true }, label = { Text(label) })
+                }
+                if (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") InputChip(selected = false,
+                    onClick = { onGenreSelected("all") }, label = { Text(state.selectedGenre) }, trailingIcon = { Icon(Icons.Default.Close, "Remover gênero", Modifier.size(16.dp)) })
+                if (state.selectedSourceId != "all") InputChip(selected = false, onClick = { onSourceSelected("all") },
+                    label = { Text(state.availableSources.find { it.id == state.selectedSourceId }?.name ?: state.selectedSourceId) },
+                    trailingIcon = { Icon(Icons.Default.Close, "Remover fonte", Modifier.size(16.dp)) })
             }
 
             // Recent Search History Chips (if present)
-            if (state.searchHistory.isNotEmpty()) {
+            if (searchFocused && queryInput.isBlank() && state.searchHistory.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -251,7 +207,7 @@ fun BrowseScreen(
                         onClick = onClearSearchHistory,
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                         modifier = Modifier
-                            .height(20.dp)
+                            .height(48.dp)
                             .testTag("clear_history_button")
                     ) {
                         Text(
@@ -272,18 +228,16 @@ fun BrowseScreen(
                         InputChip(
                             selected = false,
                             onClick = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
                                 queryInput = history.query
                                 onSearchSubmit(history.query)
                             },
                             label = { Text(history.query, fontSize = 11.sp) },
                             trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Remover do histórico",
-                                    modifier = Modifier
-                                        .size(12.dp)
-                                        .clickable { onDeleteSearchHistoryItem(history.id) }
-                                )
+                                IconButton(onClick = { onDeleteSearchHistoryItem(history.id) }) {
+                                    Icon(Icons.Default.Close, "Remover do histórico", Modifier.size(16.dp))
+                                }
                             },
                             modifier = Modifier.testTag("search_history_chip_${history.id}")
                         )
@@ -291,57 +245,16 @@ fun BrowseScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Clean Genre Categories Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val genreCategories = listOf(
-                    "all" to "Todos Gêneros",
-                    "Shounen" to "Shounen",
-                    "Sci-Fi" to "Sci-Fi",
-                    "Shoujo" to "Shoujo",
-                    "Yuri" to "Yuri",
-                    "Ninja" to "Ninja",
-                    "Ação" to "Ação",
-                    "Aventura" to "Aventura",
-                    "Fantasia" to "Fantasia",
-                    "Isekai" to "Isekai",
-                    "Romance" to "Romance",
-                    "Seinen" to "Seinen",
-                    "Comédia" to "Comédia",
-                    "Sobrenatural" to "Sobrenatural",
-                    "Escolar" to "Escolar"
-                )
-
-                genreCategories.forEach { (genreKey, label) ->
-                    val isSelected = state.selectedGenre == genreKey || (state.selectedGenre.isBlank() && genreKey == "all")
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onGenreSelected(genreKey) },
-                        label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                        modifier = Modifier.testTag("genre_chip_$genreKey"),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = PrimaryPurple,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-                }
-            }
         }
 
-        val isFilterOrSearchActive = state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all")
+        val isFilterOrSearchActive = state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all"
 
         // Intercept back button to return to full carousel view when filtering
-        BackHandler(enabled = isFilterOrSearchActive) {
+        BackHandler(enabled = isFilterOrSearchActive && !showFilters) {
             onClearFilters()
         }
 
+        PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
         // Main Content Area
         if (state.isLoading && (isFilterOrSearchActive || (state.mangaList.isEmpty() && state.carouselSections.isEmpty()))) {
             Box(
@@ -397,7 +310,7 @@ fun BrowseScreen(
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.testTag("clear_filter_empty_button")
                         ) {
-                            Text("Voltar aos Carrosséis")
+                            Text("Limpar filtros")
                         }
 
                         Button(
@@ -416,53 +329,10 @@ fun BrowseScreen(
         } else if (isFilterOrSearchActive) {
             // Filtered / Search Results in Grid
             Column(modifier = Modifier.fillMaxSize()) {
-                // Active filter banner with Back / Clear action
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            RoundedCornerShape(10.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (state.searchQuery.isNotBlank()) "Busca: \"${state.searchQuery}\"" else "Gênero: ${state.selectedGenre}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${state.mangaList.size} títulos encontrados",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    TextButton(
-                        onClick = onClearFilters,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.testTag("clear_filter_header_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = null,
-                            tint = CrimsonRed,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Ver Todos Carrosséis",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = CrimsonRed
-                        )
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("${state.mangaList.size} resultados", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { if (state.searchQuery.isNotBlank()) onSearchSubmit("") else onClearFilters() }, modifier = Modifier.testTag("clear_filter_header_button")) {
+                        Text(if (state.searchQuery.isNotBlank()) "Limpar busca" else "Limpar filtros")
                     }
                 }
 
@@ -501,7 +371,8 @@ fun BrowseScreen(
                             manga = manga,
                             onClick = { onMangaClick(manga) },
                             isFavorite = isFav,
-                            onFavoriteToggle = { onFavoriteToggle(manga) }
+                            onFavoriteToggle = { onFavoriteToggle(manga) },
+                            showSource = state.mangaList.map { it.sourceId }.distinct().size > 1
                         )
                     }
                 }
@@ -627,6 +498,7 @@ fun BrowseScreen(
                                     onClick = { onMangaClick(manga) },
                                     isFavorite = isFav,
                                     onFavoriteToggle = { onFavoriteToggle(manga) },
+                                    showSource = section.items.map { it.sourceId }.distinct().size > 1,
                                     modifier = Modifier.width(135.dp)
                                 )
                             }
@@ -634,6 +506,7 @@ fun BrowseScreen(
                     }
                 }
             }
+        }
         }
     }
 }

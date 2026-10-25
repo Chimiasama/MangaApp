@@ -39,4 +39,32 @@ class BrowseInputTest {
         compose.onNodeWithText("Nenhum mangá encontrado").assertDoesNotExist()
     }
 
+    @Test fun `filters are available in a sheet instead of squeezing the search field`() {
+        var language = ""
+        var genre = ""
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(), onLanguageSelected = { language = it }, onGenreSelected = { genre = it },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
+        compose.onNodeWithTag("open_filters_button").performClick()
+        compose.onNodeWithTag("lang_chip_en").performClick()
+        compose.onNodeWithTag("genre_chip_Shounen").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("en", language); assertEquals("Shounen", genre) }
+        compose.onNodeWithTag("close_filters_button").performScrollTo().performClick()
+        compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
+    }
+
+    @Test fun `recent searches only appear when the empty search field has focus`() {
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(searchHistory = listOf(com.example.data.local.SearchHistoryEntity(id = 1, query = "dragon ball"))),
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("search_history_chip_1").assertDoesNotExist()
+        compose.onNodeWithTag("search_input").performClick()
+        compose.onNodeWithTag("search_history_chip_1").assertExists()
+        compose.onNodeWithTag("search_input").performTextInput("dragon")
+        compose.onNodeWithTag("search_history_chip_1").assertDoesNotExist()
+    }
+
 }

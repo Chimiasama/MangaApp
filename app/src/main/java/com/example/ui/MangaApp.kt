@@ -10,6 +10,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -91,9 +93,9 @@ fun MangaApp(
                     modifier = Modifier.testTag("bottom_nav_bar")
                 ) {
                     val navItemColors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = androidx.compose.ui.graphics.Color(0xFF1D192B),
+                        selectedIconColor = PrimaryPurple,
                         selectedTextColor = PrimaryPurple,
-                        indicatorColor = androidx.compose.ui.graphics.Color(0xFFE8DEF8),
+                        indicatorColor = PrimaryPurple.copy(alpha = 0.12f),
                         unselectedIconColor = TextSecondaryDark,
                         unselectedTextColor = TextSecondaryDark
                     )
@@ -109,8 +111,8 @@ fun MangaApp(
                                 }
                             }
                         },
-                        icon = { Icon(Icons.Default.Explore, contentDescription = "Explorar") },
-                        label = { Text("Explorar", fontWeight = FontWeight.SemiBold) },
+                        icon = { Icon(Icons.Default.Explore, contentDescription = "Explorar", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Explorar", fontWeight = FontWeight.Normal) },
                         modifier = Modifier.testTag("nav_item_browse"),
                         colors = navItemColors
                     )
@@ -126,8 +128,8 @@ fun MangaApp(
                                 }
                             }
                         },
-                        icon = { Icon(Icons.Default.Bookmark, contentDescription = "Biblioteca") },
-                        label = { Text("Biblioteca", fontWeight = FontWeight.SemiBold) },
+                        icon = { Icon(Icons.Default.Bookmark, contentDescription = "Biblioteca", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Biblioteca", fontWeight = FontWeight.Normal) },
                         modifier = Modifier.testTag("nav_item_library"),
                         colors = navItemColors
                     )
@@ -143,8 +145,8 @@ fun MangaApp(
                                 }
                             }
                         },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = "Ajustes") },
-                        label = { Text("Ajustes", fontWeight = FontWeight.SemiBold) },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = "Ajustes", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Ajustes", fontWeight = FontWeight.Normal) },
                         modifier = Modifier.testTag("nav_item_settings"),
                         colors = navItemColors
                     )

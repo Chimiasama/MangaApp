@@ -26,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -36,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.source.MangaModel
-import com.example.ui.theme.AccentGold
 import com.example.ui.theme.CrimsonRed
 
 @Composable
@@ -45,6 +43,7 @@ fun MangaCard(
     onClick: () -> Unit,
     isFavorite: Boolean = false,
     onFavoriteToggle: (() -> Unit)? = null,
+    showSource: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -53,14 +52,15 @@ fun MangaCard(
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
             .testTag("manga_card_${manga.id}"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.7f)
+                    .clip(RoundedCornerShape(12.dp))
             ) {
                 AsyncImage(
                     model = manga.coverUrl,
@@ -69,20 +69,8 @@ fun MangaCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Bottom gradient scrim
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                                startY = 100f
-                            )
-                        )
-                )
-
                 // Badges
-                Row(
+                if (showSource) Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
@@ -105,39 +93,39 @@ fun MangaCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(4.dp)
-                            .size(32.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .size(48.dp)
                             .testTag("favorite_button_${manga.id}")
                     ) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = "Favorito",
+                            contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
                             tint = if (isFavorite) CrimsonRed else Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(32.dp)
+                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                                .padding(7.dp)
                         )
                     }
                 }
             }
 
-            Column(modifier = Modifier.padding(10.dp)) {
+            Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
                 Text(
                     text = manga.title,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Medium,
                     fontSize = 14.sp,
+                    minLines = 2,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (manga.genres.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = manga.genres.take(2).joinToString(" • "),
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                        text = manga.genres.firstOrNull().orEmpty(),
                         fontSize = 11.sp,
-                        color = AccentGold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
             }
         }
     }
