@@ -55,6 +55,8 @@ class MangaDexSource(
                 includes = listOf("cover_art", "author")
             )
             responseLang.data.orEmpty()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             emptyList()
         }
@@ -68,6 +70,8 @@ class MangaDexSource(
                     includes = listOf("cover_art", "author")
                 )
                 responseGlobal.data.orEmpty()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 emptyList()
             }
@@ -81,6 +85,8 @@ class MangaDexSource(
                     includes = listOf("cover_art", "author")
                 )
                 responseFallback.data.orEmpty()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 emptyList()
             }
@@ -107,6 +113,8 @@ class MangaDexSource(
             else -> null
         }
 
+        var lastFailure: Exception? = null
+
         // 1. Try search with selected language preference
         var dtos: List<com.example.data.network.model.MangaDexMangaDto> = try {
             val responseLang = apiService.getMangaList(
@@ -115,8 +123,12 @@ class MangaDexSource(
                 translatedLanguages = targetLanguages,
                 includes = listOf("cover_art", "author")
             )
+            lastFailure = null
             responseLang.data.orEmpty()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
+            lastFailure = e
             emptyList()
         }
 
@@ -128,8 +140,12 @@ class MangaDexSource(
                     limit = 25,
                     includes = listOf("cover_art", "author")
                 )
+                lastFailure = null
                 responseGlobal.data.orEmpty()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
+                lastFailure = e
                 emptyList()
             }
         }
@@ -139,12 +155,17 @@ class MangaDexSource(
         }
 
         // 3. Fallback search on offline curated catalog
-        STARTER_FALLBACK_MANGAS.filter { m ->
+        val offlineMatches = STARTER_FALLBACK_MANGAS.filter { m ->
             m.title.contains(trimmed, ignoreCase = true) ||
             m.author.contains(trimmed, ignoreCase = true) ||
             m.genres.any { it.contains(trimmed, ignoreCase = true) } ||
             m.description.contains(trimmed, ignoreCase = true)
         }
+        if (offlineMatches.isNotEmpty()) return@withContext offlineMatches
+        lastFailure?.let { failure ->
+            throw java.io.IOException("Não foi possível consultar a MangaDex. Verifique sua conexão e tente novamente.", failure)
+        }
+        emptyList()
     }
 
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel = withContext(Dispatchers.IO) {

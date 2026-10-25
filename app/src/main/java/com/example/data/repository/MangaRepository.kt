@@ -236,6 +236,8 @@ class MangaRepository(
                 }
                 cacheMangaToDb(filtered)
                 results.addAll(filtered)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -281,6 +283,8 @@ class MangaRepository(
 
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
+        var lastFailure: Exception? = null
+        var completedSources = 0
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch) {
             try {
@@ -289,9 +293,13 @@ class MangaRepository(
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     true
                 }
-                cacheMangaToDb(filtered)
                 results.addAll(filtered)
+                completedSources++
+                cacheMangaToDb(filtered)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
+                lastFailure = e
                 e.printStackTrace()
             }
         }
@@ -307,6 +315,9 @@ class MangaRepository(
                 if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
                 entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
+            }
+            if (matched.isEmpty() && completedSources == 0 && lastFailure != null) {
+                throw java.io.IOException("Não foi possível consultar as fontes de mangá. Verifique sua conexão e tente novamente.", lastFailure)
             }
             return matched.map { entity ->
                 MangaModel(

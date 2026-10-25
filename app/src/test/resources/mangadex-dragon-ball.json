@@ -1,0 +1,95 @@
+{
+  "result": "ok",
+  "response": "collection",
+  "data": [
+    {
+      "id": "40bc649f-7b49-4645-859e-6cd94136e722",
+      "type": "manga",
+      "attributes": {
+        "title": {
+          "ja-ro": "Dragon Ball"
+        },
+        "altTitles": [
+          {
+            "ja": "ドラゴンボール"
+          },
+          {
+            "en": "Dragon Ball"
+          }
+        ],
+        "description": {
+          "en": "Search response fixture for Dragon Ball."
+        },
+        "originalLanguage": "ja",
+        "publicationDemographic": "shounen",
+        "status": "completed",
+        "contentRating": "suggestive",
+        "tags": [
+          {
+            "id": "391b0423-d847-456f-aff0-8b0cfc03066b",
+            "type": "tag",
+            "attributes": {
+              "name": {
+                "en": "Action"
+              },
+              "description": {},
+              "group": "genre",
+              "version": 1
+            },
+            "relationships": []
+          },
+          {
+            "id": "799c202e-7daa-44eb-9cf7-8a3c0441531e",
+            "type": "tag",
+            "attributes": {
+              "name": {
+                "en": "Martial Arts"
+              },
+              "description": {},
+              "group": "theme",
+              "version": 1
+            },
+            "relationships": []
+          },
+          {
+            "id": "87cc87cd-a395-47af-b27a-93258283bbc6",
+            "type": "tag",
+            "attributes": {
+              "name": {
+                "en": "Adventure"
+              },
+              "description": {},
+              "group": "genre",
+              "version": 1
+            },
+            "relationships": []
+          }
+        ]
+      },
+      "relationships": [
+        {
+          "id": "7bb20b16-0f35-4510-b2b3-bbeffba54c23",
+          "type": "author",
+          "attributes": {
+            "name": "Toriyama Akira"
+          }
+        },
+        {
+          "id": "7bb20b16-0f35-4510-b2b3-bbeffba54c23",
+          "type": "artist",
+          "attributes": {}
+        },
+        {
+          "id": "61b7650d-eb40-4f4a-95f0-60bc088175a7",
+          "type": "cover_art",
+          "attributes": {
+            "fileName": "b048eb82-670b-4b41-9fc1-38bf7dd52159.jpg"
+          }
+        }
+      ]
+    }
+  ],
+  "limit": 25,
+  "offset": 0,
+  "total": 1
+}

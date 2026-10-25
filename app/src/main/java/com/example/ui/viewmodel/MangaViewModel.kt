@@ -97,6 +97,9 @@ class MangaViewModel(
     }
 ) : ViewModel() {
 
+    private var browseJob: Job? = null
+    private var browseRequestId = 0L
+
     private val _selectedSourceId = MutableStateFlow("all")
     private val _selectedGenre = MutableStateFlow("all")
     private val _searchQuery = MutableStateFlow("")
@@ -286,67 +289,69 @@ class MangaViewModel(
         )
     }
 
-    fun loadBrowseManga() {
-        viewModelScope.launch {
-            _isLoadingBrowse.value = true
-            _errorMessage.value = null
-            val currentSource = _selectedSourceId.value
-            val currentGenre = _selectedGenre.value
-            val currentLanguage = selectedLanguage.value
-            val query = _searchQuery.value
-
+    fun loadBrowseManga(debounceMillis: Long = 0) {
+        val request = ++browseRequestId
+        browseJob?.cancel()
+        val currentSource = _selectedSourceId.value
+        val currentGenre = _selectedGenre.value
+        val query = _searchQuery.value.trim().replace(Regex("\\s+"), " ")
+        _isLoadingBrowse.value = true
+        _errorMessage.value = null
+        browseJob = viewModelScope.launch {
             try {
-                if (query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")) {
-                    val popularList = repository.getPopularManga(currentSource, currentLanguage)
-                    _mangaList.value = popularList
-                    if (popularList.isNotEmpty()) {
-                        _carouselSections.value = buildCarouselSections(popularList)
-                    }
-                } else if (query.isNotBlank()) {
-                    val searchResults = repository.searchManga(query, currentSource, currentLanguage)
-                    _mangaList.value = searchResults
-                } else {
-                    // Genre filter is active (e.g., clicked "Mostrar mais" or selected genre chip)
-                    val genreResults = repository.searchManga(currentGenre, currentSource, currentLanguage)
-                    val baseList = if (genreResults.isNotEmpty()) {
-                        genreResults
-                    } else {
-                        repository.getPopularManga(currentSource, currentLanguage)
-                    }
+                if (debounceMillis > 0) kotlinx.coroutines.delay(debounceMillis)
+                val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
+                val popular = query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")
+                val results = when {
+                    popular -> repository.getPopularManga(currentSource, currentLanguage)
+                    query.isNotBlank() -> repository.searchManga(query, currentSource, currentLanguage)
+                    else -> {
+                        val genreResults = repository.searchManga(currentGenre, currentSource, currentLanguage)
+                        val baseList = if (genreResults.isNotEmpty()) genreResults
+                            else repository.getPopularManga(currentSource, currentLanguage)
+                        val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
+                        val tagEquivalents = when (genreLower) {
+                            "ação" -> listOf("action", "ação", "combate", "luta", "batalha")
+                            "aventura" -> listOf("adventure", "aventura", "jornada")
+                            "fantasia" -> listOf("fantasy", "magic", "fantasia", "magia")
+                            "comédia" -> listOf("comedy", "comédia", "engraçado")
+                            "romance" -> listOf("romance", "amor")
+                            "sci-fi" -> listOf("sci-fi", "science fiction", "ficção", "futuro")
+                            "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural", "demônio", "espírito")
+                            "escolar" -> listOf("school life", "school", "escolar", "escola")
+                            "ninja" -> listOf("ninja", "martial arts", "shinobi")
+                            "shounen" -> listOf("shounen", "shonen")
+                            "seinen" -> listOf("seinen")
+                            "shoujo" -> listOf("shoujo", "shojo")
+                            "isekai" -> listOf("isekai", "reencarnação", "outro mundo")
+                            else -> listOf(genreLower)
+                        }
 
-                    val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
-                    val tagEquivalents = when (genreLower) {
-                        "ação" -> listOf("action", "ação", "combate", "luta", "batalha")
-                        "aventura" -> listOf("adventure", "aventura", "jornada")
-                        "fantasia" -> listOf("fantasy", "magic", "fantasia", "magia")
-                        "comédia" -> listOf("comedy", "comédia", "engraçado")
-                        "romance" -> listOf("romance", "amor")
-                        "sci-fi" -> listOf("sci-fi", "science fiction", "ficção", "futuro")
-                        "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural", "demônio", "espírito")
-                        "escolar" -> listOf("school life", "school", "escolar", "escola")
-                        "ninja" -> listOf("ninja", "martial arts", "shinobi")
-                        "shounen" -> listOf("shounen", "shonen")
-                        "seinen" -> listOf("seinen")
-                        "shoujo" -> listOf("shoujo", "shojo")
-                        "isekai" -> listOf("isekai", "reencarnação", "outro mundo")
-                        else -> listOf(genreLower)
-                    }
+                        val filtered = baseList.filter { manga ->
+                            manga.genres.any { g ->
+                                val gLower = g.lowercase(java.util.Locale.getDefault())
+                                tagEquivalents.any { eq -> gLower.contains(eq) } || gLower.contains(genreLower)
+                            } ||
+                            manga.title.lowercase(java.util.Locale.getDefault()).contains(genreLower) ||
+                            manga.description.lowercase(java.util.Locale.getDefault()).contains(genreLower)
+                        }
 
-                    val filtered = baseList.filter { manga ->
-                        manga.genres.any { g ->
-                            val gLower = g.lowercase(java.util.Locale.getDefault())
-                            tagEquivalents.any { eq -> gLower.contains(eq) } || gLower.contains(genreLower)
-                        } ||
-                        manga.title.lowercase(java.util.Locale.getDefault()).contains(genreLower) ||
-                        manga.description.lowercase(java.util.Locale.getDefault()).contains(genreLower)
+                        if (filtered.isNotEmpty()) filtered else baseList
                     }
-
-                    _mangaList.value = if (filtered.isNotEmpty()) filtered else baseList
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = "Erro ao carregar mangás: ${e.localizedMessage ?: "Verifique sua conexão."}"
+                ensureActive()
+                if (request != browseRequestId) return@launch
+                _mangaList.value = results
+                if (popular && results.isNotEmpty()) _carouselSections.value = buildCarouselSections(results)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (request == browseRequestId) {
+                    _mangaList.value = emptyList()
+                    _errorMessage.value = "Erro ao carregar mangás: ${error.localizedMessage ?: "Verifique sua conexão."}"
+                }
             } finally {
-                _isLoadingBrowse.value = false
+                if (request == browseRequestId) _isLoadingBrowse.value = false
             }
         }
     }
@@ -409,6 +414,7 @@ class MangaViewModel(
 
     fun submitSearch(query: String) {
         val trimmed = query.trim()
+        _isLoadingBrowse.value = true
         _searchQuery.value = trimmed
         if (trimmed.length >= 2) {
             viewModelScope.launch {
@@ -420,13 +426,14 @@ class MangaViewModel(
 
     fun searchManga(query: String, saveToHistory: Boolean = false) {
         val trimmed = query.trim()
+        _isLoadingBrowse.value = true
         _searchQuery.value = query
         if (saveToHistory && trimmed.length >= 2) {
             viewModelScope.launch {
                 repository.saveSearchQuery(trimmed)
             }
         }
-        loadBrowseManga()
+        loadBrowseManga(debounceMillis = if (saveToHistory || trimmed.isEmpty()) 0 else 350)
     }
 
     fun openMangaDetails(manga: MangaModel) {

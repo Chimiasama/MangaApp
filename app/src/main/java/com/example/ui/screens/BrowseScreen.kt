@@ -110,7 +110,7 @@ fun BrowseScreen(
             ) {
                 OutlinedTextField(
                     value = queryInput,
-                    onValueChange = { queryInput = it },
+                    onValueChange = { queryInput = it; onQueryChange(it) },
                     modifier = Modifier
                         .weight(1f)
                         .testTag("search_input"),
@@ -343,9 +343,9 @@ fun BrowseScreen(
         }
 
         // Main Content Area
-        if (state.isLoading && state.mangaList.isEmpty() && state.carouselSections.isEmpty()) {
+        if (state.isLoading && (isFilterOrSearchActive || (state.mangaList.isEmpty() && state.carouselSections.isEmpty()))) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().testTag("browse_loading"),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
