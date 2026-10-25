@@ -51,7 +51,8 @@ class MangaRepository(
     val preferencesRepository: UserPreferencesRepository,
     private val chapterDao: ChapterDao? = null,
     private val bookmarkDao: BookmarkDao? = null,
-    private val searchHistoryDao: SearchHistoryDao? = null
+    private val searchHistoryDao: SearchHistoryDao? = null,
+    private val appContext: android.content.Context? = null
 ) {
 
     val recentSearchHistory: Flow<List<SearchHistoryEntity>> = searchHistoryDao?.getRecentSearchHistory() ?: kotlinx.coroutines.flow.flowOf(emptyList())
@@ -638,6 +639,15 @@ class MangaRepository(
             )
         } else if (existingChapter != null) {
             chapterDao?.updateChapterReadStatus(chapterId, true, lastPageRead, totalPages)
+        }
+
+        // Trigger background WorkManager progress sync with Firestore
+        appContext?.let { ctx ->
+            com.example.data.sync.ProgressSyncWorkHelper.triggerImmediateProgressSync(
+                context = ctx,
+                mangaUrl = mangaUrl,
+                chapterId = chapterId
+            )
         }
     }
 

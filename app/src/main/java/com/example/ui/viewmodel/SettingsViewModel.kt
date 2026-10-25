@@ -31,7 +31,10 @@ data class SettingsUiState(
     val aniListAvatar: String? = null,
     val aniListAutoSync: Boolean = true,
     val isCheckingAniList: Boolean = false,
-    val aniListErrorMessage: String? = null
+    val aniListErrorMessage: String? = null,
+    val batterySaverEnabled: Boolean = false,
+    val batterySaverDimPercent: Int = 0,
+    val syncOnWifiOnly: Boolean = false
 )
 
 private data class ReaderPrefs(
@@ -41,7 +44,9 @@ private data class ReaderPrefs(
     val fullscreen: Boolean,
     val bgColor: String,
     val invertColors: Boolean,
-    val preloadEnabled: Boolean
+    val preloadEnabled: Boolean,
+    val batterySaverEnabled: Boolean,
+    val batterySaverDimPercent: Int
 )
 
 private data class AniListPrefs(
@@ -56,7 +61,8 @@ private data class SettingsUiFlags(
     val rulesStatus: Boolean?,
     val cacheSize: String,
     val isCheckingAniList: Boolean,
-    val aniListError: String?
+    val aniListError: String?,
+    val syncOnWifiOnly: Boolean
 )
 
 class SettingsViewModel(
@@ -80,7 +86,9 @@ class SettingsViewModel(
                 preferencesRepository.defaultFullscreenReader,
                 preferencesRepository.readerBackgroundColor,
                 preferencesRepository.readerInvertColors,
-                preferencesRepository.pagePreloadEnabled
+                preferencesRepository.pagePreloadEnabled,
+                preferencesRepository.batterySaverEnabled,
+                preferencesRepository.batterySaverDimPercent
             ) { args: Array<Any> ->
                 ReaderPrefs(
                     theme = args[0] as String,
@@ -89,7 +97,9 @@ class SettingsViewModel(
                     fullscreen = args[3] as Boolean,
                     bgColor = args[4] as String,
                     invertColors = args[5] as Boolean,
-                    preloadEnabled = args[6] as Boolean
+                    preloadEnabled = args[6] as Boolean,
+                    batterySaverEnabled = args[7] as Boolean,
+                    batterySaverDimPercent = args[8] as Int
                 )
             },
             combine(
@@ -108,9 +118,17 @@ class SettingsViewModel(
             _rulesStatus,
             _cacheSize,
             _isCheckingAniList,
-            _aniListErrorMessage
-        ) { autoSync, rulesStatus, cacheSize, isCheckingAniList, aniListError ->
-            SettingsUiFlags(autoSync, rulesStatus, cacheSize, isCheckingAniList, aniListError)
+            _aniListErrorMessage,
+            preferencesRepository.syncOnWifiOnly
+        ) { args: Array<Any?> ->
+            SettingsUiFlags(
+                autoSync = args[0] as Boolean,
+                rulesStatus = args[1] as? Boolean,
+                cacheSize = args[2] as String,
+                isCheckingAniList = args[3] as Boolean,
+                aniListError = args[4] as? String,
+                syncOnWifiOnly = args[5] as Boolean
+            )
         }
     ) { (customJson, reader, anilist), flags ->
         SettingsUiState(
@@ -130,7 +148,10 @@ class SettingsViewModel(
             aniListAvatar = anilist.avatar,
             aniListAutoSync = anilist.autoSync,
             isCheckingAniList = flags.isCheckingAniList,
-            aniListErrorMessage = flags.aniListError
+            aniListErrorMessage = flags.aniListError,
+            batterySaverEnabled = reader.batterySaverEnabled,
+            batterySaverDimPercent = reader.batterySaverDimPercent,
+            syncOnWifiOnly = flags.syncOnWifiOnly
         )
     }.stateIn(
         scope = viewModelScope,
@@ -256,5 +277,23 @@ class SettingsViewModel(
 
     fun clearAniListError() {
         _aniListErrorMessage.value = null
+    }
+
+    fun setBatterySaverEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setBatterySaverEnabled(enabled)
+        }
+    }
+
+    fun setBatterySaverDimPercent(percent: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setBatterySaverDimPercent(percent)
+        }
+    }
+
+    fun setSyncOnWifiOnly(wifiOnly: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setSyncOnWifiOnly(wifiOnly)
+        }
     }
 }

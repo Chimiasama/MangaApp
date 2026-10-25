@@ -78,6 +78,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.EnergySavingsLeaf
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
@@ -104,7 +109,10 @@ fun SettingsScreen(
     onConnectAniList: (String) -> Unit = {},
     onDisconnectAniList: () -> Unit = {},
     onAniListAutoSyncToggled: (Boolean) -> Unit = {},
-    onClearAniListError: () -> Unit = {}
+    onClearAniListError: () -> Unit = {},
+    onBatterySaverToggled: (Boolean) -> Unit = {},
+    onBatterySaverDimPercentChanged: (Int) -> Unit = {},
+    onSyncOnWifiOnlyToggled: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     var showRulesModal by remember { mutableStateOf(false) }
@@ -556,6 +564,176 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Section: Economia de Bateria & Otimizações de Leitura
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("battery_saver_card")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.EnergySavingsLeaf,
+                        contentDescription = null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Economia de Energia & Bateria",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Otimize consumo de tela OLED, memória e rádio móvel para leituras longas.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Toggle Modo Economia de Bateria
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Modo Economia de Bateria (Eco Mode)",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Fundo OLED preto puro (#000000) desliga pixels, decodificação RGB_565 poupa 50% de RAM/GPU e reduz pré-downloads.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = state.batterySaverEnabled,
+                        onCheckedChange = { onBatterySaverToggled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFF4CAF50),
+                            checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.testTag("battery_saver_switch")
+                    )
+                }
+
+                if (state.batterySaverEnabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Slider de Atenuador de Luz Noturno (Dimmer)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Atenuador Noturno de Luminosidade",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                text = "${state.batterySaverDimPercent}% de redução",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = Color(0xFF4CAF50)
+                            )
+                        }
+                        Text(
+                            text = "Atenua o brilho do display durante a leitura sem alterar as permissões do sistema.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Slider(
+                            value = state.batterySaverDimPercent.toFloat(),
+                            onValueChange = { onBatterySaverDimPercentChanged(it.toInt()) },
+                            valueRange = 0f..50f,
+                            steps = 9,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF4CAF50),
+                                activeTrackColor = Color(0xFF4CAF50)
+                            ),
+                            modifier = Modifier.testTag("battery_dim_slider")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Toggle Sincronizar Apenas no Wi-Fi
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Wifi,
+                        contentDescription = null,
+                        tint = PrimaryPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Sincronizar Progresso Apenas via Wi-Fi",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Evita ativações repetidas dos módulos de rádio 4G/5G móvel, economizando bateria do modem.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = state.syncOnWifiOnly,
+                        onCheckedChange = { onSyncOnWifiOnlyToggled(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = PrimaryPurple),
+                        modifier = Modifier.testTag("sync_wifi_only_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Card explicativo técnico de economia
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF4CAF50).copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.BatteryChargingFull,
+                        contentDescription = null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "⚡ Telas OLED desligam pixels pretos. Decodificação RGB_565 poupa 50% de RAM. WorkManager sincroniza em lotes inteligentes.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
 
         // Section: Armazenamento & Gerenciamento de Cache de Imagens (Fase 1.2)
         Card(

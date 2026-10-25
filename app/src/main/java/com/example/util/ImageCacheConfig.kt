@@ -28,6 +28,7 @@ object ImageCacheConfig {
             }
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .allowRgb565(true) // Reduces bitmap RAM and GPU memory bandwidth by 50% for high battery efficiency
             .crossfade(true)
             .build()
     }

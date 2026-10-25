@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,9 @@ class UserPreferencesRepository(private val context: Context) {
         val ANILIST_USERNAME = stringPreferencesKey("anilist_username")
         val ANILIST_AVATAR = stringPreferencesKey("anilist_avatar")
         val ANILIST_AUTO_SYNC = booleanPreferencesKey("anilist_auto_sync")
+        val BATTERY_SAVER_ENABLED = booleanPreferencesKey("battery_saver_enabled")
+        val BATTERY_SAVER_DIM_PERCENT = intPreferencesKey("battery_saver_dim_percent")
+        val SYNC_ON_WIFI_ONLY = booleanPreferencesKey("sync_on_wifi_only")
     }
 
     val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->
@@ -86,6 +90,18 @@ class UserPreferencesRepository(private val context: Context) {
 
     val aniListAutoSync: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ANILIST_AUTO_SYNC] ?: true
+    }
+
+    val batterySaverEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[BATTERY_SAVER_ENABLED] ?: false
+    }
+
+    val batterySaverDimPercent: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[BATTERY_SAVER_DIM_PERCENT] ?: 0
+    }
+
+    val syncOnWifiOnly: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[SYNC_ON_WIFI_ONLY] ?: false
     }
 
     suspend fun saveCustomRulesJson(json: String) {
@@ -171,6 +187,24 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setAniListAutoSync(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[ANILIST_AUTO_SYNC] = enabled
+        }
+    }
+
+    suspend fun setBatterySaverEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[BATTERY_SAVER_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setBatterySaverDimPercent(percent: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[BATTERY_SAVER_DIM_PERCENT] = percent.coerceIn(0, 60)
+        }
+    }
+
+    suspend fun setSyncOnWifiOnly(wifiOnly: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SYNC_ON_WIFI_ONLY] = wifiOnly
         }
     }
 }

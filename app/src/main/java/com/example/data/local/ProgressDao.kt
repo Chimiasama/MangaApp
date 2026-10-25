@@ -18,6 +18,9 @@ interface ProgressDao {
     @Query("SELECT * FROM reading_progress WHERE mangaUrl = :mangaUrl LIMIT 1")
     fun getProgressForManga(mangaUrl: String): Flow<ProgressEntity?>
 
+    @Query("SELECT * FROM reading_progress WHERE mangaUrl = :mangaUrl LIMIT 1")
+    suspend fun getProgressForMangaSync(mangaUrl: String): ProgressEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveProgress(progress: ProgressEntity)
 

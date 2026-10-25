@@ -242,7 +242,17 @@ fun MangaApp(
                     onConnectAniList = { token -> settingsViewModel.connectAniList(token) },
                     onDisconnectAniList = { settingsViewModel.disconnectAniList() },
                     onAniListAutoSyncToggled = { enabled -> settingsViewModel.setAniListAutoSync(enabled) },
-                    onClearAniListError = { settingsViewModel.clearAniListError() }
+                    onClearAniListError = { settingsViewModel.clearAniListError() },
+                    onBatterySaverToggled = { enabled -> settingsViewModel.setBatterySaverEnabled(enabled) },
+                    onBatterySaverDimPercentChanged = { percent -> settingsViewModel.setBatterySaverDimPercent(percent) },
+                    onSyncOnWifiOnlyToggled = { wifiOnly ->
+                        settingsViewModel.setSyncOnWifiOnly(wifiOnly)
+                        com.example.data.sync.ProgressSyncWorkHelper.schedulePeriodicProgressSync(
+                            context = context,
+                            requiresWifiOnly = wifiOnly,
+                            requiresBatteryNotLow = true
+                        )
+                    }
                 )
             }
 
@@ -316,7 +326,11 @@ fun MangaApp(
                     onToggleBookmark = { pageIndex -> mangaViewModel.togglePageBookmark(pageIndex) },
                     onReaderModeChanged = { mode -> settingsViewModel.setReaderMode(mode) },
                     onReaderBackgroundColorChanged = { color -> settingsViewModel.setReaderBackgroundColor(color) },
-                    onReaderInvertColorsChanged = { inverted -> settingsViewModel.setReaderInvertColors(inverted) }
+                    onReaderInvertColorsChanged = { inverted -> settingsViewModel.setReaderInvertColors(inverted) },
+                    batterySaverEnabled = settingsState.batterySaverEnabled,
+                    batterySaverDimPercent = settingsState.batterySaverDimPercent,
+                    onBatterySaverToggled = { enabled -> settingsViewModel.setBatterySaverEnabled(enabled) },
+                    onBatterySaverDimPercentChanged = { percent -> settingsViewModel.setBatterySaverDimPercent(percent) }
                 )
             }
         }

@@ -60,6 +60,7 @@ class MangaRepositoryTest {
         override fun getAllProgress(): Flow<List<ProgressEntity>> = flowOf(emptyList())
         override suspend fun getAllProgressSync(): List<ProgressEntity> = emptyList()
         override fun getProgressForManga(mangaUrl: String): Flow<ProgressEntity?> = flowOf(null)
+        override suspend fun getProgressForMangaSync(mangaUrl: String): ProgressEntity? = null
         override suspend fun saveProgress(progress: ProgressEntity) {}
         override suspend fun deleteProgress(mangaUrl: String) {}
     }

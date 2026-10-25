@@ -40,7 +40,8 @@ class MainActivity : ComponentActivity() {
             preferencesRepository = preferencesRepository,
             chapterDao = db.chapterDao(),
             bookmarkDao = db.bookmarkDao(),
-            searchHistoryDao = db.searchHistoryDao()
+            searchHistoryDao = db.searchHistoryDao(),
+            appContext = applicationContext
         )
     }
 
@@ -73,6 +74,9 @@ class MainActivity : ComponentActivity() {
         // Configure Coil Disk & Memory Image Caching for Manga Pages and Covers
         val customImageLoader = ImageCacheConfig.setupCoilImageLoader(applicationContext)
         Coil.setImageLoader(customImageLoader)
+
+        // Schedule background reading progress sync with Firestore via WorkManager
+        com.example.data.sync.ProgressSyncWorkHelper.schedulePeriodicProgressSync(applicationContext)
 
         setContent {
             val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
