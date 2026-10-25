@@ -130,7 +130,8 @@ class DynamicJsoupSource(
                     title = title.ifEmpty { "Capítulo $parsedNum" },
                     chapterUrl = link,
                     chapterNumber = parsedNum,
-                    dateUpload = "Recente"
+                    dateUpload = "Recente",
+                    language = lang
                 )
             )
             index--
@@ -144,7 +145,8 @@ class DynamicJsoupSource(
                     title = "Capítulo 01",
                     chapterUrl = "$mangaUrl/capitulo-1",
                     chapterNumber = 1.0f,
-                    dateUpload = "Hoje"
+                    dateUpload = "Hoje",
+                    language = lang
                 )
             )
         }

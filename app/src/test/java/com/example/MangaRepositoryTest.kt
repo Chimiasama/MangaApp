@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -113,7 +114,7 @@ class MangaRepositoryTest {
     }
 
     @Test
-    fun `test getAggregatedChapters combines primary and secondary sources with fallback language`() = runBlocking {
+    fun `sparse Portuguese chapters do not trigger an English fallback`() = runBlocking {
         // Primary source returns sparse PT-BR list (only recent chapters 114, 115)
         val primarySource = object : MangaSource {
             override val id: String = "primary_src"
@@ -129,8 +130,8 @@ class MangaRepositoryTest {
             override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {
                 return if (language == "pt-br") {
                     listOf(
-                        ChapterModel(id = "ch-115", title = "Cap. 115", chapterUrl = "p115", chapterNumber = 115f, dateUpload = ""),
-                        ChapterModel(id = "ch-114", title = "Cap. 114", chapterUrl = "p114", chapterNumber = 114f, dateUpload = "")
+                        ChapterModel(id = "ch-115", title = "Cap. 115", chapterUrl = "p115", chapterNumber = 115f, dateUpload = "", language = "pt-br"),
+                        ChapterModel(id = "ch-114", title = "Cap. 114", chapterUrl = "p114", chapterNumber = 114f, dateUpload = "", language = "pt-br")
                     )
                 } else {
                     emptyList()
@@ -162,7 +163,7 @@ class MangaRepositoryTest {
                             title = "Cap. $num [EN]",
                             chapterUrl = "sec-$num",
                             chapterNumber = num.toFloat(),
-                            dateUpload = ""
+                            dateUpload = "", language = "en"
                         )
                     }
                 } else {
@@ -182,22 +183,21 @@ class MangaRepositoryTest {
             language = "pt-br"
         )
 
-        // Total should be 115 chapters (1 to 115)
-        assertEquals(115, aggregated.size)
+        // Only the two confirmed Portuguese chapters may be returned.
+        assertEquals(2, aggregated.size)
 
         // Chapter 115 should come from primary source (PT-BR) without [EN] tag
         val ch115 = aggregated.find { it.chapterNumber == 115f }
         assertNotNull(ch115)
         assertEquals("Cap. 115", ch115?.title)
 
-        // Chapter 1 should come from secondary source fallback (EN)
+        // A missing Portuguese chapter remains missing.
         val ch1 = aggregated.find { it.chapterNumber == 1f }
-        assertNotNull(ch1)
-        assertEquals("Cap. 1 [EN]", ch1?.title)
+        assertNull(ch1)
     }
 
     @Test
-    fun `test getAggregatedChapters prioritizes primary language when both sources offer the same chapter`() = runBlocking {
+    fun `secondary sources cannot fill Portuguese chapter gaps with English`() = runBlocking {
         val primarySource = object : MangaSource {
             override val id: String = "primary_src"
             override val name: String = "Primary"
@@ -211,7 +211,7 @@ class MangaRepositoryTest {
             override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, "pt-br")
             override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {
                 return listOf(
-                    ChapterModel(id = "ch-1-pt", title = "Cap. 1 - Inicio", chapterUrl = "p1", chapterNumber = 1f, dateUpload = "")
+                    ChapterModel(id = "ch-1-pt", title = "Cap. 1 - Inicio", chapterUrl = "p1", chapterNumber = 1f, dateUpload = "", language = "pt-br")
                 )
             }
             override suspend fun getPages(chapterUrl: String): List<String> = emptyList()
@@ -233,8 +233,8 @@ class MangaRepositoryTest {
             override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, "en")
             override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {
                 return listOf(
-                    ChapterModel(id = "ch-1-en", title = "Cap. 1 [EN]", chapterUrl = "s1", chapterNumber = 1f, dateUpload = ""),
-                    ChapterModel(id = "ch-2-en", title = "Cap. 2 [EN]", chapterUrl = "s2", chapterNumber = 2f, dateUpload = "")
+                    ChapterModel(id = "ch-1-en", title = "Cap. 1 [EN]", chapterUrl = "s1", chapterNumber = 1f, dateUpload = "", language = "en"),
+                    ChapterModel(id = "ch-2-en", title = "Cap. 2 [EN]", chapterUrl = "s2", chapterNumber = 2f, dateUpload = "", language = "en")
                 )
             }
             override suspend fun getPages(chapterUrl: String): List<String> = emptyList()
@@ -250,12 +250,38 @@ class MangaRepositoryTest {
             language = "pt-br"
         )
 
-        assertEquals(2, aggregated.size)
+        assertEquals(1, aggregated.size)
         // Chapter 1 must be PT-BR version
         val ch1 = aggregated.find { it.chapterNumber == 1f }
         assertEquals("Cap. 1 - Inicio", ch1?.title)
-        // Chapter 2 is added from secondary
+        // English chapter 2 must not be mixed into PT-BR.
         val ch2 = aggregated.find { it.chapterNumber == 2f }
-        assertEquals("Cap. 2 [EN]", ch2?.title)
+        assertNull(ch2)
     }
+    @Test fun `aggregation validates metadata even if a source ignores the language parameter`() = runBlocking {
+        val requests = mutableListOf<String>()
+        repository.registerSource(object : MangaSource {
+            override val id = "mixed"
+            override val name = "Mixed source"
+            override val baseUrl = "https://mixed.test"
+            override val isNsfw = false
+            override val lang = "multi"
+            override suspend fun getPopularManga() = emptyList<MangaModel>()
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+            override suspend fun getMangaDetails(mangaUrl: String): MangaModel = error("unused")
+            override suspend fun getPages(chapterUrl: String) = emptyList<String>()
+            override suspend fun getChapters(mangaUrl: String) = emptyList<ChapterModel>()
+            override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {
+                requests += language
+                return listOf("pt-br", "ru", "en", "").map { ChapterModel(it, "Same title", it, 115f, language = it) }
+            }
+        })
+        suspend fun chapters(language: String) = repository.getAggregatedChapters("Manga", "https://mixed.test/manga", "mixed", language)
+        assertEquals(listOf("pt-br"), chapters("pt-br").map { it.language })
+        assertEquals(listOf("en"), chapters("en").map { it.language })
+        assertEquals(4, chapters("all").size)
+        assertEquals(emptyList<ChapterModel>(), chapters("es"))
+        assertEquals(listOf("pt-br", "en", "all", "es"), requests)
+    }
+
 }

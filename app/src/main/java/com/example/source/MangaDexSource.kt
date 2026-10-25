@@ -12,8 +12,6 @@ import com.example.data.mapping.toMangaModel
 import com.example.data.network.MangaDexApiService
 import com.example.data.network.RetrofitClient
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
@@ -190,6 +188,8 @@ class MangaDexSource(
                 val fallbackNum = (index + 1).toFloat()
                 dto.toChapterModel(baseUrl, fallbackNum)
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
@@ -348,8 +348,8 @@ class MangaDexSource(
                     translatedLanguages = languages,
                     orderChapter = "asc"
                 )
-            } catch (e: Exception) {
-                break
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             }
 
             val data = response.data.orEmpty()
@@ -374,120 +374,15 @@ class MangaDexSource(
         mangaId: String,
         language: String
     ): List<com.example.data.network.model.MangaDexChapterDto> {
-        val targetLanguages = when (language.lowercase()) {
-            "pt-br", "pt", "pt-pt" -> listOf("pt-br", "pt", "pt-pt")
-            "en" -> listOf("en")
-            "es-la", "es", "es-es" -> listOf("es-la", "es", "es-es")
-            else -> null
-        }
-
-        if (targetLanguages != null) {
-            val primaryChapters = fetchAllChapters(mangaId, targetLanguages)
-
-            // Concurrently fetch English and global fallback chapters if primary language chapters are missing or incomplete
-            val (enChapters, fallbackChapters) = coroutineScope {
-                val enDeferred = async {
-                    if (!targetLanguages.contains("en")) fetchAllChapters(mangaId, listOf("en")) else emptyList()
-                }
-                val fallbackDeferred = async {
-                    if (primaryChapters.size < 10) fetchAllChapters(mangaId, null) else emptyList()
-                }
-                Pair(enDeferred.await(), fallbackDeferred.await())
-            }
-
-            val chapterMap = LinkedHashMap<String, com.example.data.network.model.MangaDexChapterDto>()
-
-            // 1. Insert primary language chapters first (highest priority)
-            for (ch in primaryChapters) {
-                val numKey = ch.attributes?.chapter ?: ch.id
-                chapterMap[numKey] = ch
-            }
-
-            // 2. Fill in missing chapter numbers from English
-            for (ch in enChapters) {
-                val numKey = ch.attributes?.chapter ?: ch.id
-                if (!chapterMap.containsKey(numKey)) {
-                    chapterMap[numKey] = ch
-                }
-            }
-
-            // 3. Fill in missing chapter numbers from any other language fallback
-            for (ch in fallbackChapters) {
-                val numKey = ch.attributes?.chapter ?: ch.id
-                if (!chapterMap.containsKey(numKey)) {
-                    chapterMap[numKey] = ch
-                }
-            }
-
-            return chapterMap.values.sortedWith(
-                compareBy<com.example.data.network.model.MangaDexChapterDto> { dto ->
-                    dto.attributes?.chapter?.toFloatOrNull() ?: Float.MAX_VALUE
-                }.thenBy { dto ->
-                    dto.attributes?.chapter.orEmpty()
-                }
-            )
-        }
-
-        return fetchMergedChapters(mangaId)
+        val targets = ChapterLanguage.requested(language)?.toList()
+        return fetchAllChapters(mangaId, targets)
+            .filter { ChapterLanguage.matches(it.attributes?.translatedLanguage.orEmpty(), language) }
+            .distinctBy { Triple(it.attributes?.volume, it.attributes?.chapter ?: it.id,
+                ChapterLanguage.normalize(it.attributes?.translatedLanguage.orEmpty())) }
+            .sortedBy { it.attributes?.chapter?.toFloatOrNull() ?: Float.MAX_VALUE }
     }
 
-    private suspend fun fetchMergedChapters(mangaId: String): List<com.example.data.network.model.MangaDexChapterDto> {
-        // Fetch Portuguese, English, and Spanish chapters concurrently
-        val (ptChapters, enChapters, esChapters) = coroutineScope {
-            val ptDeferred = async { fetchAllChapters(mangaId, listOf("pt-br", "pt")) }
-            val enDeferred = async { fetchAllChapters(mangaId, listOf("en")) }
-            val esDeferred = async { fetchAllChapters(mangaId, listOf("es-la", "es")) }
-            Triple(ptDeferred.await(), enDeferred.await(), esDeferred.await())
-        }
-
-        // If total chapters found across PT, EN, and ES is very small, fetch without language filter
-        val fallbackChapters = if (ptChapters.size + enChapters.size + esChapters.size < 10) {
-            fetchAllChapters(mangaId, null)
-        } else {
-            emptyList()
-        }
-
-        val chapterMap = LinkedHashMap<String, com.example.data.network.model.MangaDexChapterDto>()
-
-        // 1. Prioritize PT-BR chapters first
-        for (ch in ptChapters) {
-            val numKey = ch.attributes?.chapter ?: ch.id
-            chapterMap[numKey] = ch
-        }
-
-        // 2. Fill in missing chapter numbers from English (no cutoff limiter)
-        for (ch in enChapters) {
-            val numKey = ch.attributes?.chapter ?: ch.id
-            if (!chapterMap.containsKey(numKey)) {
-                chapterMap[numKey] = ch
-            }
-        }
-
-        // 3. Fill in missing chapter numbers from Spanish
-        for (ch in esChapters) {
-            val numKey = ch.attributes?.chapter ?: ch.id
-            if (!chapterMap.containsKey(numKey)) {
-                chapterMap[numKey] = ch
-            }
-        }
-
-        // 4. Fill in missing chapter numbers from any other language
-        for (ch in fallbackChapters) {
-            val numKey = ch.attributes?.chapter ?: ch.id
-            if (!chapterMap.containsKey(numKey)) {
-                chapterMap[numKey] = ch
-            }
-        }
-
-        // Sort ascending by chapter number
-        return chapterMap.values.sortedWith(
-            compareBy<com.example.data.network.model.MangaDexChapterDto> { dto ->
-                dto.attributes?.chapter?.toFloatOrNull() ?: Float.MAX_VALUE
-            }.thenBy { dto ->
-                dto.attributes?.chapter.orEmpty()
-            }
-        )
-    }
+    private suspend fun fetchMergedChapters(mangaId: String) = fetchChaptersForLanguage(mangaId, "all")
 
     private fun createFallbackDetails(mangaId: String): MangaModel {
         return MangaModel(

@@ -107,6 +107,7 @@ class ConsumetMangaSource(
     override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, "en")
 
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> = withContext(Dispatchers.IO) {
+        if (!ChapterLanguage.matches("en", language)) return@withContext emptyList()
         val rawId = extractMangaId(mangaUrl)
         try {
             val response = apiService.getMangaInfo(provider = defaultProvider, id = rawId)
@@ -118,7 +119,8 @@ class ConsumetMangaSource(
                     title = ch.title ?: "Capítulo $num",
                     chapterUrl = ch.id,
                     chapterNumber = num,
-                    dateUpload = ch.releaseDate.orEmpty()
+                    dateUpload = ch.releaseDate.orEmpty(),
+                    language = "en"
                 )
             }
         } catch (e: Exception) {

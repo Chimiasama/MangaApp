@@ -210,7 +210,8 @@ object SampleSources {
                         title = "Capítulo 0$i - Batalha Decisiva",
                         chapterUrl = "$mangaUrl/capitulo-$i",
                         chapterNumber = i.toFloat(),
-                        dateUpload = "2026-07-${10 + (i % 15)}"
+                        dateUpload = "2026-07-${10 + (i % 15)}",
+                        language = lang
                     )
                 )
             }

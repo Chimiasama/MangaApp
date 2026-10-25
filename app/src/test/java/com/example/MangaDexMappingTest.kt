@@ -28,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -279,7 +280,7 @@ class MangaDexMappingTest {
     }
 
     @Test
-    fun `test fetchChaptersForLanguage merges fallback chapters when primary language chapters are sparse`() = runBlocking {
+    fun `sparse Portuguese chapters never include English fallback chapters`() = runBlocking {
         val fakeApiService = object : MangaDexApiService {
             override suspend fun getMangaList(
                 limit: Int, offset: Int, title: String?, translatedLanguages: List<String>?,
@@ -343,18 +344,17 @@ class MangaDexMappingTest {
         // Requesting chapters for pt-br
         val chapters = source.getChapters("https://api.mangadex.org/manga/test-bisque-doll", "pt-br")
 
-        // Should return 11 total chapters: 1 PT-BR (115.5) + 10 EN (1..10)
-        assertEquals(11, chapters.size)
+        // A sparse PT-BR list must remain strictly Portuguese.
+        assertEquals(1, chapters.size)
 
         // Check PT-BR chapter is present
         val ptChapter = chapters.find { it.id == "ch-pt-115.5" }
         assertNotNull(ptChapter)
         assertEquals("Cap. 115.5 - Epílogo", ptChapter?.title)
 
-        // Check English fallback chapters (Ch 1..10) are filled in
+        // Other translations must not fill the gaps.
         val enChapter1 = chapters.find { it.id == "ch-en-1" }
-        assertNotNull(enChapter1)
-        assertEquals("Cap. 1 - Chapter 1 🇺🇸", enChapter1?.title)
+        assertNull(enChapter1)
     }
 
     @Test

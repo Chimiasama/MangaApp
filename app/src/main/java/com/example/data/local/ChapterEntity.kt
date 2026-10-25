@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -18,7 +19,8 @@ data class ChapterEntity(
     val isRead: Boolean = false,
     val lastPageRead: Int = 0,
     val totalPages: Int = 0,
-    val fetchedTimestamp: Long = System.currentTimeMillis()
+    val fetchedTimestamp: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val language: String = ""
 )
 
 /**

@@ -216,6 +216,7 @@ object MangaDexMapper {
             isRead = false,
             lastPageRead = 0,
             totalPages = totalPages,
+            language = lang,
             fetchedTimestamp = System.currentTimeMillis()
         )
     }
@@ -238,7 +239,8 @@ object MangaDexMapper {
             title = entity.title,
             chapterUrl = entity.chapterUrl,
             chapterNumber = entity.chapterNumber,
-            dateUpload = entity.dateUpload
+            dateUpload = entity.dateUpload,
+            language = entity.language
         )
     }
 
@@ -285,6 +287,7 @@ object MangaDexMapper {
             chapterUrl = chapterUrl,
             chapterNumber = chapterNumber,
             dateUpload = dateUpload,
+            language = language,
             isRead = false,
             lastPageRead = 0,
             totalPages = 0,
@@ -298,7 +301,8 @@ object MangaDexMapper {
             title = title,
             chapterUrl = chapterUrl,
             chapterNumber = chapterNumber,
-            dateUpload = dateUpload
+            dateUpload = dateUpload,
+            language = language
         )
     }
 }

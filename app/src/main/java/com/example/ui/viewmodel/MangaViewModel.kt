@@ -389,26 +389,35 @@ class MangaViewModel(
         loadBrowseManga()
     }
 
+    private var detailChapterJob: Job? = null
+    private var detailChapterRequest = 0L
+
+    private fun loadDetailChapters(manga: MangaModel, language: String? = null) {
+        val request = ++detailChapterRequest
+        detailChapterJob?.cancel()
+        _detailChapters.value = emptyList()
+        _isLoadingDetail.value = true
+        detailChapterJob = viewModelScope.launch {
+            try {
+                val target = language ?: repository.preferencesRepository.selectedLanguage.first()
+                val chapters = repository.getAggregatedChapters(manga.title, manga.url, manga.sourceId, target)
+                ensureActive()
+                if (request == detailChapterRequest) _detailChapters.value = chapters
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (request == detailChapterRequest) _detailChapters.value = emptyList()
+            } finally {
+                if (request == detailChapterRequest) _isLoadingDetail.value = false
+            }
+        }
+    }
+
     fun selectLanguage(language: String) {
+        _detailManga.value?.let { loadDetailChapters(it, language) }
         viewModelScope.launch {
             repository.preferencesRepository.setSelectedLanguage(language)
             loadBrowseManga()
-            val currentManga = _detailManga.value
-            if (currentManga != null) {
-                try {
-                    _isLoadingDetail.value = true
-                    _detailChapters.value = repository.getAggregatedChapters(
-                        mangaTitle = currentManga.title,
-                        mangaUrl = currentManga.url,
-                        primarySourceId = currentManga.sourceId,
-                        language = language
-                    )
-                } catch (e: Exception) {
-                    _detailChapters.value = emptyList()
-                } finally {
-                    _isLoadingDetail.value = false
-                }
-            }
         }
     }
 
@@ -452,22 +461,7 @@ class MangaViewModel(
                 _currentMangaProgress.value = prog
             }
         }
-        viewModelScope.launch {
-            try {
-                val currentLang = selectedLanguage.value
-                val chapters = repository.getAggregatedChapters(
-                    mangaTitle = manga.title,
-                    mangaUrl = manga.url,
-                    primarySourceId = manga.sourceId,
-                    language = currentLang
-                )
-                _detailChapters.value = chapters
-            } catch (e: Exception) {
-                _detailChapters.value = emptyList()
-            } finally {
-                _isLoadingDetail.value = false
-            }
-        }
+        loadDetailChapters(manga)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _detailMalRecommendations.value = emptyList()
@@ -736,13 +730,15 @@ class MangaViewModel(
                 chapterUrl = realChapterUrl
             )
 
-            val chaptersList = cachedChapters.map { entity ->
+            val targetLanguage = repository.preferencesRepository.selectedLanguage.first()
+            val chaptersList = cachedChapters.filter { com.example.source.ChapterLanguage.matches(it.language, targetLanguage) }.map { entity ->
                 ChapterModel(
                     id = entity.id,
                     title = entity.title,
                     chapterUrl = entity.chapterUrl,
                     chapterNumber = entity.chapterNumber,
-                    dateUpload = entity.dateUpload
+                    dateUpload = entity.dateUpload,
+                    language = entity.language
                 )
             }.ifEmpty { listOf(chapter) }
 
@@ -761,7 +757,7 @@ class MangaViewModel(
             if (cachedChapters.isEmpty()) {
                 launch(Dispatchers.IO) {
                     try {
-                        val currentLang = selectedLanguage.value
+                        val currentLang = repository.preferencesRepository.selectedLanguage.first()
                         val fullChapters = repository.getAggregatedChapters(
                             mangaTitle = manga.title,
                             mangaUrl = manga.url,
@@ -812,13 +808,15 @@ class MangaViewModel(
                 chapterUrl = realChapterUrl
             )
 
-            val chaptersList = cachedChapters.map { entity ->
+            val targetLanguage = repository.preferencesRepository.selectedLanguage.first()
+            val chaptersList = cachedChapters.filter { com.example.source.ChapterLanguage.matches(it.language, targetLanguage) }.map { entity ->
                 ChapterModel(
                     id = entity.id,
                     title = entity.title,
                     chapterUrl = entity.chapterUrl,
                     chapterNumber = entity.chapterNumber,
-                    dateUpload = entity.dateUpload
+                    dateUpload = entity.dateUpload,
+                    language = entity.language
                 )
             }.ifEmpty { listOf(chapter) }
 
@@ -836,7 +834,7 @@ class MangaViewModel(
             if (cachedChapters.isEmpty()) {
                 launch(Dispatchers.IO) {
                     try {
-                        val currentLang = selectedLanguage.value
+                        val currentLang = repository.preferencesRepository.selectedLanguage.first()
                         val fullChapters = repository.getAggregatedChapters(
                             mangaTitle = manga.title,
                             mangaUrl = manga.url,

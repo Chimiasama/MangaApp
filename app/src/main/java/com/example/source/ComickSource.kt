@@ -147,27 +147,7 @@ class ComickSource(
                 }
             }
 
-            // If selected language had no chapters and wasn't English, fallback to English or all chapters
-            if (rawChapters.isEmpty() && targetLang != null) {
-                page = 1
-                hasMore = true
-                while (hasMore) {
-                    val chapterResponse = apiService.getComicChapters(hid = hid, lang = null, limit = pageSize, page = page)
-                    val pageChapters = chapterResponse.chapters.orEmpty()
-                    if (pageChapters.isEmpty()) {
-                        hasMore = false
-                    } else {
-                        rawChapters.addAll(pageChapters)
-                        if (pageChapters.size < pageSize) {
-                            hasMore = false
-                        } else {
-                            page++
-                        }
-                    }
-                }
-            }
-
-            rawChapters.mapIndexed { index, ch ->
+            rawChapters.filter { ChapterLanguage.matches(it.lang.orEmpty(), language) }.mapIndexed { index, ch ->
                 val chapNum = ch.chap?.toFloatOrNull() ?: (index + 1).toFloat()
                 val title = buildString {
                     append("Cap. ")
@@ -185,10 +165,11 @@ class ComickSource(
                     title = title,
                     chapterUrl = "https://comick.io/chapter/${ch.hid}",
                     chapterNumber = chapNum,
-                    dateUpload = ch.createdAt.orEmpty()
+                    dateUpload = ch.createdAt.orEmpty(),
+                    language = ch.lang.orEmpty()
                 )
             }
-            .distinctBy { it.chapterNumber }
+            .distinctBy { it.chapterNumber to it.language }
             .sortedByDescending { it.chapterNumber }
         } catch (e: Exception) {
             emptyList()

@@ -20,6 +20,7 @@ import com.example.data.model.GenreStat
 import com.example.data.model.ReadingStats
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.sync.FirestoreSyncManager
+import com.example.source.ChapterLanguage
 import com.example.source.ChapterModel
 import com.example.source.ComickSource
 import com.example.source.ConsumetMangaSource
@@ -377,25 +378,22 @@ class MangaRepository(
         val primarySource = sourceRegistry[primarySourceId] ?: sourceRegistry.values.first()
         val primaryChapters = try {
             primarySource.getChapters(mangaUrl, language)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             emptyList()
         }
 
-        fun isPrimaryLanguage(ch: ChapterModel): Boolean {
-            val titleLower = ch.title.lowercase()
-            return !titleLower.contains("🇺🇸") && !titleLower.contains("[en]") && !titleLower.contains(" english")
-        }
-
-        class ChapterEntry(val chapter: ChapterModel, val isPrimaryLang: Boolean)
-
-        val chapterMap = LinkedHashMap<Float, ChapterEntry>()
-        primaryChapters.forEach { ch ->
-            if (ch.chapterNumber >= 0f) {
-                chapterMap[ch.chapterNumber] = ChapterEntry(ch, isPrimaryLanguage(ch))
+        val chapterMap = LinkedHashMap<Pair<Float, String>, ChapterModel>()
+        fun addChapters(chapters: List<ChapterModel>) {
+            chapters.filter { ChapterLanguage.matches(it.language, language) }.forEach { chapter ->
+                if (chapter.chapterNumber >= 0f) {
+                    val key = chapter.chapterNumber to ChapterLanguage.normalize(chapter.language)
+                    chapterMap.putIfAbsent(key, chapter)
+                }
             }
         }
-
-        val isSparse = primaryChapters.size < 10 || primaryChapters.none { it.chapterNumber <= 1.0f }
+        addChapters(primaryChapters)
 
         // Cross-reference with other sources concurrently to fill missing chapter gaps
         val secondarySources = sourceRegistry.values.filter { it.id != primarySourceId }
@@ -416,38 +414,17 @@ class MangaRepository(
                         }
                     }
 
-                    val primaryLangChapters = fetchFromSource(language)
-                    val fallbackChapters = if (isSparse || primaryLangChapters.size < 10) {
-                        if (language.equals("en", ignoreCase = true)) emptyList() else fetchFromSource("en")
-                    } else {
-                        emptyList()
-                    }
-
-                    primaryLangChapters + fallbackChapters
+                    fetchFromSource(language)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     emptyList()
                 }
             }
         }
 
-        val secondaryResults = deferredList.flatMap { it.await() }
-        for (ch in secondaryResults) {
-            if (ch.chapterNumber >= 0f) {
-                val chIsPrimaryLang = isPrimaryLanguage(ch)
-                val existing = chapterMap[ch.chapterNumber]
-                if (existing == null) {
-                    chapterMap[ch.chapterNumber] = ChapterEntry(ch, chIsPrimaryLang)
-                } else if (!existing.isPrimaryLang && chIsPrimaryLang) {
-                    chapterMap[ch.chapterNumber] = ChapterEntry(ch, true)
-                }
-            }
-        }
-
-        val mergedList = if (chapterMap.isNotEmpty()) {
-            chapterMap.values.map { it.chapter }.sortedByDescending { it.chapterNumber }
-        } else {
-            primaryChapters
-        }
+        deferredList.forEach { addChapters(it.await()) }
+        val mergedList = chapterMap.values.sortedByDescending { it.chapterNumber }
 
         if (mergedList.isNotEmpty() && chapterDao != null) {
             val entities = mergedList.mapIndexed { index, ch ->
@@ -457,7 +434,8 @@ class MangaRepository(
                     title = ch.title,
                     chapterUrl = ch.chapterUrl,
                     chapterNumber = if (ch.chapterNumber > 0) ch.chapterNumber else (index + 1).toFloat(),
-                    dateUpload = ch.dateUpload
+                    dateUpload = ch.dateUpload,
+                    language = ch.language
                 )
             }
             chapterDao.insertChapters(entities)
@@ -473,7 +451,7 @@ class MangaRepository(
     ): List<ChapterModel> {
         val source = sourceRegistry[sourceId] ?: sourceRegistry.values.first()
         return try {
-            val networkChapters = source.getChapters(mangaUrl, language)
+            val networkChapters = source.getChapters(mangaUrl, language).filter { ChapterLanguage.matches(it.language, language) }
             if (networkChapters.isNotEmpty() && chapterDao != null) {
                 val entities = networkChapters.mapIndexed { index, ch ->
                     ChapterEntity(
@@ -482,22 +460,26 @@ class MangaRepository(
                         title = ch.title,
                         chapterUrl = ch.chapterUrl,
                         chapterNumber = if (ch.chapterNumber > 0) ch.chapterNumber else (index + 1).toFloat(),
-                        dateUpload = ch.dateUpload
+                        dateUpload = ch.dateUpload,
+                        language = ch.language
                     )
                 }
                 chapterDao.insertChapters(entities)
             }
             networkChapters
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             val cached = chapterDao?.getChaptersForMangaSync(mangaUrl) ?: emptyList()
             if (cached.isNotEmpty()) {
-                cached.map { entity ->
+                cached.filter { ChapterLanguage.matches(it.language, language) }.map { entity ->
                     ChapterModel(
                         id = entity.id,
                         title = entity.title,
                         chapterUrl = entity.chapterUrl,
                         chapterNumber = entity.chapterNumber,
-                        dateUpload = entity.dateUpload
+                        dateUpload = entity.dateUpload,
+                        language = entity.language
                     )
                 }
             } else {

@@ -100,6 +100,7 @@ fun MangaDetailScreen(
     onSearchRecommendation: (String) -> Unit = {}
 ) {
     val manga = state.manga ?: return
+    val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, selectedLanguage) }
     val context = LocalContext.current
 
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -108,11 +109,11 @@ fun MangaDetailScreen(
     var chapterSearchQuery by remember { mutableStateOf("") }
     var isGroupingEnabled by remember { mutableStateOf(true) }
 
-    val sortedChapters = remember(state.chapters, sortAscending, chapterSearchQuery) {
+    val sortedChapters = remember(visibleChapters, sortAscending, chapterSearchQuery) {
         val list = if (sortAscending) {
-            state.chapters.sortedBy { it.chapterNumber }
+            visibleChapters.sortedBy { it.chapterNumber }
         } else {
-            state.chapters.sortedByDescending { it.chapterNumber }
+            visibleChapters.sortedByDescending { it.chapterNumber }
         }
         if (chapterSearchQuery.isBlank()) {
             list
@@ -125,7 +126,7 @@ fun MangaDetailScreen(
         sortedChapters.chunked(50)
     }
 
-    var expandedGroups by remember(state.chapters.size, sortAscending, isGroupingEnabled) {
+    var expandedGroups by remember(visibleChapters.size, sortAscending, isGroupingEnabled) {
         val initialSet = mutableSetOf<Int>()
         if (sortedChapters.size <= 50) {
             initialSet.add(0)
@@ -279,7 +280,7 @@ fun MangaDetailScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Reading progress resume banner if available
-                    val progress = state.readingProgress
+                    val progress = state.readingProgress?.takeIf { saved -> visibleChapters.any { it.id == saved.chapterId } }
                     if (progress != null) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = PrimaryPurple.copy(alpha = 0.15f)),
@@ -311,7 +312,7 @@ fun MangaDetailScreen(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
-                                val continueChapter = state.chapters.find { it.id == progress.chapterId }
+                                val continueChapter = visibleChapters.find { it.id == progress.chapterId }
                                 if (continueChapter != null) {
                                     Button(
                                         onClick = { onChapterClick(continueChapter) },
@@ -326,9 +327,9 @@ fun MangaDetailScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                    } else if (state.chapters.isNotEmpty()) {
+                    } else if (visibleChapters.isNotEmpty()) {
                         // Banner de início direto para novos leitores
-                        val firstChapter = state.chapters.lastOrNull() ?: state.chapters.first()
+                        val firstChapter = visibleChapters.minBy { it.chapterNumber }
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CrimsonRed.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(12.dp),
@@ -493,7 +494,7 @@ fun MangaDetailScreen(
                                 ) {
                                     OutlinedButton(
                                         onClick = {
-                                            selectedChapterIds = state.chapters.map { it.id }.toSet()
+                                            selectedChapterIds = visibleChapters.map { it.id }.toSet()
                                         },
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.weight(1f)
@@ -511,7 +512,7 @@ fun MangaDetailScreen(
 
                                     Button(
                                         onClick = {
-                                            val selectedList = state.chapters.filter { it.id in selectedChapterIds }
+                                            val selectedList = visibleChapters.filter { it.id in selectedChapterIds }
                                             if (selectedList.isNotEmpty()) {
                                                 onDownloadMultipleChapters(selectedList)
                                                 Toast.makeText(
@@ -554,7 +555,7 @@ fun MangaDetailScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Capítulos (${state.chapters.size})",
+                                    text = "Capítulos (${visibleChapters.size})",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -620,7 +621,7 @@ fun MangaDetailScreen(
                                 }
                             }
 
-                            if (state.chapters.isNotEmpty()) {
+                            if (visibleChapters.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -654,7 +655,7 @@ fun MangaDetailScreen(
 
                                     Button(
                                         onClick = {
-                                            val unDownloaded = state.chapters.filter { ch ->
+                                            val unDownloaded = visibleChapters.filter { ch ->
                                                 downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
                                             }
                                             if (unDownloaded.isNotEmpty()) {
@@ -699,7 +700,7 @@ fun MangaDetailScreen(
                             }
 
                             // Filtro rápido de capítulos quando há muitos capítulos
-                            if (state.chapters.size > 3) {
+                            if (visibleChapters.size > 3) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = chapterSearchQuery,
@@ -737,7 +738,7 @@ fun MangaDetailScreen(
                             }
 
                             // Grouping controls (50-in-50) & Expand/Collapse All
-                            if (state.chapters.size > 20) {
+                            if (visibleChapters.size > 20) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -822,7 +823,7 @@ fun MangaDetailScreen(
                         CircularProgressIndicator(color = PrimaryPurple)
                     }
                 }
-            } else if (state.chapters.isEmpty()) {
+            } else if (visibleChapters.isEmpty()) {
                 item {
                     Column(
                         modifier = Modifier
