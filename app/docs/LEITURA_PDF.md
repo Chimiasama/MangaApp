@@ -29,4 +29,4 @@ Para incluir a verificação remota do capítulo 1 de Dragon Ball no MangaDash:
 ./gradlew :app:connectedDebugAndroidTest -PliveSources=true
 ```
 
-A Action manual possui a opção `live_pdf` para essa verificação remota. As execuções padrão continuam sem depender da disponibilidade da fonte. O teste remoto busca a obra e os capítulos pelo adaptador real, baixa o PDF e renderiza a primeira e a última página no Android.
+A Action manual possui a opção `live_pdf` para essa verificação remota. As execuções padrão continuam sem depender da disponibilidade da fonte. O teste remoto usa o URL público conhecido do PDF do capítulo 1, passa os metadados pelo adaptador e renderiza a primeira e a última página no Android. Ele verifica o acesso ao catálogo separadamente: a fonte pode rejeitar IPs de datacenters com HTTP 403, independentemente de o leitor suportar PDF. Bloqueios da fonte são informados pelo app; suporte a PDF não remove essas restrições.

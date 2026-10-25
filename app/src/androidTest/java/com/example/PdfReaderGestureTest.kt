@@ -50,9 +50,8 @@ class PdfReaderGestureTest {
                 options = ReaderOptions(controlsTimeoutSeconds = 0))
         } } }
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithTag("reader_image_0").fetchSemanticsNodes().any {
-                it.config.getOrElse(SemanticsProperties.StateDescription) { "" } == "loaded"
-            }
+            compose.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "loaded"),
+                useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("reader_screen").performTouchInput { doubleClick(center) }
         compose.waitForIdle()
