@@ -284,4 +284,64 @@ class MangaRepositoryTest {
         assertEquals(listOf("pt-br", "en", "all", "es"), requests)
     }
 
+    private open class SourceStub(override val id: String, override val baseUrl: String) : MangaSource {
+        override val name = id
+        override val isNsfw = false
+        override val lang = "en"
+        override suspend fun getPopularManga() = emptyList<MangaModel>()
+        override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        override suspend fun getMangaDetails(mangaUrl: String): MangaModel = error("unused")
+        override suspend fun getChapters(mangaUrl: String) = emptyList<ChapterModel>()
+        override suspend fun getPages(chapterUrl: String) = emptyList<String>()
+    }
+    @Test fun `chapter host determines its source even when the parent book came from MangaDex`() = runBlocking {
+        repository.registerSource(object : SourceStub("mangadex", "https://api.mangadex.org") {
+            override suspend fun getPages(chapterUrl: String): List<String> = error("Wrong source for foreign chapter")
+        })
+        repository.registerSource(object : SourceStub("weebcentral", "https://weebcentral.com") {
+            override suspend fun getPages(chapterUrl: String) = listOf("https://pages.test/one.png")
+        })
+        assertEquals(listOf("https://pages.test/one.png"), repository.getPages("https://weebcentral.com/chapters/one", "one", "mangadex"))
+    }
+    @Test fun `foreign source failure never requests an unrelated MangaDex chapter`() = runBlocking {
+        repository.registerSource(object : SourceStub("mangadex", "https://api.mangadex.org") {
+            override suspend fun getPages(chapterUrl: String): List<String> = error("Must not fall back to another provider")
+        })
+        repository.registerSource(object : SourceStub("weebcentral", "https://weebcentral.com") {
+            override suspend fun getPages(chapterUrl: String): List<String> = throw java.io.IOException("source offline")
+        })
+        try { repository.getPages("https://weebcentral.com/chapters/one", "one", "weebcentral"); org.junit.Assert.fail("Must report original failure") }
+        catch (expected: java.io.IOException) { assertEquals("source offline", expected.message) }
+    }
+    @Test fun `standalone source preserves its chapter list instead of importing another edition`() = runBlocking {
+        val chapter = ChapterModel("one", "Dragon Ball 1", "https://weebcentral.com/chapters/one", language = "en")
+        repository.registerSource(object : SourceStub("weebcentral", "https://weebcentral.com") {
+            override val canAggregateChapters = false
+            override suspend fun getChapters(mangaUrl: String) = listOf(chapter)
+        })
+        repository.registerSource(object : SourceStub("mangadex", "https://api.mangadex.org") {
+            override suspend fun searchManga(query: String): List<MangaModel> = error("Standalone editions must not trigger cross-source search")
+        })
+        assertEquals(listOf(chapter), repository.getAggregatedChapters("Dragon Ball", "https://weebcentral.com/series/book/Dragon-Ball", "weebcentral", "en"))
+    }
+    @Test fun `a different first search result is not treated as the requested work`() = runBlocking {
+        repository.registerSource(SourceStub("primary", "https://primary.test"))
+        repository.registerSource(object : SourceStub("secondary", "https://secondary.test") {
+            override suspend fun searchManga(query: String) = listOf(MangaModel("https://secondary.test/super", "super", "Dragon Ball Super", "", sourceId = id))
+            override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = error("A different title must not fill chapter gaps")
+        })
+        assertEquals(emptyList<ChapterModel>(), repository.getAggregatedChapters("Dragon Ball", "https://primary.test/db", "primary", "en"))
+    }
+
+    @Test fun `an English-only source cannot disguise a failed Portuguese search as zero matches`() = runBlocking {
+        repository.registerSource(object : SourceStub("mangadex", "https://api.mangadex.org") {
+            override suspend fun searchManga(query: String): List<MangaModel> = throw java.io.IOException("offline")
+        })
+        repository.registerSource(com.example.source.HtmlMangaSource(com.example.source.HtmlMangaSource.Site.WEEBCENTRAL) {
+            error("An English-only provider must not be queried for Portuguese")
+        })
+        try { repository.searchManga("Dragon Ball", "all", "pt-br"); org.junit.Assert.fail("Must report source failure") }
+        catch (expected: java.io.IOException) { org.junit.Assert.assertTrue(expected.message!!.contains("conexão")) }
+    }
+
 }

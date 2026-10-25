@@ -5,6 +5,8 @@ interface MangaSource {
     val name: String
     val baseUrl: String
     val isNsfw: Boolean
+    fun supportsLanguage(language: String): Boolean = true
+    val canAggregateChapters: Boolean get() = true
     val lang: String
 
     suspend fun getPopularManga(): List<MangaModel>

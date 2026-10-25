@@ -111,11 +111,12 @@ fun BrowseScreen(
                     }
                 }
                 Text("Fonte", modifier = Modifier.padding(top = 16.dp))
+                Text("Para fontes EN ou ES, selecione o idioma correspondente ou Todos.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = state.selectedSourceId == "all", onClick = { onSourceSelected("all") }, label = { Text("Todas") })
                     state.availableSources.forEach { source ->
                         FilterChip(selected = state.selectedSourceId == source.id, onClick = { onSourceSelected(source.id) },
-                            label = { Text(source.name) }, modifier = Modifier.testTag("source_chip_${source.id}"))
+                            label = { Text(source.name + when (source.lang) { "en" -> " · EN"; "es" -> " · ES"; else -> "" }) }, modifier = Modifier.testTag("source_chip_${source.id}"))
                     }
                 }
                 Text("Gênero", modifier = Modifier.padding(top = 16.dp))

@@ -15,7 +15,8 @@ import java.io.FileOutputStream
 class ChapterDownloadManager(
     private val context: Context,
     private val downloadDao: DownloadDao,
-    private val okHttpClient: OkHttpClient = OkHttpClient()
+    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
 ) {
 
     private val downloadsDir: File

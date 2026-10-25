@@ -462,6 +462,13 @@ class MangaViewModel(
             }
         }
         loadDetailChapters(manga)
+        if (repository.getSourceById(manga.sourceId) is com.example.source.HtmlMangaSource) {
+            viewModelScope.launch {
+                val detailed = repository.getMangaDetails(manga.url, manga.sourceId)
+                if (_detailManga.value?.url == manga.url) _detailManga.value = detailed
+            }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _detailMalRecommendations.value = emptyList()

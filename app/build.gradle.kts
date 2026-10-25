@@ -130,3 +130,8 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+// Remote-source checks are explicit; the normal test suite never depends on third-party uptime.
+if (providers.gradleProperty("liveSources").orNull == "true") {
+  android.sourceSets.getByName("test").kotlin.srcDir("src/liveTest/java")
+}

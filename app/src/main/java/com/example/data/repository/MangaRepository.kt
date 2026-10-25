@@ -163,6 +163,7 @@ class MangaRepository(
     init {
         // Register default source (MangaDex as requested)
         registerSource(MangaDexSource())
+        com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
     }
 
     fun registerSource(source: MangaSource) {
@@ -228,7 +229,7 @@ class MangaRepository(
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch) {
+        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
             try {
                 val list = src.getPopularManga(language)
                 val filtered = list.filter { manga ->
@@ -287,7 +288,7 @@ class MangaRepository(
         var lastFailure: Exception? = null
         var completedSources = 0
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch) {
+        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
             try {
                 val list = src.searchManga(query, language)
                 val filtered = list.filter { manga ->
@@ -396,7 +397,9 @@ class MangaRepository(
         addChapters(primaryChapters)
 
         // Cross-reference with other sources concurrently to fill missing chapter gaps
-        val secondarySources = sourceRegistry.values.filter { it.id != primarySourceId }
+        val secondarySources = if (primarySource.canAggregateChapters) {
+            sourceRegistry.values.filter { it.id != primarySourceId && it.canAggregateChapters }
+        } else emptyList()
         val deferredList = secondarySources.map { src ->
             async {
                 try {
@@ -406,8 +409,8 @@ class MangaRepository(
                         } else if (mangaTitle.isNotBlank()) {
                             val searchResults = src.searchManga(mangaTitle, targetLang)
                             val match = searchResults.firstOrNull {
-                                it.title.equals(mangaTitle, ignoreCase = true) || it.title.contains(mangaTitle, ignoreCase = true)
-                            } ?: searchResults.firstOrNull()
+                                it.title.trim().equals(mangaTitle.trim(), ignoreCase = true)
+                            }
                             if (match != null) src.getChapters(match.url, targetLang) else emptyList()
                         } else {
                             emptyList()
@@ -502,32 +505,10 @@ class MangaRepository(
             chapterUrl
         }
 
-        val resolvedSourceId = if (sourceId.isBlank() || sourceId == "mangadex") {
-            detectSourceIdFromUrl(resolvedChapterUrl) ?: sourceId.ifBlank { "mangadex" }
-        } else {
-            sourceId
-        }
-
-        // Fetch online pages from source
-        val source = sourceRegistry[resolvedSourceId] ?: sourceRegistry.values.first()
-        return try {
-            val pages = source.getPages(resolvedChapterUrl)
-            if (pages.isEmpty() && resolvedSourceId != "mangadex") {
-                sourceRegistry["mangadex"]?.getPages(chapterId) ?: emptyList()
-            } else {
-                pages
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            try {
-                sourceRegistry["mangadex"]?.getPages(chapterId) ?: emptyList()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                emptyList()
-            }
-        }
+        val resolvedSourceId = detectSourceIdFromUrl(resolvedChapterUrl) ?: sourceId.ifBlank { "mangadex" }
+        val source = sourceRegistry[resolvedSourceId]
+            ?: throw java.io.IOException("A fonte $resolvedSourceId não está disponível.")
+        return source.getPages(resolvedChapterUrl)
     }
 
     suspend fun getMangaByUrlSync(url: String): MangaEntity? = mangaDao.getMangaByUrlSync(url)
@@ -537,6 +518,10 @@ class MangaRepository(
     suspend fun getChapterByIdSync(chapterId: String): ChapterEntity? = chapterDao?.getChapterByIdSync(chapterId)
 
     fun detectSourceIdFromUrl(url: String): String? {
+        val host = runCatching { java.net.URI(url).host }.getOrNull()
+        if (host != null) sourceRegistry.values.firstOrNull {
+            runCatching { java.net.URI(it.baseUrl).host.equals(host, ignoreCase = true) }.getOrDefault(false)
+        }?.let { return it.id }
         return when {
             url.contains("tsundoku", ignoreCase = true) -> "tsundoku"
             url.contains("lermanga", ignoreCase = true) -> "ler_manga"
