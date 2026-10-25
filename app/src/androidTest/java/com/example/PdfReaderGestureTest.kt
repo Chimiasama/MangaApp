@@ -62,6 +62,7 @@ class PdfReaderGestureTest {
         compose.onNodeWithTag("reader_pager").performTouchInput { swipeLeft() }
         compose.waitUntil(10_000) { position?.pageIndex == 1 }
         compose.onNodeWithTag("reader_screen").performTouchInput { click(center) }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("nav_next_chapter").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("nav_next_chapter").performClick()
         compose.runOnIdle { assertTrue(next) }
     }

@@ -14,9 +14,12 @@ import kotlin.coroutines.resumeWithException
 
 /** The same identification is used for documents, covers, reader images and downloads. */
 object SourceHttp {
-    const val USER_AGENT = "Mozilla/5.0 MangaApp/1.1"
+    const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 MangaApp/1.1"
     val imageHeaders = Interceptor { chain ->
-        chain.proceed(chain.request().newBuilder().header("User-Agent", USER_AGENT).build())
+        val request = chain.request().newBuilder().header("User-Agent", USER_AGENT)
+        val host = chain.request().url.host
+        if (host == "mangadash.net" || host.endsWith(".mangadash.net")) request.header("Referer", "https://mangadash.net/")
+        chain.proceed(request.build())
     }
     val client = OkHttpClient.Builder().addInterceptor(imageHeaders)
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS)
