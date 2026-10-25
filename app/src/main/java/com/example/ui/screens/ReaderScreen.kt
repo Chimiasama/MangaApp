@@ -59,7 +59,6 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.source.ChapterModel
 import com.example.ui.reader.*
-import com.example.ui.theme.CrimsonRed
 import com.example.ui.viewmodel.ReaderUiState
 import com.example.util.PagePreloaderManager
 import kotlinx.coroutines.Job
@@ -418,13 +417,6 @@ fun ReaderScreen(
                 }
             }
         }
-        if (state.pages.isNotEmpty() && !controls && pull == 0f) {
-            Text("${pageIndex + 1} / ${state.pages.size}  •  ${"%.2f".format(scale)}×  •  $clock",
-                color = Color.White, modifier = Modifier.align(Alignment.BottomEnd)
-                    .background(Color.Black.copy(alpha = 0.7f)).padding(8.dp).testTag("reader_position"))
-            LinearProgressIndicator(progress = { (pageIndex + 1f) / state.pages.size },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp), color = CrimsonRed)
-        }
         AnimatedVisibility(controls && state.pages.size > 1, modifier = Modifier.align(Alignment.CenterEnd)
             .readerControlInteraction(controlInteraction)) {
             ReaderScrollbar(pageIndex, state.pages.size, onSelected = { target ->
@@ -434,12 +426,12 @@ fun ReaderScreen(
         AnimatedVisibility(controls, modifier = Modifier.align(Alignment.TopCenter).testTag("reader_controls")) {
             Surface(color = Color.Black.copy(alpha = 0.94f), contentColor = Color.White,
                 modifier = Modifier.fillMaxWidth().readerControlInteraction(controlInteraction)) {
-                Column(Modifier.statusBarsPadding().padding(8.dp)) {
+                Column(Modifier.statusBarsPadding().padding(horizontal = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { latestFlush(); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Sair do leitor") }
                         Column(Modifier.weight(1f)) {
                             Text(state.mangaTitle, maxLines = 1, style = MaterialTheme.typography.labelMedium)
-                            Text(state.currentChapter?.title ?: "Leitor", maxLines = 1)
+                            Text(state.currentChapter?.title ?: "Leitor", maxLines = 1, style = MaterialTheme.typography.bodySmall)
                         }
                         IconButton(onClick = { applyZoom(1f / scale, Offset(size.width / 2f, size.height / 2f), Offset.Zero); touch() }, modifier = Modifier.testTag("reader_reset_zoom")) {
                             Icon(Icons.Default.RestartAlt, "Restaurar enquadramento")
@@ -450,17 +442,30 @@ fun ReaderScreen(
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        TextButton(enabled = previous != null && !state.isLoading, onClick = { latestNavigate(false); touch() }, modifier = Modifier.testTag("nav_prev_chapter")) { Text("Anterior") }
+                        TextButton(enabled = previous != null && !state.isLoading, onClick = { latestNavigate(false); touch() }, modifier = Modifier.testTag("nav_prev_chapter")) { Text("Anterior", style = MaterialTheme.typography.labelSmall) }
                         TextButton(enabled = state.pages.isNotEmpty(), onClick = {
                             scope.launch { if (webtoon) list.scrollToItem(0) else pager.scrollToPage(0) }; touch()
-                        }) { Text("Início") }
-                        TextButton(onClick = { chapters = true; touch() }, modifier = Modifier.testTag("nav_chapters")) { Text("Capítulos") }
-                        TextButton(enabled = next != null && !state.isLoading, onClick = { latestNavigate(true); touch() }, modifier = Modifier.testTag("nav_next_chapter")) { Text("Próximo") }
+                        }) { Text("Início", style = MaterialTheme.typography.labelSmall) }
+                        TextButton(onClick = { chapters = true; touch() }, modifier = Modifier.testTag("nav_chapters")) { Text("Capítulos", style = MaterialTheme.typography.labelSmall) }
+                        TextButton(enabled = next != null && !state.isLoading, onClick = { latestNavigate(true); touch() }, modifier = Modifier.testTag("nav_next_chapter")) { Text("Próximo", style = MaterialTheme.typography.labelSmall) }
                     }
-                    if (state.pages.size > 1) Slider(value = pageIndex.toFloat(), valueRange = 0f..state.pages.lastIndex.toFloat(),
-                        onValueChange = { value ->
-                            touch(); scope.launch { if (webtoon) list.scrollToItem(value.roundToInt()) else pager.scrollToPage(value.roundToInt()) }
-                        }, modifier = Modifier.testTag("reader_page_slider"))
+                    if (state.pages.isNotEmpty()) Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (state.pages.size > 1) Slider(
+                            value = pageIndex.toFloat(), valueRange = 0f..state.pages.lastIndex.toFloat(),
+                            onValueChange = { value ->
+                                touch(); scope.launch { if (webtoon) list.scrollToItem(value.roundToInt()) else pager.scrollToPage(value.roundToInt()) }
+                            }, modifier = Modifier.weight(1f).testTag("reader_page_slider")
+                        ) else Spacer(Modifier.weight(1f))
+                        Column(Modifier.testTag("reader_position"), horizontalAlignment = Alignment.End) {
+                            Text("${pageIndex + 1} / ${state.pages.size}  •  ${"%.2f".format(scale)}×",
+                                style = MaterialTheme.typography.labelSmall)
+                            Text(clock, style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+                        }
+                    }
                 }
             }
         }

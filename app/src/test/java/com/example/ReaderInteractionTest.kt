@@ -173,9 +173,11 @@ class ReaderInteractionTest {
     }
     @Test fun `controls remain visible during a held interaction and hide after release`() {
         show()
+        compose.onNodeWithTag("reader_position").assertDoesNotExist()
         screen().performTouchInput { click(center) }
         compose.mainClock.advanceTimeBy(400)
         compose.waitForIdle()
+        compose.onNodeWithTag("reader_position").assertExists()
         compose.mainClock.autoAdvance = false
         compose.onNodeWithTag("reader_page_slider").performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(6000)
@@ -185,6 +187,7 @@ class ReaderInteractionTest {
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
         compose.onNodeWithTag("reader_controls").assertDoesNotExist()
+        compose.onNodeWithTag("reader_position").assertDoesNotExist()
     }
     @Test fun `rtl reader advances with a new rightward drag at the image edge`() {
         show(mode = "PAGED_RTL", pages = listOf("square:1", "square:2"),
