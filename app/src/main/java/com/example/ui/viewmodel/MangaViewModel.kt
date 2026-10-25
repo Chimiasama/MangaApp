@@ -609,7 +609,8 @@ class MangaViewModel(
                     mangaUrl = manga.url, mangaTitle = manga.title, mangaCoverUrl = manga.coverUrl,
                     sourceId = manga.sourceId, currentChapter = chapter, pages = pages,
                     currentPageIndex = target, scrollOffset = initialScrollOffset ?: savedOffset,
-                    chaptersList = chaptersList, isOfflineDownloaded = pages.any { it.startsWith("file:") },
+                    chaptersList = chaptersList, isOfflineDownloaded = pages.any { it.startsWith("file:") } || manga.sourceId == com.example.source.LocalPdfSource.ID ||
+                        (pages.any { it.startsWith("mangapdf:") } && repository.downloadManager.getDownloadedPages(chapter.id).isNotEmpty()),
                     viewport = saved?.copy(pageIndex = target) ?: ReaderViewport(chapter.id, target, scale = scale),
                     contentVersion = request
                 )

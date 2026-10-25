@@ -1,5 +1,13 @@
 # PDF como capítulo no leitor
 
+## Importar arquivos do celular
+
+Em **Biblioteca → Importar PDF**, escolha um arquivo no seletor do Android. O app copia e valida o documento, adiciona-o aos Favoritos e aos Downloads e abre o leitor. Ele permanece disponível sem o arquivo original ou a permissão de acesso ao provedor, inclusive depois de limpar o cache. A posição e os marcadores seguem o fluxo normal. Importar novamente o mesmo conteúdo não duplica a obra nem apaga o progresso. Para apagar a cópia do app, exclua o documento na aba Downloads; o original do celular não é removido. PDFs locais não recebem uma suposição de idioma e não entram nos catálogos remotos.
+
+Essa opção não depende de sites. O MangaDash devolveu HTTP 403 para catálogo e documento no ambiente do GitHub, mesmo quando o PDF público pôde ser baixado neste ambiente de desenvolvimento. Portanto, disponibilidade da fonte e suporte ao formato são verificações separadas.
+
+## Capítulos de fontes
+
 MangaDash é registrado como uma fonte PT-BR. Em Explorar → Filtros, selecione Português e MangaDash. A busca, detalhes, capítulos e botão de leitura seguem o fluxo normal do app. A fonte pode entregar imagens ou PDF; o adaptador verifica os dados de cada capítulo.
 
 Um PDF é baixado completo para o armazenamento privado antes de abrir. Depois, cada página é apresentada ao mesmo leitor por um Fetcher Coil próprio. Zoom, duplo toque, pan, modos paginado e webtoon, posição, favoritos de página e troca de capítulos continuam usando o fluxo existente. Não é necessário abrir um aplicativo externo. A primeira abertura pode demorar mais que a de um capítulo de imagens.

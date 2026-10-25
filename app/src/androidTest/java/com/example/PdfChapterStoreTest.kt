@@ -102,4 +102,41 @@ class PdfChapterStoreTest {
         assertTrue(File(context.cacheDir, "pdf_chapters").listFiles().orEmpty().none { it.extension == "part" })
     }
 
+    @Test fun importedPdfStaysInLibraryAndReadsWithoutOriginalOrNetwork() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val manager = ChapterDownloadManager(context, db.downloadDao())
+        val repo = com.example.data.repository.MangaRepository(db.mangaDao(), db.progressDao(), db.downloadDao(),
+            db.readingSessionDao(), manager, com.example.data.preferences.UserPreferencesRepository(context), db.chapterDao())
+        val original = File(context.cacheDir, "original-${UUID.randomUUID()}.pdf").apply { writeBytes(bytes()) }
+        try {
+            val book = repo.importPdf(context, Uri.fromFile(original))
+            val chapter = com.example.source.LocalPdfSource.chapter(book)
+            db.chapterDao().updateChapterReadStatus(chapter.id, true, 1, 3)
+            val second = repo.importPdf(context, Uri.fromFile(original))
+            assertEquals(book.url, second.url)
+            assertEquals(1, db.mangaDao().getAllFavoritesSync().size)
+            assertEquals(1, db.chapterDao().getChapterByIdSync(chapter.id)!!.lastPageRead)
+            assertTrue(repo.getAvailableSources().none { it.id == "localpdf" })
+            original.delete()
+            ImageCacheConfig.clearImageCache(context)
+            val pages = repo.getPages(chapter.chapterUrl, chapter.id, "localpdf")
+            assertEquals(3, pages.size)
+            val bitmap = manager.pdfStore.render(Uri.parse(pages[1]))
+            assertEquals(Color.GREEN, bitmap.getPixel(bitmap.width / 2, bitmap.height / 2))
+            bitmap.recycle()
+            manager.deleteDownload(chapter.id)
+        } finally { original.delete(); db.close() }
+    }
+    @Test fun invalidImportedDocumentDoesNotCreateABook() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val manager = ChapterDownloadManager(context, db.downloadDao())
+        val repo = com.example.data.repository.MangaRepository(db.mangaDao(), db.progressDao(), db.downloadDao(),
+            db.readingSessionDao(), manager, com.example.data.preferences.UserPreferencesRepository(context), db.chapterDao())
+        val original = File(context.cacheDir, "invalid-${UUID.randomUUID()}.pdf").apply { writeText("Not a PDF") }
+        try {
+            try { repo.importPdf(context, Uri.fromFile(original)); fail("Invalid document must fail") } catch (_: IOException) {}
+            assertTrue(db.mangaDao().getAllFavoritesSync().isEmpty())
+        } finally { original.delete(); db.close() }
+    }
+
 }

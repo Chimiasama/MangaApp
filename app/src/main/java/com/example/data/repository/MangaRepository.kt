@@ -163,6 +163,7 @@ class MangaRepository(
     init {
         // Register default source (MangaDex as requested)
         registerSource(MangaDexSource())
+        registerSource(com.example.source.LocalPdfSource(downloadManager.pdfStore))
         registerSource(com.example.source.MangaDashSource(downloadManager.pdfStore::open))
         com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
     }
@@ -193,7 +194,7 @@ class MangaRepository(
     }
 
     fun getAvailableSources(): List<MangaSource> {
-        return sourceRegistry.values.filter { source -> !source.isNsfw }
+        return sourceRegistry.values.filter { source -> !source.isNsfw && source.id != com.example.source.LocalPdfSource.ID }
     }
 
     fun getSourceById(id: String): MangaSource? = sourceRegistry[id]
@@ -253,7 +254,7 @@ class MangaRepository(
                 mangaDao.getAllCachedMangasSync()
             }
             val filteredCached = cachedEntities.filter { entity ->
-                if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
+                if (entity.sourceId == com.example.source.LocalPdfSource.ID || entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 true
             }
             return filteredCached.map { entity ->
@@ -315,7 +316,7 @@ class MangaRepository(
             }
             val queryLower = query.lowercase(Locale.getDefault())
             val matched = cachedEntities.filter { entity ->
-                if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
+                if (entity.sourceId == com.example.source.LocalPdfSource.ID || entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
                 entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
             }
@@ -541,6 +542,28 @@ class MangaRepository(
     // Downloads
     val allDownloads: Flow<List<DownloadEntity>> = downloadDao.getAllDownloads()
     val completedDownloads: Flow<List<DownloadEntity>> = downloadDao.getCompletedDownloads()
+
+    suspend fun importPdf(context: android.content.Context, uri: android.net.Uri): MangaModel {
+        val file = downloadManager.pdfStore.importDocument(uri)
+        val pages = downloadManager.pdfStore.pages(file)
+        val title = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                }
+            }.getOrNull()?.removeSuffix(".pdf")?.removeSuffix(".PDF")?.takeIf { it.isNotBlank() } ?: "Documento PDF"
+        }
+        val manga = MangaModel(pages.first(), "localpdf:" + file.parentFile!!.name, title, pages.first(),
+            description = "PDF importado do dispositivo", sourceId = com.example.source.LocalPdfSource.ID)
+        val chapter = com.example.source.LocalPdfSource.chapter(manga)
+        toggleFavorite(manga)
+        if (chapterDao?.getChapterByIdSync(chapter.id) == null)
+            chapterDao?.insertChapter(ChapterEntity(chapter.id, manga.url, chapter.title, chapter.chapterUrl))
+        downloadDao.insertDownload(DownloadEntity(chapter.id, chapter.title, chapter.chapterUrl, manga.url, manga.title,
+            manga.coverUrl, manga.sourceId, pages.size, pages.size, file.parentFile!!.absolutePath,
+            DownloadEntity.STATE_COMPLETED, 1f))
+        return manga
+    }
 
     suspend fun downloadChapter(manga: MangaModel, chapter: ChapterModel) {
         if (downloadDao.getDownloadSync(chapter.id)?.downloadState == DownloadEntity.STATE_COMPLETED &&

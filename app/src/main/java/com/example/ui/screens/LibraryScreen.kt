@@ -98,7 +98,9 @@ fun LibraryScreen(
     onDeleteBookmark: (Long) -> Unit = {},
     onDeleteHistory: (String) -> Unit = {},
     onDeleteFavorite: (String) -> Unit = {},
-    onSyncClicked: () -> Unit = {}
+    onSyncClicked: () -> Unit = {},
+    onImportPdf: () -> Unit = {},
+    importingPdf: Boolean = false
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
@@ -114,6 +116,12 @@ fun LibraryScreen(
             .fillMaxSize()
             .testTag("library_screen")
     ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+            androidx.compose.material3.TextButton(onClick = onImportPdf, enabled = !importingPdf,
+                modifier = Modifier.testTag("import_pdf_button")) {
+                Text(if (importingPdf) "Importando PDF…" else "Importar PDF")
+            }
+        }
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,

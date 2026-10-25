@@ -74,6 +74,36 @@ class PdfChapterStore(private val context: Context,
         }
     }
 
+    suspend fun importDocument(uri: Uri): File = withContext(Dispatchers.IO) {
+        val incoming = File(context.cacheDir, "pdf_imports").apply { mkdirs() }
+        val temporary = File.createTempFile("import-", ".part", incoming)
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                temporary.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var bytes = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val size = input.read(buffer)
+                        if (size < 0) break
+                        bytes += size
+                        if (bytes > MAX_BYTES) throw IOException("PDF excede o limite de 256 MB.")
+                        digest.update(buffer, 0, size)
+                        output.write(buffer, 0, size)
+                    }
+                }
+            } ?: throw IOException("Não foi possível ler o arquivo selecionado.")
+            count(temporary)
+            currentCoroutineContext().ensureActive()
+            val key = digest.digest().joinToString("") { "%02x".format(it) }
+            val folder = File(context.filesDir, "pdf_library/$key").apply { mkdirs() }
+            val target = File(folder, "chapter.pdf")
+            if (!temporary.renameTo(target)) throw IOException("Não foi possível importar o PDF.")
+            target
+        } finally { temporary.delete() }
+    }
+
     suspend fun pages(file: File): List<String> = withContext(Dispatchers.IO) {
         val safe = requireFile(file)
         val size = count(safe)

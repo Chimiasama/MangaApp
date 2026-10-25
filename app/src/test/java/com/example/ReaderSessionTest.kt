@@ -43,6 +43,8 @@ class ReaderSessionTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         preferences = UserPreferencesRepository(context)
+        preferences.setReaderOptions(ReaderOptions())
+        preferences.saveReaderViewport(manga.url, ReaderViewport("fixture-unused"))
         preferences.setPagePreloadEnabled(false)
         repository = MangaRepository(database.mangaDao(), database.progressDao(), database.downloadDao(), database.readingSessionDao(),
             ChapterDownloadManager(context, database.downloadDao()), preferences, database.chapterDao(), database.bookmarkDao())

@@ -24,6 +24,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +63,33 @@ fun MangaApp(
     settingsViewModel: SettingsViewModel
 ) {
     val navController = rememberNavController()
+    val importContext = LocalContext.current
+    val importScope = androidx.compose.runtime.rememberCoroutineScope()
+    var importingPdf by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var pdfImportError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val pdfPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null && !importingPdf) {
+            importingPdf = true
+            importScope.launch {
+                try {
+                    val book = mangaViewModel.repository.importPdf(importContext, uri)
+                    val chapter = com.example.source.LocalPdfSource.chapter(book)
+                    mangaViewModel.openReader(book, chapter, listOf(chapter))
+                    navController.navigate(MangaDestinations.READER)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (error: Exception) { pdfImportError = error.localizedMessage ?: "Não foi possível importar o PDF." }
+                finally { importingPdf = false }
+            }
+        }
+    }
+    if (pdfImportError != null) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { pdfImportError = null }, title = { Text("Não foi possível importar") },
+        text = { Text(pdfImportError.orEmpty()) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { pdfImportError = null }) { Text("OK") } }
+    )
+
 
     val browseState by mangaViewModel.browseUiState.collectAsStateWithLifecycle()
     val detailState by mangaViewModel.detailUiState.collectAsStateWithLifecycle()
@@ -192,8 +221,14 @@ fun MangaApp(
                     bookmarks = bookmarks,
                     stats = stats,
                     onMangaClick = { manga ->
-                        mangaViewModel.openMangaDetails(manga)
-                        navController.navigate(MangaDestinations.DETAIL)
+                        if (manga.sourceId == com.example.source.LocalPdfSource.ID) {
+                            val chapter = com.example.source.LocalPdfSource.chapter(manga)
+                            mangaViewModel.openReader(manga, chapter, listOf(chapter))
+                            navController.navigate(MangaDestinations.READER)
+                        } else {
+                            mangaViewModel.openMangaDetails(manga)
+                            navController.navigate(MangaDestinations.DETAIL)
+                        }
                     },
                     onContinueReading = { progress ->
                         mangaViewModel.resumeReadingFromProgress(progress)
@@ -219,7 +254,9 @@ fun MangaApp(
                     onDeleteFavorite = { mangaUrl ->
                         mangaViewModel.removeFavoriteByUrl(mangaUrl)
                     },
-                    onSyncClicked = { mangaViewModel.triggerCloudSync() }
+                    onSyncClicked = { mangaViewModel.triggerCloudSync() },
+                    onImportPdf = { pdfPicker.launch(arrayOf("application/pdf")) },
+                    importingPdf = importingPdf
                 )
             }
 
