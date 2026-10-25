@@ -260,22 +260,9 @@ fun ReaderScreen(
         ),
         label = "globalReaderScale"
     )
-    val animatedPanX by animateFloatAsState(
-        targetValue = if (currentScale > 1.05f) globalPanX else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = 800f
-        ),
-        label = "globalReaderPanX"
-    )
-    val animatedPanY by animateFloatAsState(
-        targetValue = if (currentScale > 1.05f) globalPanY else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = 800f
-        ),
-        label = "globalReaderPanY"
-    )
+    // Direct 1:1 finger tracking when zoomed in for 0-latency free movement in all directions
+    val panXValue = if (currentScale > 1.05f) globalPanX else 0f
+    val panYValue = if (currentScale > 1.05f) globalPanY else 0f
 
     // Orientation lock effect
     DisposableEffect(readerOrientation) {
@@ -449,62 +436,55 @@ fun ReaderScreen(
                 if (totalItems <= 0) return Offset.Zero
 
                 if (currentMode == "WEBTOON") {
-                    if (available.y > 0f) {
-                        // Puxando para baixo no topo (tentando voltar ao capítulo anterior)
-                        val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-                        if (atTop) {
-                            pullDistanceTop += available.y
-                            pullDistanceBottom = 0f
-                            if (pullDistanceTop > 8f) {
-                                showOverscrollIndicatorTop = true
-                                showOverscrollIndicatorBottom = false
-                                if (holdJob == null || holdJob?.isActive != true) {
-                                    holdJob = coroutineScope.launch {
-                                        kotlinx.coroutines.delay(400)
-                                        if (pullDistanceTop > 8f && !isSwitchingChapter) {
-                                            isSwitchingChapter = true
-                                            showOverscrollIndicatorTop = false
-                                            pullDistanceTop = 0f
-                                            onNavigateChapter(false)
-                                            kotlinx.coroutines.delay(1200)
-                                            isSwitchingChapter = false
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else if (available.y < 0f) {
-                        // Puxando para cima no final (tentando ir para o próximo capítulo)
-                        val atBottom = !listState.canScrollForward ||
-                            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == totalItems - 1)
-                        if (atBottom) {
-                            pullDistanceBottom += -available.y
-                            pullDistanceTop = 0f
-                            if (pullDistanceBottom > 8f) {
-                                showOverscrollIndicatorBottom = true
-                                showOverscrollIndicatorTop = false
-                                if (holdJob == null || holdJob?.isActive != true) {
-                                    holdJob = coroutineScope.launch {
-                                        kotlinx.coroutines.delay(400)
-                                        if (pullDistanceBottom > 8f && !isSwitchingChapter) {
-                                            isSwitchingChapter = true
-                                            showOverscrollIndicatorBottom = false
-                                            pullDistanceBottom = 0f
-                                            onNavigateChapter(true)
-                                            kotlinx.coroutines.delay(1200)
-                                            isSwitchingChapter = false
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else if (kotlin.math.abs(consumed.y) > 2f) {
-                        // Rolagem normal dentro do capítulo - cancela qualquer sobre-rolagem
-                        pullDistanceTop = 0f
+                    val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+                    val atBottom = !listState.canScrollForward ||
+                        (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == totalItems - 1)
+
+                    if (atTop && available.y > 0f) {
+                        pullDistanceTop += available.y
                         pullDistanceBottom = 0f
-                        showOverscrollIndicatorTop = false
+                        showOverscrollIndicatorTop = true
                         showOverscrollIndicatorBottom = false
-                        holdJob?.cancel()
+                        if (holdJob == null || holdJob?.isActive != true) {
+                            holdJob = coroutineScope.launch {
+                                kotlinx.coroutines.delay(350)
+                                if (pullDistanceTop > 8f && !isSwitchingChapter) {
+                                    isSwitchingChapter = true
+                                    showOverscrollIndicatorTop = false
+                                    pullDistanceTop = 0f
+                                    onNavigateChapter(false)
+                                    kotlinx.coroutines.delay(1200)
+                                    isSwitchingChapter = false
+                                }
+                            }
+                        }
+                    } else if (atBottom && available.y < 0f) {
+                        pullDistanceBottom += -available.y
+                        pullDistanceTop = 0f
+                        showOverscrollIndicatorBottom = true
+                        showOverscrollIndicatorTop = false
+                        if (holdJob == null || holdJob?.isActive != true) {
+                            holdJob = coroutineScope.launch {
+                                kotlinx.coroutines.delay(350)
+                                if (pullDistanceBottom > 8f && !isSwitchingChapter) {
+                                    isSwitchingChapter = true
+                                    showOverscrollIndicatorBottom = false
+                                    pullDistanceBottom = 0f
+                                    onNavigateChapter(true)
+                                    kotlinx.coroutines.delay(1200)
+                                    isSwitchingChapter = false
+                                }
+                            }
+                        }
+                    } else {
+                        if (!atTop) {
+                            pullDistanceTop = 0f
+                            showOverscrollIndicatorTop = false
+                        }
+                        if (!atBottom) {
+                            pullDistanceBottom = 0f
+                            showOverscrollIndicatorBottom = false
+                        }
                     }
                 } else {
                     // Modos Paginados (Horizontal)
@@ -517,25 +497,46 @@ fun ReaderScreen(
 
                     if (isAtFirstPage && pullPrev) {
                         pullDistanceTop += kotlin.math.abs(available.x)
-                        if (pullDistanceTop > 50f && !isSwitchingChapter) {
-                            isSwitchingChapter = true
-                            pullDistanceTop = 0f
-                            onNavigateChapter(false)
-                            coroutineScope.launch {
-                                kotlinx.coroutines.delay(1200)
-                                isSwitchingChapter = false
+                        showOverscrollIndicatorTop = true
+                        showOverscrollIndicatorBottom = false
+                        if (holdJob == null || holdJob?.isActive != true) {
+                            holdJob = coroutineScope.launch {
+                                kotlinx.coroutines.delay(350)
+                                if (pullDistanceTop > 10f && !isSwitchingChapter) {
+                                    isSwitchingChapter = true
+                                    showOverscrollIndicatorTop = false
+                                    pullDistanceTop = 0f
+                                    onNavigateChapter(false)
+                                    kotlinx.coroutines.delay(1200)
+                                    isSwitchingChapter = false
+                                }
                             }
                         }
                     } else if (isAtLastPage && pullNext) {
                         pullDistanceBottom += kotlin.math.abs(available.x)
-                        if (pullDistanceBottom > 50f && !isSwitchingChapter) {
-                            isSwitchingChapter = true
-                            pullDistanceBottom = 0f
-                            onNavigateChapter(true)
-                            coroutineScope.launch {
-                                kotlinx.coroutines.delay(1200)
-                                isSwitchingChapter = false
+                        showOverscrollIndicatorBottom = true
+                        showOverscrollIndicatorTop = false
+                        if (holdJob == null || holdJob?.isActive != true) {
+                            holdJob = coroutineScope.launch {
+                                kotlinx.coroutines.delay(350)
+                                if (pullDistanceBottom > 10f && !isSwitchingChapter) {
+                                    isSwitchingChapter = true
+                                    showOverscrollIndicatorBottom = false
+                                    pullDistanceBottom = 0f
+                                    onNavigateChapter(true)
+                                    kotlinx.coroutines.delay(1200)
+                                    isSwitchingChapter = false
+                                }
                             }
+                        }
+                    } else {
+                        if (!isAtFirstPage) {
+                            pullDistanceTop = 0f
+                            showOverscrollIndicatorTop = false
+                        }
+                        if (!isAtLastPage) {
+                            pullDistanceBottom = 0f
+                            showOverscrollIndicatorBottom = false
                         }
                     }
                 }
@@ -543,7 +544,7 @@ fun ReaderScreen(
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                if (pullDistanceTop > 40f && !isSwitchingChapter) {
+                if (pullDistanceTop > 20f && !isSwitchingChapter) {
                     isSwitchingChapter = true
                     showOverscrollIndicatorTop = false
                     pullDistanceTop = 0f
@@ -553,7 +554,7 @@ fun ReaderScreen(
                         kotlinx.coroutines.delay(1200)
                         isSwitchingChapter = false
                     }
-                } else if (pullDistanceBottom > 40f && !isSwitchingChapter) {
+                } else if (pullDistanceBottom > 20f && !isSwitchingChapter) {
                     isSwitchingChapter = true
                     showOverscrollIndicatorBottom = false
                     pullDistanceBottom = 0f
@@ -754,7 +755,8 @@ fun ReaderScreen(
                                 containerWidthPx = containerWidthPx,
                                 colorFilter = invertColorFilter,
                                 scale = animatedScale,
-                                panX = animatedPanX,
+                                panX = panXValue,
+                                panY = panYValue,
                                 onScaleChanged = { newScale ->
                                     currentScale = newScale
                                     if (newScale <= 1.05f) {
@@ -764,6 +766,9 @@ fun ReaderScreen(
                                 },
                                 onPanXChanged = { newPan ->
                                     globalPanX = newPan
+                                },
+                                onPanYChanged = { newPan ->
+                                    globalPanY = newPan
                                 },
                                 isControlsVisible = showControls,
                                 onCenterTap = {
@@ -796,8 +801,8 @@ fun ReaderScreen(
                             contentScale = fitMode,
                             colorFilter = invertColorFilter,
                             scale = animatedScale,
-                            panX = animatedPanX,
-                            panY = animatedPanY,
+                            panX = panXValue,
+                            panY = panYValue,
                             onScaleChanged = { newScale ->
                                 currentScale = newScale
                                 if (newScale <= 1.05f) {
@@ -1403,22 +1408,28 @@ fun WebtoonContinuousPage(
     colorFilter: ColorFilter? = null,
     scale: Float = 1.0f,
     panX: Float = 0f,
+    panY: Float = 0f,
     isControlsVisible: Boolean = false,
     onScaleChanged: (Float) -> Unit = {},
     onPanXChanged: (Float) -> Unit = {},
+    onPanYChanged: (Float) -> Unit = {},
     onCenterTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isZoomed = scale > 1.05f
     val effectiveWidth = if (isZoomed) containerWidth * scale else containerWidth
-    val maxOffsetX = if (isZoomed) ((scale - 1f) * containerWidthPx) / 2f else 0f
+    val maxOffsetX = if (isZoomed) ((scale - 1f) * containerWidthPx) / 2f + (containerWidthPx * 0.5f) else 0f
+    val maxOffsetY = if (isZoomed) (containerWidthPx * 0.8f) else 0f
 
     val currentScaleState = rememberUpdatedState(scale)
     val isZoomedState = rememberUpdatedState(isZoomed)
     val currentPanXState = rememberUpdatedState(panX)
+    val currentPanYState = rememberUpdatedState(panY)
     val maxOffsetXState = rememberUpdatedState(maxOffsetX)
+    val maxOffsetYState = rememberUpdatedState(maxOffsetY)
     val onScaleChangedState = rememberUpdatedState(onScaleChanged)
     val onPanXChangedState = rememberUpdatedState(onPanXChanged)
+    val onPanYChangedState = rememberUpdatedState(onPanYChanged)
     val onCenterTapState = rememberUpdatedState(onCenterTap)
 
     Box(
@@ -1431,11 +1442,14 @@ fun WebtoonContinuousPage(
             .pointerInput(Unit) {
                 detectZoomPanGestures(
                     isZoomed = { isZoomedState.value },
-                    onPan = { deltaX, _ ->
+                    onPan = { deltaX, deltaY ->
                         if (currentScaleState.value > 1.05f) {
-                            val max = maxOffsetXState.value
-                            val newPan = (currentPanXState.value + deltaX).coerceIn(-max, max)
-                            onPanXChangedState.value(newPan)
+                            val maxX = maxOffsetXState.value
+                            val maxY = maxOffsetYState.value
+                            val newPanX = (currentPanXState.value + deltaX).coerceIn(-maxX, maxX)
+                            val newPanY = (currentPanYState.value + deltaY).coerceIn(-maxY, maxY)
+                            onPanXChangedState.value(newPanX)
+                            onPanYChangedState.value(newPanY)
                         }
                     }
                 )
@@ -1510,6 +1524,7 @@ fun WebtoonContinuousPage(
                 .wrapContentHeight()
                 .graphicsLayer {
                     translationX = panX.coerceIn(-maxOffsetX, maxOffsetX)
+                    translationY = panY.coerceIn(-maxOffsetY, maxOffsetY)
                 }
         )
 
@@ -1577,8 +1592,8 @@ fun ZoomableMangaPage(
     ) {
         val containerWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val containerHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-        val maxOffsetX = if (isZoomed) ((scale - 1f) * containerWidth) / 2f else 0f
-        val maxOffsetY = if (isZoomed) ((scale - 1f) * containerHeight) / 2f else 0f
+        val maxOffsetX = if (isZoomed) ((scale - 1f) * containerWidth) / 2f + (containerWidth * 0.5f) else 0f
+        val maxOffsetY = if (isZoomed) ((scale - 1f) * containerHeight) / 2f + (containerHeight * 0.5f) else 0f
 
         val currentScaleState = rememberUpdatedState(scale)
         val isZoomedState = rememberUpdatedState(isZoomed)
