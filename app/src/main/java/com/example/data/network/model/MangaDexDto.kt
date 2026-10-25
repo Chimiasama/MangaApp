@@ -42,6 +42,7 @@ data class MangaDexMangaAttributesDto(
     val description: Map<String, String>? = emptyMap(),
     val status: String? = null,
     val publicationDemographic: String? = null,
+    val year: Int? = null,
     val originalLanguage: String? = null,
     val contentRating: String? = null,
     val tags: List<MangaDexTagDto>? = emptyList()
@@ -97,7 +98,7 @@ data class MangaDexChapterAttributesDto(
     val translatedLanguage: String? = null,
     val externalUrl: String? = null,
     val publishAt: String? = null,
-    val pages: Int? = 0
+    val pages: Int? = null
 )
 
 @JsonClass(generateAdapter = true)

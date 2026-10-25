@@ -94,7 +94,9 @@ fun BrowseScreen(
     onDeleteSearchHistoryItem: (Long) -> Unit = {},
     onClearSearchHistory: () -> Unit = {},
     onRefresh: () -> Unit = {},
-    onClearFilters: () -> Unit = {}
+    onClearFilters: () -> Unit = {},
+    onSearchCommitted: (String) -> Unit = {},
+    onPeriodSelected: (com.example.source.PublicationPeriod?) -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -103,7 +105,15 @@ fun BrowseScreen(
     var searchFocused by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.isImeVisible
+    val latestCommit by androidx.compose.runtime.rememberUpdatedState({ onSearchCommitted(queryInput) })
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { latestCommit() } }
+    var imeWasVisible by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(keyboardVisible) {
+        if (imeWasVisible && !keyboardVisible) latestCommit()
+        imeWasVisible = keyboardVisible
+    }
     fun dismissSearchKeyboard() {
+        onSearchCommitted(queryInput)
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
     }
@@ -137,6 +147,16 @@ fun BrowseScreen(
                             label = { Text(label) }, modifier = Modifier.testTag("genre_chip_$key"))
                     }
                 }
+                Text("Ano original de publicação", modifier = Modifier.padding(top = 16.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = state.publicationPeriod == null, onClick = { onPeriodSelected(null) }, label = { Text("Todas as épocas") })
+                    com.example.source.PublicationPeriod.presets().forEach { period ->
+                        FilterChip(selected = state.publicationPeriod == period, onClick = { onPeriodSelected(period) },
+                            label = { Text(period.label) }, modifier = Modifier.testTag("period_${period.from}_${period.through}"))
+                    }
+                }
+                Text("MangaDex e MangaDash permitem consultar por ano. WeebCentral filtra o catálogo carregado; LeerCapítulo e obras sem ano informado ficam fora do filtro. A data de envio dos capítulos não é usada.",
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 Text("Categorias usam a classificação de cada fonte. Nome e categoria são combinados; a disponibilidade varia por fonte e idioma.",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 Button(onClick = { showFilters = false }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
@@ -160,7 +180,11 @@ fun BrowseScreen(
                 OutlinedTextField(
                     value = queryInput,
                     onValueChange = { queryInput = it; onQueryChange(it) },
-                    modifier = Modifier.weight(1f).onFocusChanged { searchFocused = it.isFocused }.testTag("search_input"),
+                    modifier = Modifier.weight(1f).onFocusChanged {
+                        val wasFocused = searchFocused
+                        searchFocused = it.isFocused
+                        if (wasFocused && !it.isFocused) onSearchCommitted(queryInput)
+                    }.testTag("search_input"),
                     placeholder = { Text("Buscar mangás") },
                     leadingIcon = {
                         IconButton(onClick = { dismissSearchKeyboard(); onSearchSubmit(queryInput) }, modifier = Modifier.testTag("search_icon_button")) {
@@ -187,6 +211,10 @@ fun BrowseScreen(
                 }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.publicationPeriod?.let { period ->
+                    InputChip(selected = false, onClick = { onPeriodSelected(null) }, label = { Text(period.label) },
+                        trailingIcon = { Icon(Icons.Default.Close, "Remover período", Modifier.size(16.dp)) })
+                }
                 if (state.selectedLanguage != "all") {
                     val label = when (state.selectedLanguage) { "pt-br" -> "Português"; "en" -> "Inglês"; "es" -> "Espanhol"; else -> state.selectedLanguage }
                     InputChip(selected = false, onClick = { showFilters = true }, label = { Text(label) })
@@ -199,51 +227,15 @@ fun BrowseScreen(
             }
 
             // Recent Search History Chips (if present)
-            if (searchFocused && queryInput.isBlank() && state.searchHistory.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.History,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Recentes",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    TextButton(
-                        onClick = onClearSearchHistory,
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                        modifier = Modifier
-                            .height(48.dp)
-                            .testTag("clear_history_button")
-                    ) {
-                        Text(
-                            text = "Limpar",
-                            fontSize = 10.sp,
-                            color = CrimsonRed
-                        )
-                    }
-                }
-
+            if (searchFocused && state.searchHistory.isNotEmpty()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    state.searchHistory.forEach { history ->
+                    Icon(Icons.Default.History, "Buscas recentes", modifier = Modifier.size(16.dp).align(Alignment.CenterVertically))
+                    state.searchHistory.take(5).forEach { history ->
                         InputChip(
                             selected = false,
                             onClick = {
@@ -260,12 +252,15 @@ fun BrowseScreen(
                             modifier = Modifier.testTag("search_history_chip_${history.id}")
                         )
                     }
+                    TextButton(onClick = onClearSearchHistory, modifier = Modifier.testTag("clear_history_button")) {
+                        Text("Limpar", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
 
         }
 
-        val isFilterOrSearchActive = state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all"
+        val isFilterOrSearchActive = state.publicationPeriod != null || state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all"
 
         // Some IMEs/OEMs dispatch Back to the app before dismissing the keyboard.
         // Editing must end before Back can clear the current search or filters.

@@ -101,6 +101,9 @@ fun ReaderScreen(
     onRetryChapter: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val imageErrorContext = "${com.example.source.SourcePresentation.name(state.sourceId)} • ${com.example.source.SourcePresentation.language(state.currentChapter?.language.orEmpty())}"
+    val chapterOriginalUrl = com.example.source.SourcePresentation.chapterUrl(state.currentChapter, state.sourceId)
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -386,7 +389,8 @@ fun ReaderScreen(
                             Box(Modifier.fillMaxWidth().height(height).testTag("webtoon_page_$index"), contentAlignment = Alignment.TopCenter) {
                                 ReaderPageImage(url, index, filter, ContentScale.FillWidth,
                                     Modifier.requiredWidth(width).fillMaxHeight().graphicsLayer { translationX = transform.pan.x },
-                                    onLoaded = { imageLoaded(url, it) })
+                                    onLoaded = { imageLoaded(url, it) }, errorContext = imageErrorContext,
+                                    onOpenOriginal = chapterOriginalUrl?.let { url -> { runCatching { uriHandler.openUri(url) }; Unit } })
                             }
                         }
                     }
@@ -399,7 +403,8 @@ fun ReaderScreen(
                                 scaleX = scale; scaleY = scale
                                 translationX = if (index == pager.currentPage) transform.pan.x else 0f
                                 translationY = if (index == pager.currentPage) transform.pan.y else 0f
-                            }, onLoaded = { imageLoaded(url, it) })
+                            }, onLoaded = { imageLoaded(url, it) }, errorContext = imageErrorContext,
+                            onOpenOriginal = chapterOriginalUrl?.let { url -> { runCatching { uriHandler.openUri(url) }; Unit } })
                     }
                 }
             }
@@ -477,9 +482,15 @@ fun ReaderScreen(
         }
         if (state.errorMessage != null) Surface(modifier = Modifier.align(Alignment.Center).padding(24.dp), shape = MaterialTheme.shapes.medium) {
             Column(Modifier.padding(16.dp)) {
+                Text("${com.example.source.SourcePresentation.name(state.sourceId)} • ${com.example.source.SourcePresentation.language(state.pendingChapter?.language.orEmpty())}",
+                    style = MaterialTheme.typography.labelMedium)
+                Text(state.pendingChapter?.title.orEmpty(), style = MaterialTheme.typography.bodySmall)
                 Text(state.errorMessage)
+                state.errorOriginalUrl?.let { url ->
+                    TextButton(onClick = { runCatching { uriHandler.openUri(url) } }, modifier = Modifier.testTag("reader_open_source")) { Text("Abrir na fonte") }
+                }
                 Button(onClick = onRetryChapter, modifier = Modifier.testTag("retry_chapter")) { Text("Tentar novamente") }
-                if (state.pages.isNotEmpty()) TextButton(onClick = { chapters = true }) { Text("Escolher outro capítulo") }
+                if (state.chaptersList.isNotEmpty()) TextButton(onClick = { chapters = true }) { Text("Escolher outro capítulo") }
             }
         }
     }
@@ -542,7 +553,8 @@ fun ReaderScreen(
 @Composable
 private fun ReaderPageImage(
     url: String, index: Int, filter: ColorFilter?, contentScale: ContentScale,
-    modifier: Modifier, onLoaded: (Size) -> Unit
+    modifier: Modifier, onLoaded: (Size) -> Unit, errorContext: String,
+    onOpenOriginal: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var retry by remember(url) { mutableIntStateOf(0) }
@@ -560,11 +572,15 @@ private fun ReaderPageImage(
                 if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
                     onLoaded(Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat()))
             }, loading = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } },
-            error = {
+            error = { failure ->
                 Box(Modifier.fillMaxSize().background(Color(0xFF18181C)), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(errorContext, color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                         Text("Erro ao carregar página ${index + 1}", color = Color.White)
+                        Text(com.example.source.SourcePresentation.readError(failure.result.throwable),
+                            color = Color.LightGray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
                         Button(onClick = { retry++ }, modifier = Modifier.testTag("retry_page_$index")) { Text("Tentar novamente") }
+                        if (onOpenOriginal != null) TextButton(onClick = onOpenOriginal) { Text("Abrir capítulo na fonte") }
                     }
                 }
             })

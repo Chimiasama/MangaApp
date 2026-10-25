@@ -203,6 +203,8 @@ fun MangaApp(
                     state = browseState,
                     onQueryChange = { query -> mangaViewModel.searchManga(query, saveToHistory = false) },
                     onSearchSubmit = { query -> mangaViewModel.submitSearch(query) },
+                    onSearchCommitted = { query -> mangaViewModel.rememberSearch(query) },
+                    onPeriodSelected = { period -> mangaViewModel.selectPublicationPeriod(period) },
                     onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
                     onSourceSelected = { sourceId -> mangaViewModel.selectSource(sourceId) },
                     onGenreSelected = { genre -> mangaViewModel.selectGenre(genre) },

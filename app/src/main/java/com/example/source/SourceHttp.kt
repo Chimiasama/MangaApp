@@ -51,7 +51,7 @@ object SourceHttp {
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val text = response.use {
-                        if (!it.isSuccessful) throw IOException("Fonte respondeu HTTP ${it.code}")
+                        if (!it.isSuccessful) throw SourceHttpException(it.code)
                         it.body?.string() ?: throw IOException("Resposta vazia da fonte")
                     }
                     if (continuation.isActive) continuation.resume(text)

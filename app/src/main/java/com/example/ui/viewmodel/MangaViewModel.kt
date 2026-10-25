@@ -44,7 +44,8 @@ data class BrowseUiState(
     val carouselSections: List<GenreCarouselSection> = emptyList(),
     val availableSources: List<MangaSource> = emptyList(),
     val searchHistory: List<SearchHistoryEntity> = emptyList(),
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val publicationPeriod: com.example.source.PublicationPeriod? = null
 )
 
 data class MangaDetailUiState(
@@ -53,7 +54,9 @@ data class MangaDetailUiState(
     val isLoading: Boolean = false,
     val isFavorite: Boolean = false,
     val readingProgress: ProgressEntity? = null,
-    val malRecommendations: List<MalRecommendationItem> = emptyList()
+    val malRecommendations: List<MalRecommendationItem> = emptyList(),
+    val sourceName: String = "",
+    val chapterError: String? = null
 )
 
 data class ReaderUiState(
@@ -73,7 +76,8 @@ data class ReaderUiState(
     val contentVersion: Long = 0,
     val pendingChapter: ChapterModel? = null,
     val errorMessage: String? = null,
-    val nextChapterFirstPages: List<String> = emptyList()
+    val nextChapterFirstPages: List<String> = emptyList(),
+    val errorOriginalUrl: String? = null
 )
 
 private data class MangaData(
@@ -93,7 +97,7 @@ class MangaViewModel(
     val repository: MangaRepository,
     private val loadBrowseOnInit: Boolean = true,
     private val readerPages: suspend (ChapterModel, String) -> List<String> = { chapter, source ->
-        repository.getPages(chapter.chapterUrl, chapter.id, source)
+        repository.getPages(chapter.chapterUrl, chapter.id, source, chapter)
     }
 ) : ViewModel() {
 
@@ -102,6 +106,7 @@ class MangaViewModel(
 
     private val _selectedSourceId = MutableStateFlow("all")
     private val _selectedGenre = MutableStateFlow("all")
+    private val _publicationPeriod = MutableStateFlow<com.example.source.PublicationPeriod?>(null)
     private val _searchQuery = MutableStateFlow("")
     private val _isLoadingBrowse = MutableStateFlow(false)
     private val _mangaList = MutableStateFlow<List<MangaModel>>(emptyList())
@@ -165,8 +170,9 @@ class MangaViewModel(
             MangaData(list, carousels)
         },
         _errorMessage,
-        searchHistory
-    ) { params, mangaData, error, history ->
+        searchHistory,
+        _publicationPeriod
+    ) { params, mangaData, error, history, period ->
         val sources = repository.getAvailableSources()
         BrowseUiState(
             selectedSourceId = params.sourceId,
@@ -178,13 +184,15 @@ class MangaViewModel(
             carouselSections = mangaData.carousels,
             availableSources = sources,
             searchHistory = history,
-            errorMessage = error
+            errorMessage = error,
+            publicationPeriod = period
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowseUiState())
 
     // Manga Detail State
     private val _detailManga = MutableStateFlow<MangaModel?>(null)
     private val _detailChapters = MutableStateFlow<List<ChapterModel>>(emptyList())
+    private val _detailChapterError = MutableStateFlow<String?>(null)
     private val _isLoadingDetail = MutableStateFlow(false)
     private val _isFavorite = MutableStateFlow(false)
     private val _currentMangaProgress = MutableStateFlow<ProgressEntity?>(null)
@@ -197,17 +205,19 @@ class MangaViewModel(
         _detailChapters,
         _isLoadingDetail,
         _isFavorite,
-        combine(_currentMangaProgress, _detailMalRecommendations) { progress, recs ->
-            Pair(progress, recs)
+        combine(_currentMangaProgress, _detailMalRecommendations, _detailChapterError) { progress, recs, error ->
+            Triple(progress, recs, error)
         }
-    ) { manga, chapters, loading, isFav, (progress, recs) ->
+    ) { manga, chapters, loading, isFav, (progress, recs, chapterError) ->
         MangaDetailUiState(
             manga = manga,
             chapters = chapters,
             isLoading = loading,
             isFavorite = isFav,
             readingProgress = progress,
-            malRecommendations = recs
+            malRecommendations = recs,
+            sourceName = manga?.let { repository.getSourceById(it.sourceId)?.name ?: com.example.source.SourcePresentation.name(it.sourceId) }.orEmpty(),
+            chapterError = chapterError
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
 
@@ -279,6 +289,7 @@ class MangaViewModel(
         browseJob?.cancel()
         val currentSource = _selectedSourceId.value
         val currentGenre = _selectedGenre.value
+        val period = _publicationPeriod.value
         val query = _searchQuery.value.trim().replace(Regex("\\s+"), " ")
         _isLoadingBrowse.value = true
         _errorMessage.value = null
@@ -286,9 +297,9 @@ class MangaViewModel(
             try {
                 if (debounceMillis > 0) kotlinx.coroutines.delay(debounceMillis)
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
-                val popular = query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")
+                val popular = query.isBlank() && (currentGenre.isBlank() || currentGenre == "all") && period == null
                 val results = if (popular) repository.getPopularManga(currentSource, currentLanguage)
-                    else repository.searchManga(query, currentSource, currentLanguage, currentGenre)
+                    else repository.searchManga(query, currentSource, currentLanguage, currentGenre, period)
                 ensureActive()
                 if (request != browseRequestId) return@launch
                 _mangaList.value = results
@@ -313,8 +324,18 @@ class MangaViewModel(
     fun clearFiltersAndReload() {
         _searchQuery.value = ""
         _selectedGenre.value = "all"
+        _publicationPeriod.value = null
         _selectedSourceId.value = "all"
         loadBrowseManga()
+    }
+
+    fun selectPublicationPeriod(period: com.example.source.PublicationPeriod?) {
+        _publicationPeriod.value = period
+        loadBrowseManga()
+    }
+
+    fun rememberSearch(query: String = _searchQuery.value) {
+        viewModelScope.launch { repository.saveSearchQuery(query) }
     }
 
     fun selectGenre(genre: String) {
@@ -346,6 +367,7 @@ class MangaViewModel(
         val request = ++detailChapterRequest
         detailChapterJob?.cancel()
         _detailChapters.value = emptyList()
+        _detailChapterError.value = null
         _isLoadingDetail.value = true
         detailChapterJob = viewModelScope.launch {
             try {
@@ -355,8 +377,11 @@ class MangaViewModel(
                 if (request == detailChapterRequest) _detailChapters.value = chapters
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                if (request == detailChapterRequest) _detailChapters.value = emptyList()
+            } catch (error: Exception) {
+                if (request == detailChapterRequest) {
+                    _detailChapters.value = emptyList()
+                    _detailChapterError.value = com.example.source.SourcePresentation.readError(error)
+                }
             } finally {
                 if (request == detailChapterRequest) _isLoadingDetail.value = false
             }
@@ -396,6 +421,7 @@ class MangaViewModel(
     }
 
     fun openMangaDetails(manga: MangaModel) {
+        rememberSearch()
         viewModelScope.launch {
             _isLoadingDetail.value = true
             _detailManga.value = manga
@@ -420,7 +446,8 @@ class MangaViewModel(
                         genres = detailed.genres.ifEmpty { manga.genres },
                         description = detailed.description.ifBlank { manga.description },
                         author = detailed.author.ifBlank { manga.author },
-                        coverUrl = detailed.coverUrl.ifBlank { manga.coverUrl })
+                        coverUrl = detailed.coverUrl.ifBlank { manga.coverUrl },
+                        publicationYear = detailed.publicationYear ?: manga.publicationYear)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -546,7 +573,7 @@ class MangaViewModel(
             mangaUrl = manga.url, mangaTitle = manga.title, mangaCoverUrl = manga.coverUrl,
             sourceId = manga.sourceId, chaptersList = chaptersList
         )
-        _readerState.value = retained.copy(isLoading = true, pendingChapter = chapter, errorMessage = null)
+        _readerState.value = retained.copy(isLoading = true, pendingChapter = chapter, errorMessage = null, errorOriginalUrl = null)
         readerJob = viewModelScope.launch {
             try {
                 if (previous.pages.isNotEmpty()) persistReaderSnapshot(previous)
@@ -555,7 +582,7 @@ class MangaViewModel(
                     ?: readerPages(chapter, manga.sourceId)
                 ensureActive()
                 if (request != readerRequestId) return@launch
-                check(pages.isNotEmpty()) { "Nenhuma página disponível. Verifique a conexão ou tente outra fonte." }
+                if (pages.isEmpty()) throw com.example.source.ChapterAccessException("A fonte não entregou páginas para este capítulo. O registro pode estar sem imagens ou o conteúdo pode ter sido removido. Não há confirmação de DRM.")
                 val progress = repository.getProgressForManga(manga.url).first()
                 val saved = repository.preferencesRepository.getReaderViewport(manga.url)
                     ?.takeIf { it.chapterId == chapter.id && restoreViewport }
@@ -587,7 +614,9 @@ class MangaViewModel(
                 throw cancelled
             } catch (error: Exception) {
                 if (request == readerRequestId) _readerState.value = _readerState.value.copy(
-                    isLoading = false, errorMessage = error.message ?: "Não foi possível carregar o capítulo.",
+                    isLoading = false, errorMessage = com.example.source.SourcePresentation.readError(error),
+                    errorOriginalUrl = com.example.source.SourcePresentation.safeWebUrl((error as? com.example.source.ChapterAccessException)?.originalUrl)
+                        ?: com.example.source.SourcePresentation.mangaUrl(manga),
                     pendingChapter = chapter
                 )
             }
@@ -691,13 +720,15 @@ class MangaViewModel(
                 coverUrl = cachedManga?.coverUrl ?: "",
                 description = cachedManga?.description ?: "",
                 sourceId = realSourceId,
+                publicationYear = cachedManga?.publicationYear,
                 genres = if (!cachedManga?.genres.isNullOrBlank()) cachedManga!!.genres.split(",") else emptyList()
             )
 
             val chapter = ChapterModel(
                 id = progress.chapterId,
                 title = progress.chapterTitle.ifBlank { cachedChapter?.title ?: "Capítulo" },
-                chapterUrl = realChapterUrl
+                chapterUrl = realChapterUrl,
+                language = cachedChapter?.language.orEmpty(), externalUrl = cachedChapter?.externalUrl.orEmpty(), pageCount = cachedChapter?.pageCount
             )
 
             val targetLanguage = repository.preferencesRepository.selectedLanguage.first()
@@ -708,7 +739,7 @@ class MangaViewModel(
                     chapterUrl = entity.chapterUrl,
                     chapterNumber = entity.chapterNumber,
                     dateUpload = entity.dateUpload,
-                    language = entity.language
+                    language = entity.language, externalUrl = entity.externalUrl, pageCount = entity.pageCount
                 )
             }.ifEmpty { listOf(chapter) }
 
@@ -769,13 +800,15 @@ class MangaViewModel(
                 coverUrl = mangaCover,
                 description = cachedManga?.description ?: "",
                 sourceId = realSourceId,
+                publicationYear = cachedManga?.publicationYear,
                 genres = if (!cachedManga?.genres.isNullOrBlank()) cachedManga!!.genres.split(",") else emptyList()
             )
 
             val chapter = ChapterModel(
                 id = bookmark.chapterId,
                 title = bookmark.chapterTitle.ifBlank { cachedChapter?.title ?: "Capítulo" },
-                chapterUrl = realChapterUrl
+                chapterUrl = realChapterUrl,
+                language = cachedChapter?.language.orEmpty(), externalUrl = cachedChapter?.externalUrl.orEmpty(), pageCount = cachedChapter?.pageCount
             )
 
             val targetLanguage = repository.preferencesRepository.selectedLanguage.first()
@@ -786,7 +819,7 @@ class MangaViewModel(
                     chapterUrl = entity.chapterUrl,
                     chapterNumber = entity.chapterNumber,
                     dateUpload = entity.dateUpload,
-                    language = entity.language
+                    language = entity.language, externalUrl = entity.externalUrl, pageCount = entity.pageCount
                 )
             }.ifEmpty { listOf(chapter) }
 

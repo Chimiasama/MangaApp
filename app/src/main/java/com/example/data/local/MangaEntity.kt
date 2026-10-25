@@ -14,7 +14,8 @@ data class MangaEntity(
     val genres: String = "",
     val isFavorite: Boolean = true,
     val isNsfw: Boolean = false,
-    val addedTimestamp: Long = System.currentTimeMillis()
+    val addedTimestamp: Long = System.currentTimeMillis(),
+    val publicationYear: Int? = null
 )
 
 /**

@@ -18,6 +18,36 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BrowseInputTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun `leaving live search records Spy without submitting and shows only five recent queries`() {
+        var committed = ""
+        var selected = ""
+        val history = (1..7).map { com.example.data.local.SearchHistoryEntity(it.toLong(), "query$it", it.toLong()) }
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(searchHistory = history),
+                onSearchCommitted = { committed = it }, onSearchSubmit = { selected = it },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("search_input").performTextInput("Spy")
+        compose.onNodeWithTag("hide_search_keyboard").performClick()
+        compose.runOnIdle { assertEquals("Spy", committed) }
+        compose.onNodeWithTag("search_input").performClick()
+        compose.onNodeWithTag("search_history_chip_6").assertDoesNotExist()
+        compose.onNodeWithTag("search_history_chip_7").assertDoesNotExist()
+        compose.onNodeWithText("query1", substring = false, useUnmergedTree = true).performClick()
+        compose.runOnIdle { assertEquals("query1", selected) }
+    }
+
+    @Test fun `publication period is selectable and removable without clearing the query`() {
+        var selected: com.example.source.PublicationPeriod? = null
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(searchQuery = "Phoenix"), onPeriodSelected = { selected = it },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("open_filters_button").performClick()
+        compose.onNodeWithTag("period_1951_1960").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(com.example.source.PublicationPeriod(1951, 1960), selected) }
+    }
+
     @Test fun `back ends search editing before clearing the query or category`() {
         var cleared = 0
         lateinit var back: androidx.activity.OnBackPressedDispatcher
@@ -99,7 +129,7 @@ class BrowseInputTest {
         compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
     }
 
-    @Test fun `recent searches only appear when the empty search field has focus`() {
+    @Test fun `recent searches stay available while editing and disappear when keyboard is dismissed`() {
         compose.setContent {
             MaterialTheme { BrowseScreen(state = BrowseUiState(searchHistory = listOf(com.example.data.local.SearchHistoryEntity(id = 1, query = "dragon ball"))),
                 onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
@@ -108,6 +138,8 @@ class BrowseInputTest {
         compose.onNodeWithTag("search_input").performClick()
         compose.onNodeWithTag("search_history_chip_1").assertExists()
         compose.onNodeWithTag("search_input").performTextInput("dragon")
+        compose.onNodeWithTag("search_history_chip_1").assertExists()
+        compose.onNodeWithTag("hide_search_keyboard").performClick()
         compose.onNodeWithTag("search_history_chip_1").assertDoesNotExist()
     }
 

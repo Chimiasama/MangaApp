@@ -104,7 +104,9 @@ fun MangaDetailScreen(
 ) {
     val manga = state.manga ?: return
     val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, selectedLanguage) }
+    val readableChapters = visibleChapters.filter { it.externalUrl.isBlank() && it.pageCount != 0 }
     val context = LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf(setOf<String>()) }
@@ -266,6 +268,20 @@ fun MangaDetailScreen(
             // Description & Action
             item {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Fonte: ${state.sourceName.ifBlank { com.example.source.SourcePresentation.name(manga.sourceId) }}",
+                        style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("manga_source"))
+                    manga.publicationYear?.let { year ->
+                        Text("Publicação original: $year", style = MaterialTheme.typography.bodySmall)
+                    }
+                    val loadedLanguages = state.chapters.map { com.example.source.SourcePresentation.language(it.language) }.distinct()
+                    if (loadedLanguages.isNotEmpty()) Text("Idiomas dos capítulos carregados: ${loadedLanguages.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    com.example.source.SourcePresentation.mangaUrl(manga)?.let { url ->
+                        TextButton(onClick = { runCatching { uriHandler.openUri(url) } }, modifier = Modifier.testTag("open_manga_source")) {
+                            Text("Abrir página da fonte")
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     val categories = com.example.source.MangaCategories.display(manga.genres)
                     if (categories.isNotEmpty()) {
                         Text("Categorias", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -346,9 +362,9 @@ fun MangaDetailScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                    } else if (visibleChapters.isNotEmpty()) {
+                    } else if (readableChapters.isNotEmpty()) {
                         // Banner de início direto para novos leitores
-                        val firstChapter = visibleChapters.minBy { it.chapterNumber }
+                        val firstChapter = readableChapters.minBy { it.chapterNumber }
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CrimsonRed.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(12.dp),
@@ -531,7 +547,7 @@ fun MangaDetailScreen(
 
                                     Button(
                                         onClick = {
-                                            val selectedList = visibleChapters.filter { it.id in selectedChapterIds }
+                                            val selectedList = readableChapters.filter { it.id in selectedChapterIds }
                                             if (selectedList.isNotEmpty()) {
                                                 onDownloadMultipleChapters(selectedList)
                                                 Toast.makeText(
@@ -674,7 +690,7 @@ fun MangaDetailScreen(
 
                                     Button(
                                         onClick = {
-                                            val unDownloaded = visibleChapters.filter { ch ->
+                                            val unDownloaded = readableChapters.filter { ch ->
                                                 downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
                                             }
                                             if (unDownloaded.isNotEmpty()) {
@@ -857,14 +873,15 @@ fun MangaDetailScreen(
                             else -> "Todas as línguas"
                         }
                         Text(
-                            text = "Nenhum capítulo disponível em $langLabel.",
+                            text = state.chapterError ?: "Nenhum capítulo disponível em $langLabel.",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (state.chapterError != null) TextButton(onClick = { onLanguageSelected(selectedLanguage) }) { Text("Tentar novamente") }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Tentar outro idioma:",
+                            text = if (state.chapterError == null) "Tentar outro idioma:" else "Verifique a fonte ou tente novamente:",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1193,6 +1210,13 @@ private fun ChapterRowItem(
                     fontSize = 14.sp,
                     color = if (isCurrentReading || isSelected) PrimaryPurple else MaterialTheme.colorScheme.onSurface
                 )
+                Text(com.example.source.SourcePresentation.language(chapter.language),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("chapter_language_${chapter.id}"))
+                if (chapter.externalUrl.isNotBlank() || chapter.pageCount == 0) {
+                    Text(if (chapter.externalUrl.isNotBlank()) "Leitura no site externo" else "Fonte informa zero páginas",
+                        style = MaterialTheme.typography.labelSmall, color = PrimaryPurple)
+                }
                 if (chapter.dateUpload.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -1251,6 +1275,7 @@ private fun ChapterRowItem(
                     else -> {
                         IconButton(
                             onClick = onDownloadChapter,
+                            enabled = chapter.externalUrl.isBlank() && chapter.pageCount != 0,
                             modifier = Modifier.size(32.dp).testTag("download_button_${chapter.id}")
                         ) {
                             Icon(

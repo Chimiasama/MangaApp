@@ -168,14 +168,17 @@ class MangaDexSource(
 
     private var categoryTags: List<com.example.data.network.model.MangaDexTagDto>? = null
 
-    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
-        if (MangaCategories.isAll(category)) return if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
+    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> =
+        searchManga(query, language, category, null)
+
+    override suspend fun searchManga(query: String, language: String, category: String, period: PublicationPeriod?): List<MangaModel> {
+        if (MangaCategories.isAll(category) && period == null) return if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
         val key = MangaCategories.key(category)
         val demographic = when (key) {
             "Shounen" -> "shounen"; "Shoujo" -> "shoujo"; "Seinen" -> "seinen"; "Josei" -> "josei"
             else -> null
         }
-        val tags = if (demographic != null) null else {
+        val tags = if (demographic != null || MangaCategories.isAll(category)) null else {
             val available = categoryTags ?: apiService.getMangaTags().data.also { categoryTags = it }
             val tag = available.firstOrNull { tag ->
                 tag.attributes?.name?.values.orEmpty().any { MangaCategories.key(it) == key }
@@ -185,11 +188,36 @@ class MangaDexSource(
         val languages = when (language) {
             "pt-br" -> listOf("pt-br", "pt"); "en" -> listOf("en"); "es" -> listOf("es", "es-la"); else -> null
         }
-        // Keep category and language constraints even when the API returns no matches.
-        return apiService.getFilteredMangaList(title = query.trim().takeIf { it.isNotEmpty() },
-            demographics = demographic?.let(::listOf), includedTags = tags, translatedLanguages = languages)
-            .data.orEmpty().map { it.toMangaModel(baseUrl, id) }
-            .filter { MangaCategories.matches(it.genres, category) }
+        suspend fun request(year: Int? = null, offset: Int = 0, oldestFirst: Boolean = false) = apiService.getFilteredMangaList(
+            title = query.trim().takeIf { it.isNotEmpty() }, demographics = demographic?.let(::listOf),
+            includedTags = tags, translatedLanguages = languages, year = year, offset = offset,
+            order = if (oldestFirst) null else "desc", orderYear = if (oldestFirst) "asc" else null)
+        val dtos = mutableListOf<com.example.data.network.model.MangaDexMangaDto>()
+        when {
+            period == null -> dtos += request().data.orEmpty()
+            period.through - period.from <= 15 -> {
+                // The official API accepts an exact year, not a range. Keep every other filter.
+                for (year in period.from..period.through) {
+                    if (year != period.from) kotlinx.coroutines.delay(300)
+                    dtos += request(year = year).data.orEmpty()
+                }
+            }
+            else -> {
+                // Early historical catalogs are small: scan by publication year, not popularity.
+                var offset = 0
+                while (offset < 1000) {
+                    val response = request(offset = offset, oldestFirst = true)
+                    val batch = response.data.orEmpty()
+                    dtos += batch
+                    if (batch.isEmpty() || batch.any { (it.attributes?.year ?: Int.MIN_VALUE) > period.through } ||
+                        batch.size < 100 || offset + batch.size >= (response.total ?: Int.MAX_VALUE)) break
+                    offset += batch.size
+                    kotlinx.coroutines.delay(300)
+                }
+            }
+        }
+        return dtos.distinctBy { it.id }.map { it.toMangaModel(baseUrl, id) }
+            .filter { MangaCategories.matches(it.genres, category) && (period == null || period.matches(it.publicationYear)) }
     }
 
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel = withContext(Dispatchers.IO) {
@@ -203,41 +231,20 @@ class MangaDexSource(
 
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> = withContext(Dispatchers.IO) {
         val mangaId = mangaUrl.substringAfterLast("/").trim()
-        try {
-            val chapters = fetchChaptersForLanguage(mangaId, language)
-            chapters.mapIndexed { index, dto ->
-                val fallbackNum = (index + 1).toFloat()
-                dto.toChapterModel(baseUrl, fallbackNum)
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        fetchChaptersForLanguage(mangaId, language).mapIndexed { index, dto ->
+            dto.toChapterModel(baseUrl, (index + 1).toFloat())
         }
     }
 
     override suspend fun getPages(chapterUrl: String): List<String> = withContext(Dispatchers.IO) {
         val chapterId = chapterUrl.substringAfterLast("/").trim()
-        val pages = mutableListOf<String>()
-
-        try {
-            val response = apiService.getAtHomeServer(chapterId)
-            val host = response.baseUrl.orEmpty()
-            val chapterObj = response.chapter
-            val hash = chapterObj?.hash.orEmpty()
-            val dataArray = chapterObj?.data.orEmpty()
-
-            if (host.isNotEmpty() && hash.isNotEmpty() && dataArray.isNotEmpty()) {
-                for (fileName in dataArray) {
-                    pages.add("$host/data/$hash/$fileName")
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        pages
+        val response = apiService.getAtHomeServer(chapterId)
+        val host = response.baseUrl.orEmpty()
+        val hash = response.chapter?.hash.orEmpty()
+        val files = response.chapter?.data.orEmpty()
+        if (host.isBlank() || hash.isBlank() || files.isEmpty()) throw ChapterAccessException(
+            "MangaDex não entregou imagens deste capítulo. O registro pode não ter páginas ou pode ter sido removido. Não há confirmação de DRM.")
+        files.map { "$host/data/$hash/$it" }
     }
 
     // =========================================================================
@@ -382,13 +389,7 @@ class MangaDexSource(
             if (data.size < pageSize) break
         }
 
-        return allChapters.filter { ch ->
-            val attr = ch.attributes
-            val externalUrl = attr?.externalUrl
-            val isExternal = !externalUrl.isNullOrBlank() && externalUrl != "null"
-            val pageCount = attr?.pages ?: 0
-            !isExternal && (pageCount > 0 || attr?.pages == null)
-        }
+        return allChapters
     }
 
     private suspend fun fetchChaptersForLanguage(
@@ -398,6 +399,7 @@ class MangaDexSource(
         val targets = ChapterLanguage.requested(language)?.toList()
         return fetchAllChapters(mangaId, targets)
             .filter { ChapterLanguage.matches(it.attributes?.translatedLanguage.orEmpty(), language) }
+            .sortedByDescending { if (!it.attributes?.externalUrl?.takeUnless { url -> url == "null" }.isNullOrBlank()) 0 else if ((it.attributes?.pages ?: 1) > 0) 2 else 1 }
             .distinctBy { Triple(it.attributes?.volume, it.attributes?.chapter ?: it.id,
                 ChapterLanguage.normalize(it.attributes?.translatedLanguage.orEmpty())) }
             .sortedBy { it.attributes?.chapter?.toFloatOrNull() ?: Float.MAX_VALUE }

@@ -401,6 +401,7 @@ private fun FavoritesList(
                         title = entity.title,
                         coverUrl = entity.coverUrl,
                         description = entity.description,
+                        publicationYear = entity.publicationYear,
                         genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
                         isNsfw = entity.isNsfw,
                         sourceId = entity.sourceId

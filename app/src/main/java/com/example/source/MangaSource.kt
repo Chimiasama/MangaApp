@@ -20,6 +20,9 @@ interface MangaSource {
         return candidates.filter { MangaCategories.matches(it.genres, category) }
     }
 
+    suspend fun searchManga(query: String, language: String, category: String, period: PublicationPeriod?): List<MangaModel> =
+        searchManga(query, language, category).filter { period == null || period.matches(it.publicationYear) }
+
     suspend fun getMangaDetails(mangaUrl: String): MangaModel
 
     suspend fun getChapters(mangaUrl: String): List<ChapterModel>

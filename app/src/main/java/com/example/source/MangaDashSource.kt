@@ -21,7 +21,17 @@ class MangaDashSource(private val pdfPages: suspend (String) -> List<String>,
     override suspend fun getPopularManga(language: String) = searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)
     override suspend fun searchManga(query: String, language: String): List<MangaModel> = searchManga(query, language, "all")
-    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
+    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> = searchCatalog(query, language, category, null)
+    override suspend fun searchManga(query: String, language: String, category: String, period: PublicationPeriod?): List<MangaModel> {
+        if (period == null) return searchManga(query, language, category)
+        if (!supportsLanguage(language)) return emptyList()
+        val filters = Jsoup.parse(fetch("$baseUrl/mangas"), baseUrl)
+        val years = filters.select("#filterAno option").mapNotNull { it.attr("value").toIntOrNull() }.filter(period::matches)
+        val results = mutableListOf<MangaModel>()
+        for (year in years) results += searchCatalog(query, language, category, year)
+        return results.distinctBy { it.url }.filter { period.matches(it.publicationYear) }
+    }
+    private suspend fun searchCatalog(query: String, language: String, category: String, year: Int?): List<MangaModel> {
         if (!supportsLanguage(language)) return emptyList()
         val categoryValue = if (MangaCategories.isAll(category)) null else {
             val filters = Jsoup.parse(fetch("$baseUrl/mangas"), baseUrl)
@@ -31,7 +41,8 @@ class MangaDashSource(private val pdfPages: suspend (String) -> List<String>,
         }
         val url = "$baseUrl/api/mangas/list".toHttpUrl().newBuilder().addQueryParameter("page", "1")
             .addQueryParameter("q", query).addQueryParameter("sort", "populares")
-            .apply { if (categoryValue != null) addQueryParameter("categoria", categoryValue) }.build().toString()
+            .apply { if (categoryValue != null) addQueryParameter("categoria", categoryValue)
+                if (year != null) addQueryParameter("ano", year.toString()) }.build().toString()
         val response = json(fetch(url))
         val items = response["items"] as? List<*> ?: throw IOException("MangaDash não entregou o catálogo.")
         return items.mapNotNull { item ->
@@ -43,7 +54,8 @@ class MangaDashSource(private val pdfPages: suspend (String) -> List<String>,
             val cover = data["capa"] as? String ?: ""
             MangaModel("$baseUrl/manga/$key-$slug", "$id:$key", title,
                 if (cover.startsWith("http")) cover else absolute(if (cover.startsWith("/")) cover else "/static/covers/$cover"), sourceId = id,
-                genres = if (categoryValue == null) emptyList() else listOf(MangaCategories.key(category)))
+                genres = if (categoryValue == null) emptyList() else listOf(MangaCategories.key(category)),
+                publicationYear = data["ano_lancamento"]?.toString()?.substringBefore('.')?.toIntOrNull())
         }
     }
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel {
@@ -54,7 +66,8 @@ class MangaDashSource(private val pdfPages: suspend (String) -> List<String>,
             doc.selectFirst(".cover-3d img")?.absUrl("src").orEmpty(),
             description = doc.selectFirst(".manga-description")?.text().orEmpty(),
             genres = doc.select(".manga-tags a.tag:not(.tag-author)").map { it.text() },
-            sourceId = id, author = doc.selectFirst(".tag-author")?.text().orEmpty())
+            sourceId = id, author = doc.selectFirst(".tag-author")?.text().orEmpty(),
+            publicationYear = doc.selectFirst("a[href*=ano=]")?.text()?.trim()?.toIntOrNull())
     }
     override suspend fun getChapters(mangaUrl: String) = getChapters(mangaUrl, lang)
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {

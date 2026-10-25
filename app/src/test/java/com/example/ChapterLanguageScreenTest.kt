@@ -23,6 +23,31 @@ class ChapterLanguageScreenTest {
     private val manga = MangaModel("manga", "manga", "Teste", "", sourceId = "mangadex")
     private val russian = ChapterModel("ru", "Конец. [RU]", "ru", 115f, language = "ru")
     private val portuguese = ChapterModel("pt", "Epílogo", "pt", 115.5f, language = "pt-br")
+    @Test fun `detail identifies source year and chapter language including unknown metadata`() {
+        compose.setContent {
+            MaterialTheme { MangaDetailScreen(state = MangaDetailUiState(
+                manga = manga.copy(sourceId = "weebcentral", publicationYear = 1966),
+                chapters = listOf(ChapterModel("unknown", "Capítulo 1", "link", language = ""))),
+                downloads = emptyList(), selectedLanguage = "all", onBack = {}, onToggleFavorite = {},
+                onChapterClick = {}, onDownloadChapter = {}, onDeleteDownload = {}) }
+        }
+        compose.onNodeWithTag("manga_source").performScrollTo().assertTextEquals("Fonte: WeebCentral")
+        compose.onNodeWithText("Publicação original: 1966").assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("chapter_item_unknown"))
+        compose.onNodeWithTag("chapter_language_unknown", useUnmergedTree = true).assertTextEquals("Idioma não informado")
+    }
+
+    @Test fun `chapter loading failure is not presented as missing translations`() {
+        compose.setContent {
+            MaterialTheme { MangaDetailScreen(state = MangaDetailUiState(manga = manga, chapterError = "Fonte respondeu HTTP 403"),
+                downloads = emptyList(), selectedLanguage = "pt-br", onBack = {}, onToggleFavorite = {},
+                onChapterClick = {}, onDownloadChapter = {}, onDeleteDownload = {}) }
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Fonte respondeu HTTP 403"))
+        compose.onNodeWithText("Fonte respondeu HTTP 403").assertExists()
+        compose.onNodeWithText("Nenhum capítulo disponível em Português (PT-BR).").assertDoesNotExist()
+    }
+
     @Test fun `detail shows normalized categories supplied by the source`() {
         compose.setContent {
             MaterialTheme { MangaDetailScreen(state = MangaDetailUiState(

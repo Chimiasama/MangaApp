@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import kotlinx.coroutines.sync.withLock
+
 import com.example.data.download.ChapterDownloadManager
 import com.example.data.local.BookmarkDao
 import com.example.data.local.BookmarkEntity
@@ -58,10 +60,11 @@ class MangaRepository(
 
     val recentSearchHistory: Flow<List<SearchHistoryEntity>> = searchHistoryDao?.getRecentSearchHistory() ?: kotlinx.coroutines.flow.flowOf(emptyList())
 
-    suspend fun saveSearchQuery(query: String) {
-        val trimmed = query.trim()
-        if (trimmed.length < 2) return
-        val dao = searchHistoryDao ?: return
+    private val historyMutex = kotlinx.coroutines.sync.Mutex()
+    suspend fun saveSearchQuery(query: String) = historyMutex.withLock {
+        val trimmed = query.trim().replace(Regex("\\s+"), " ")
+        if (trimmed.length < 2) return@withLock
+        val dao = searchHistoryDao ?: return@withLock
         val existing = dao.getSearchHistoryByQuery(trimmed)
         val entity = SearchHistoryEntity(
             id = existing?.id ?: 0,
@@ -213,6 +216,7 @@ class MangaRepository(
                     .filter { it.isNotBlank() }.distinct().joinToString(","),
                 isFavorite = existing?.isFavorite ?: false,
                 isNsfw = false,
+                publicationYear = manga.publicationYear ?: existing?.publicationYear,
                 addedTimestamp = existing?.addedTimestamp ?: System.currentTimeMillis()
             )
             mangaDao.insertManga(entity)
@@ -266,6 +270,7 @@ class MangaRepository(
                     coverUrl = entity.coverUrl,
                     description = entity.description,
                     sourceId = entity.sourceId,
+                    publicationYear = entity.publicationYear,
                     genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
                     isNsfw = false
                 )
@@ -279,7 +284,8 @@ class MangaRepository(
         query: String,
         sourceId: String?,
         language: String = "pt-br",
-        category: String = "all"
+        category: String = "all",
+        period: com.example.source.PublicationPeriod? = null
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
@@ -294,11 +300,12 @@ class MangaRepository(
         val results = mutableListOf<MangaModel>()
         for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
             try {
-                val list = if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
+                val list = if (period != null) src.searchManga(query, language, category, period)
+                    else if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
                     else src.searchManga(query, language, category)
                 val filtered = list.filter { manga ->
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
-                    com.example.source.MangaCategories.matches(manga.genres, category)
+                    com.example.source.MangaCategories.matches(manga.genres, category) && (period == null || period.matches(manga.publicationYear))
                 }
                 results.addAll(filtered)
                 completedSources++
@@ -311,7 +318,7 @@ class MangaRepository(
             }
         }
 
-        if (results.isEmpty() && (query.isNotBlank() || !com.example.source.MangaCategories.isAll(category))) {
+        if (results.isEmpty() && (query.isNotBlank() || !com.example.source.MangaCategories.isAll(category) || period != null)) {
             val cachedEntities = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
                 mangaDao.getCachedMangasBySourceSync(sourceId)
             } else {
@@ -322,6 +329,7 @@ class MangaRepository(
                 if (entity.sourceId == com.example.source.LocalPdfSource.ID || entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 sourceRegistry[entity.sourceId]?.supportsLanguage(language) == true &&
                     com.example.source.MangaCategories.matches(entity.genres.split(","), category) &&
+                    (period == null || period.matches(entity.publicationYear)) &&
                     (queryLower.isBlank() || entity.title.lowercase(Locale.getDefault()).contains(queryLower))
             }
             if (matched.isEmpty() && completedSources == 0 && lastFailure != null) {
@@ -335,6 +343,7 @@ class MangaRepository(
                     coverUrl = entity.coverUrl,
                     description = entity.description,
                     sourceId = entity.sourceId,
+                    publicationYear = entity.publicationYear,
                     genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
                     isNsfw = false
                 )
@@ -362,6 +371,7 @@ class MangaRepository(
                     coverUrl = cached.coverUrl,
                     description = cached.description,
                     sourceId = cached.sourceId,
+                    publicationYear = cached.publicationYear,
                     genres = if (cached.genres.isBlank()) emptyList() else cached.genres.split(","),
                     isNsfw = cached.isNsfw
                 )
@@ -378,11 +388,13 @@ class MangaRepository(
         language: String = "pt-br"
     ): List<ChapterModel> = kotlinx.coroutines.coroutineScope {
         val primarySource = sourceRegistry[primarySourceId] ?: sourceRegistry.values.first()
+        var primaryFailure: Exception? = null
         val primaryChapters = try {
             primarySource.getChapters(mangaUrl, language)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
+            primaryFailure = e
             emptyList()
         }
 
@@ -391,7 +403,9 @@ class MangaRepository(
             chapters.filter { ChapterLanguage.matches(it.language, language) }.forEach { chapter ->
                 if (chapter.chapterNumber >= 0f) {
                     val key = chapter.chapterNumber to ChapterLanguage.normalize(chapter.language)
-                    chapterMap.putIfAbsent(key, chapter)
+                    val existing = chapterMap[key]
+                    fun rank(ch: ChapterModel) = if (ch.externalUrl.isNotBlank() || ch.pageCount == 0) 0 else if (ch.pageCount != null) 2 else 1
+                    if (existing == null || rank(chapter) > rank(existing)) chapterMap[key] = chapter
                 }
             }
         }
@@ -432,6 +446,7 @@ class MangaRepository(
 
         if (mergedList.isNotEmpty() && chapterDao != null) {
             val entities = mergedList.mapIndexed { index, ch ->
+                val existing = chapterDao.getChapterByIdSync(ch.id)
                 ChapterEntity(
                     id = ch.id,
                     mangaUrl = mangaUrl,
@@ -439,12 +454,16 @@ class MangaRepository(
                     chapterUrl = ch.chapterUrl,
                     chapterNumber = if (ch.chapterNumber > 0) ch.chapterNumber else (index + 1).toFloat(),
                     dateUpload = ch.dateUpload,
+                    isRead = existing?.isRead ?: false, lastPageRead = existing?.lastPageRead ?: 0,
+                    totalPages = ch.pageCount ?: existing?.totalPages ?: 0,
+                    externalUrl = ch.externalUrl, pageCount = ch.pageCount,
                     language = ch.language
                 )
             }
             chapterDao.insertChapters(entities)
         }
 
+        if (mergedList.isEmpty()) primaryFailure?.let { throw it }
         mergedList
     }
 
@@ -458,6 +477,7 @@ class MangaRepository(
             val networkChapters = source.getChapters(mangaUrl, language).filter { ChapterLanguage.matches(it.language, language) }
             if (networkChapters.isNotEmpty() && chapterDao != null) {
                 val entities = networkChapters.mapIndexed { index, ch ->
+                    val existing = chapterDao.getChapterByIdSync(ch.id)
                     ChapterEntity(
                         id = ch.id,
                         mangaUrl = mangaUrl,
@@ -465,6 +485,9 @@ class MangaRepository(
                         chapterUrl = ch.chapterUrl,
                         chapterNumber = if (ch.chapterNumber > 0) ch.chapterNumber else (index + 1).toFloat(),
                         dateUpload = ch.dateUpload,
+                        isRead = existing?.isRead ?: false, lastPageRead = existing?.lastPageRead ?: 0,
+                        totalPages = ch.pageCount ?: existing?.totalPages ?: 0,
+                        externalUrl = ch.externalUrl, pageCount = ch.pageCount,
                         language = ch.language
                     )
                 }
@@ -483,6 +506,7 @@ class MangaRepository(
                         chapterUrl = entity.chapterUrl,
                         chapterNumber = entity.chapterNumber,
                         dateUpload = entity.dateUpload,
+                        externalUrl = entity.externalUrl, pageCount = entity.pageCount,
                         language = entity.language
                     )
                 }
@@ -492,12 +516,20 @@ class MangaRepository(
         }
     }
 
-    suspend fun getPages(chapterUrl: String, chapterId: String, sourceId: String): List<String> {
+    suspend fun getPages(chapterUrl: String, chapterId: String, sourceId: String, chapter: ChapterModel? = null): List<String> {
         // First check if downloaded locally
         val localPages = downloadManager.getDownloadedPages(chapterId)
         if (localPages.isNotEmpty()) {
             return localPages
         }
+
+        val cachedChapter = chapterDao?.getChapterByIdSync(chapterId)
+        val external = chapter?.externalUrl?.takeIf { it.isNotBlank() } ?: cachedChapter?.externalUrl.orEmpty()
+        if (external.isNotBlank()) throw com.example.source.ChapterAccessException(
+            "Este capítulo é um link de leitura externa. As páginas não estão hospedadas nesta fonte. A disponibilidade, login ou assinatura dependem do site original.",
+            com.example.source.SourcePresentation.safeWebUrl(external))
+        if ((chapter?.pageCount ?: cachedChapter?.pageCount) == 0) throw com.example.source.ChapterAccessException(
+            "A fonte informa zero páginas para este capítulo. Pode ser um registro sem imagens ou conteúdo removido; não há confirmação de DRM.")
 
         // Check if chapter exists in Room to retrieve real chapterUrl if empty
         val resolvedChapterUrl = if (chapterUrl.isBlank()) {
@@ -571,7 +603,7 @@ class MangaRepository(
             manga.coverUrl, manga.sourceId)
         downloadDao.insertDownload(pending)
         try {
-            val pages = getPages(chapter.chapterUrl, chapter.id, manga.sourceId)
+            val pages = getPages(chapter.chapterUrl, chapter.id, manga.sourceId, chapter)
             if (pages.isEmpty()) throw java.io.IOException("O capítulo não contém páginas disponíveis.")
             downloadManager.downloadChapter(manga, chapter, pages)
         } catch (error: Exception) {
@@ -606,7 +638,8 @@ class MangaRepository(
             sourceId = manga.sourceId,
             genres = manga.genres.joinToString(","),
             isFavorite = true,
-            isNsfw = manga.isNsfw
+            isNsfw = manga.isNsfw,
+            publicationYear = manga.publicationYear
         )
         mangaDao.insertManga(entity)
     }

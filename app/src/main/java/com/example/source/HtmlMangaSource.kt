@@ -70,7 +70,8 @@ class HtmlMangaSource(
                 val title = a.selectFirst("img")?.attr("alt")?.removeSuffix(" cover")?.trim().orEmpty()
                 val genres = a.closest("article")?.select("div:has(> strong:contains(Tag)) > span")
                     ?.map { it.text().trim().trimEnd(',') }.orEmpty()
-                if (title.isEmpty()) null else model(a.absUrl("href"), title, image(a), genres)
+                if (title.isEmpty()) null else model(a.absUrl("href"), title, image(a), genres).copy(publicationYear =
+                    a.closest("article")?.selectFirst("div:has(> strong:contains(Year)) > span")?.text()?.toIntOrNull())
             }
             Site.LEERCAPITULO -> doc.select("article.lc-card").mapNotNull { card ->
                 val a = card.selectFirst("a.lc-card-name") ?: return@mapNotNull null
@@ -97,7 +98,10 @@ class HtmlMangaSource(
             Site.WEEBCENTRAL -> doc.selectFirst("li:has(strong:contains(Description)) > p")?.text()
             Site.LEERCAPITULO -> doc.selectFirst("#sinopsis p:not(.lc-muted)")?.text()
         }.orEmpty()
-        return model(mangaUrl, title, cover, genres).copy(description = description)
+        val year = if (site == Site.WEEBCENTRAL) doc.selectFirst("li:has(strong:contains(Released)), li:has(strong:contains(Year))")?.text()
+            ?.let { Regex("\\b(18|19|20)\\d{2}\\b").find(it)?.value?.toIntOrNull() } else null
+        val author = if (site == Site.WEEBCENTRAL) doc.select("li:has(strong:contains(Author)) a").joinToString(", ") { it.text() } else ""
+        return model(mangaUrl, title, cover, genres).copy(description = description, publicationYear = year, author = author)
     }
     override suspend fun getChapters(mangaUrl: String) = getChapters(mangaUrl, lang)
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {

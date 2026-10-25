@@ -34,9 +34,12 @@ interface MangaDexApiService {
         @Query("includedTags[]") includedTags: List<String>? = null,
         @Query("availableTranslatedLanguage[]") translatedLanguages: List<String>? = null,
         @Query("limit") limit: Int = 100,
-        @Query("order[followedCount]") order: String = "desc",
+        @Query("order[followedCount]") order: String? = "desc",
         @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
-        @Query("contentRating[]") ratings: List<String> = listOf("safe", "suggestive")
+        @Query("contentRating[]") ratings: List<String> = listOf("safe", "suggestive"),
+        @Query("year") year: Int? = null,
+        @Query("order[year]") orderYear: String? = null,
+        @Query("offset") offset: Int = 0
     ): MangaDexMangaListResponse
 
     @GET("manga/tag")

@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [MangaEntity::class, ChapterEntity::class, ProgressEntity::class, DownloadEntity::class, ReadingSessionEntity::class, BookmarkEntity::class, SearchHistoryEntity::class],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +27,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE manga_favorites ADD COLUMN publicationYear INTEGER")
+                db.execSQL("ALTER TABLE chapters ADD COLUMN externalUrl TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE chapters ADD COLUMN pageCount INTEGER")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -36,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "manga_reader_db"
-                ).addMigrations(MIGRATION_7_8).fallbackToDestructiveMigration().build()
+                ).addMigrations(MIGRATION_7_8, MIGRATION_8_9).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }
