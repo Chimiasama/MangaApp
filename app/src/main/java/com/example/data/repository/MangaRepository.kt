@@ -163,6 +163,7 @@ class MangaRepository(
     init {
         // Register default source (MangaDex as requested)
         registerSource(MangaDexSource())
+        registerSource(com.example.source.MangaDashSource(downloadManager.pdfStore::open))
         com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
     }
 
@@ -508,7 +509,10 @@ class MangaRepository(
         val resolvedSourceId = detectSourceIdFromUrl(resolvedChapterUrl) ?: sourceId.ifBlank { "mangadex" }
         val source = sourceRegistry[resolvedSourceId]
             ?: throw java.io.IOException("A fonte $resolvedSourceId não está disponível.")
-        return source.getPages(resolvedChapterUrl)
+        val pages = source.getPages(resolvedChapterUrl)
+        return if (pages.size == 1 && runCatching { java.net.URI(pages.single()).path.endsWith(".pdf", true) }.getOrDefault(false)) {
+            downloadManager.pdfStore.open(pages.single())
+        } else pages
     }
 
     suspend fun getMangaByUrlSync(url: String): MangaEntity? = mangaDao.getMangaByUrlSync(url)
@@ -539,9 +543,21 @@ class MangaRepository(
     val completedDownloads: Flow<List<DownloadEntity>> = downloadDao.getCompletedDownloads()
 
     suspend fun downloadChapter(manga: MangaModel, chapter: ChapterModel) {
-        val pages = getPages(chapter.chapterUrl, chapter.id, manga.sourceId)
-        if (pages.isNotEmpty()) {
+        if (downloadDao.getDownloadSync(chapter.id)?.downloadState == DownloadEntity.STATE_COMPLETED &&
+            downloadManager.getDownloadedPages(chapter.id).isNotEmpty()) return
+        val pending = DownloadEntity(chapter.id, chapter.title, chapter.chapterUrl, manga.url, manga.title,
+            manga.coverUrl, manga.sourceId)
+        downloadDao.insertDownload(pending)
+        try {
+            val pages = getPages(chapter.chapterUrl, chapter.id, manga.sourceId)
+            if (pages.isEmpty()) throw java.io.IOException("O capítulo não contém páginas disponíveis.")
             downloadManager.downloadChapter(manga, chapter, pages)
+        } catch (error: Exception) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                val current = downloadDao.getDownloadSync(chapter.id) ?: pending
+                downloadDao.insertDownload(current.copy(downloadState = DownloadEntity.STATE_FAILED))
+            }
+            throw error
         }
     }
 

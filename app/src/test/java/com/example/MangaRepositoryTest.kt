@@ -344,4 +344,25 @@ class MangaRepositoryTest {
         catch (expected: java.io.IOException) { org.junit.Assert.assertTrue(expected.message!!.contains("conexão")) }
     }
 
+    @Test fun `a PDF preparation failure is visible as failed and never completed`() = runBlocking {
+        var record: DownloadEntity? = null
+        val states = mutableListOf<String>()
+        val dao = object : DownloadDao by FakeDownloadDao() {
+            override suspend fun insertDownload(download: DownloadEntity) { record = download; states += download.downloadState }
+            override suspend fun getDownloadSync(chapterId: String) = record
+        }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = ChapterDownloadManager(context, dao)
+        val repo = MangaRepository(mangaDao, progressDao, dao, readingSessionDao, manager, preferencesRepository)
+        repo.clearSources()
+        repo.registerSource(object : SourceStub("pdf", "https://pdf.test") {
+            override suspend fun getPages(chapterUrl: String): List<String> = throw java.io.IOException("PDF unavailable")
+        })
+        val manga = MangaModel("https://pdf.test/book", "book", "PDF", "", sourceId = "pdf")
+        try { repo.downloadChapter(manga, ChapterModel("pdf-chapter", "PDF chapter", "https://pdf.test/chapter")); org.junit.Assert.fail("Expected a failed download") }
+        catch (_: java.io.IOException) {}
+        assertEquals(listOf(DownloadEntity.STATE_DOWNLOADING, DownloadEntity.STATE_FAILED), states)
+        assertEquals(0, record!!.downloadedPagesCount)
+    }
+
 }

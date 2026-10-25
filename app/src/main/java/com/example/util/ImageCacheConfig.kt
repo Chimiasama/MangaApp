@@ -15,6 +15,7 @@ object ImageCacheConfig {
 
         return ImageLoader.Builder(context)
             .okHttpClient(okHttpClient)
+            .components { add(com.example.data.pdf.PdfPageFetcher.Factory()) }
             .memoryCache {
                 MemoryCache.Builder(context)
                     .maxSizePercent(0.35) // 35% of memory for manga image caching
@@ -35,7 +36,8 @@ object ImageCacheConfig {
 
     fun getDiskCacheSizeBytes(context: Context): Long {
         val dir = context.cacheDir.resolve("manga_image_disk_cache")
-        return if (dir.exists()) {
+        val pdfBytes = context.cacheDir.resolve("pdf_chapters").walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        return pdfBytes + if (dir.exists()) {
             dir.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
         } else 0L
     }
@@ -58,6 +60,7 @@ object ImageCacheConfig {
             coil.Coil.imageLoader(context).diskCache?.clear()
             coil.Coil.imageLoader(context).memoryCache?.clear()
         } catch (_: Exception) {}
+        context.cacheDir.resolve("pdf_chapters").deleteRecursively()
         val dir = context.cacheDir.resolve("manga_image_disk_cache")
         if (dir.exists()) {
             dir.deleteRecursively()

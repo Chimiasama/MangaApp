@@ -462,7 +462,7 @@ class MangaViewModel(
             }
         }
         loadDetailChapters(manga)
-        if (repository.getSourceById(manga.sourceId) is com.example.source.HtmlMangaSource) {
+        if (repository.getSourceById(manga.sourceId).let { it is com.example.source.HtmlMangaSource || it is com.example.source.MangaDashSource }) {
             viewModelScope.launch {
                 val detailed = repository.getMangaDetails(manga.url, manga.sourceId)
                 if (_detailManga.value?.url == manga.url) _detailManga.value = detailed
@@ -522,7 +522,9 @@ class MangaViewModel(
 
     fun downloadChapter(manga: MangaModel, chapter: ChapterModel) {
         viewModelScope.launch {
-            repository.downloadChapter(manga, chapter)
+            try { repository.downloadChapter(manga, chapter) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { android.util.Log.e("MangaViewModel", "Falha ao baixar capítulo", error) }
         }
     }
 

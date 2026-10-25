@@ -5,6 +5,7 @@ import com.example.data.local.DownloadDao
 import com.example.data.local.DownloadEntity
 import com.example.source.ChapterModel
 import com.example.source.MangaModel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -18,6 +19,8 @@ class ChapterDownloadManager(
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
 ) {
+
+    val pdfStore = com.example.data.pdf.PdfChapterStore(context)
 
     private val downloadsDir: File
         get() {
@@ -54,6 +57,36 @@ class ChapterDownloadManager(
             downloadProgress = 0f
         )
         downloadDao.insertDownload(initialEntity)
+
+        if (pageUrls.first().startsWith(com.example.data.pdf.PdfChapterStore.SCHEME + ":")) {
+            try {
+                val source = pdfStore.file(android.net.Uri.parse(pageUrls.first()))
+                val target = File(chapterDir, "chapter.pdf")
+                val pending = File(chapterDir, "chapter.pdf.part")
+                source.inputStream().use { input -> pending.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        val size = input.read(buffer)
+                        if (size < 0) break
+                        output.write(buffer, 0, size)
+                    }
+                } }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (!pending.renameTo(target)) throw java.io.IOException("Não foi possível salvar o PDF offline.")
+                val total = pdfStore.pages(target).size
+                downloadDao.updateDownloadStatus(chapter.id, total, 1f, DownloadEntity.STATE_COMPLETED, total, chapterDir.absolutePath)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                withContext(kotlinx.coroutines.NonCancellable) {
+                    downloadDao.updateDownloadStatus(chapter.id, 0, 0f, DownloadEntity.STATE_FAILED, pageUrls.size, chapterDir.absolutePath)
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                downloadDao.updateDownloadStatus(chapter.id, 0, 0f, DownloadEntity.STATE_FAILED, pageUrls.size, chapterDir.absolutePath)
+                throw error
+            } finally { File(chapterDir, "chapter.pdf.part").delete() }
+            return@withContext
+        }
 
         var downloadedCount = 0
         val totalPages = pageUrls.size
@@ -113,6 +146,9 @@ class ChapterDownloadManager(
 
         val chapterDir = File(download.localPath)
         if (!chapterDir.exists() || !chapterDir.isDirectory) return@withContext emptyList()
+
+        val pdf = File(chapterDir, "chapter.pdf")
+        if (download.downloadState == DownloadEntity.STATE_COMPLETED && pdf.isFile) return@withContext pdfStore.pages(pdf)
 
         val files = chapterDir.listFiles()?.filter { it.extension == "jpg" }?.sortedBy { file ->
             val numStr = file.nameWithoutExtension.removePrefix("page_")

@@ -134,4 +134,5 @@ dependencies {
 // Remote-source checks are explicit; the normal test suite never depends on third-party uptime.
 if (providers.gradleProperty("liveSources").orNull == "true") {
   android.sourceSets.getByName("test").kotlin.srcDir("src/liveTest/java")
+  android.sourceSets.getByName("androidTest").kotlin.srcDir("src/liveAndroidTest/java")
 }
