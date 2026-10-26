@@ -157,10 +157,13 @@ fun ReaderScreen(
 
     fun touch() { interactionVersion++ }
     val controlInteraction: (Boolean) -> Unit = remember { { active -> controlsInteracting = active; interactionVersion++ } }
-    LaunchedEffect(controls, interactionVersion, interacting, controlsInteracting, settings, chapters, options.controlsTimeoutSeconds) {
-        if (controls && !interacting && !controlsInteracting && !settings && !chapters && options.controlsTimeoutSeconds > 0) {
-            delay(options.controlsTimeoutSeconds * 1000L)
-            controls = false
+    val timeoutMs = if (options.controlsTimeoutSeconds == 0) 0L else (options.controlsTimeoutSeconds * 1000L).coerceAtMost(2000L)
+    LaunchedEffect(controls, interactionVersion, controlsInteracting, settings, chapters, options.controlsTimeoutSeconds) {
+        if (controls && !settings && !chapters && timeoutMs > 0L) {
+            if (!controlsInteracting) {
+                delay(timeoutMs)
+                controls = false
+            }
         }
     }
     LaunchedEffect(readerMode) { mode = readerMode }
@@ -294,22 +297,43 @@ fun ReaderScreen(
         if (target in latestState.pages.indices) scope.launch { pager.animateScrollToPage(target) }
         else latestNavigate(forward)
     }
+    var pullHoldJob by remember { mutableStateOf<Job?>(null) }
     val nested = remember(mode, state.contentVersion) {
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput || latestState.isLoading || pinching) return Offset.Zero
                 val delta = if (webtoon) available.y else available.x * if (rtl) -1 else 1
                 val contentMoved = if (webtoon) consumed.y else consumed.x
-                if (contentMoved != 0f && abs(delta) < 0.1f) { pull = 0f; return Offset.Zero }
+                if (contentMoved != 0f && abs(delta) < 0.1f) {
+                    pull = 0f
+                    pullHoldJob?.cancel()
+                    return Offset.Zero
+                }
                 val atStart = if (webtoon) !list.canScrollBackward else pager.currentPage == 0
                 val atEnd = if (webtoon) !list.canScrollForward else pager.currentPage == latestState.pages.lastIndex
                 val oldReady = abs(pull) >= threshold
                 pull = accumulateChapterPull(pull, delta, atStart && latestPrevious != null,
                     atEnd && latestNext != null, threshold)
-                if (!oldReady && abs(pull) >= threshold) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                val ready = abs(pull) >= threshold
+                if (!oldReady && ready) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (ready) {
+                    if (pullHoldJob == null || pullHoldJob?.isActive != true) {
+                        pullHoldJob = scope.launch {
+                            delay(500L)
+                            if (abs(pull) >= threshold && !latestState.isLoading) {
+                                val forward = pull < 0
+                                pull = 0f
+                                latestNavigate(forward)
+                            }
+                        }
+                    }
+                } else {
+                    pullHoldJob?.cancel()
+                }
                 return if (pull == 0f) Offset.Zero else if (webtoon) Offset(0f, available.y) else Offset(available.x, 0f)
             }
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                pullHoldJob?.cancel()
                 val direction = if (releasedNormally && !pinching && !latestState.isLoading) releasedChapterPull(pull, threshold) else null
                 pull = 0f
                 releasedNormally = false
@@ -361,7 +385,11 @@ fun ReaderScreen(
         .nestedScroll(nested)) {
         if (state.pages.isNotEmpty()) {
             val gestureModifier = Modifier.fillMaxSize().clipToBounds().readerGestures(
-                key = state.contentVersion to mode, webtoon = webtoon, transform = { currentTransform() }, limitX = { panLimits(latestFitted, latestSize, scale).x },
+                key = state.contentVersion to mode,
+                webtoon = webtoon,
+                controlsVisible = { controls },
+                transform = { currentTransform() },
+                limitX = { panLimits(latestFitted, latestSize, scale).x },
                 swipeThreshold = threshold,
                 onTransform = { zoom, focus, movement ->
                     if (zoom != 1f) { pinching = true; pull = 0f }
@@ -374,10 +402,15 @@ fun ReaderScreen(
                     if (active) animation?.cancel() else pinching = false
                 },
                 onTap = { position ->
-                    if (webtoon || scale > 1.01f || position.x in (size.width * 0.28f)..(size.width * 0.72f) || controls) {
-                        controls = !controls; touch()
-                    } else navigatePage(if (position.x < size.width / 2) 1f else -1f)
-                }, onDoubleTap = { doubleTap(it) }
+                    if (controls) {
+                        controls = false
+                    } else {
+                        if (webtoon || scale > 1.01f || position.x in (size.width * 0.28f)..(size.width * 0.72f)) {
+                            controls = true; touch()
+                        } else navigatePage(if (position.x < size.width / 2) 1f else -1f)
+                    }
+                },
+                onDoubleTap = { doubleTap(it) }
             )
             Box(gestureModifier) {
                 if (webtoon) {

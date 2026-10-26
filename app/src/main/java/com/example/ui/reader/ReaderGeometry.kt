@@ -12,7 +12,7 @@ const val MAX_READER_SCALE = 4.5f
 
 data class ReaderOptions(
     val steppedDoubleTap: Boolean = false,
-    val controlsTimeoutSeconds: Int = 4,
+    val controlsTimeoutSeconds: Int = 2,
     val preferredScale: Float = 1f
 )
 

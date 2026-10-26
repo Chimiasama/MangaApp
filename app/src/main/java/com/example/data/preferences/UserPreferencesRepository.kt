@@ -25,7 +25,7 @@ class UserPreferencesRepository(private val context: Context) {
     private val preferredScale = floatPreferencesKey("reader_preferred_scale")
 
     val readerOptions: Flow<ReaderOptions> = context.dataStore.data.map { prefs ->
-        ReaderOptions(prefs[steppedZoom] ?: false, (prefs[controlsTimeout] ?: 4).coerceIn(0, 15),
+        ReaderOptions(prefs[steppedZoom] ?: false, (prefs[controlsTimeout] ?: 2).coerceIn(0, 15),
             (prefs[preferredScale] ?: 1f).coerceIn(1f, 4.5f))
     }
 
