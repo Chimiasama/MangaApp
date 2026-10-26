@@ -48,10 +48,9 @@ class WebBrowserReaderTest {
         var captured: WebCapture? = null
         var browser: WebView? = null
         val loaded = java.util.concurrent.atomic.AtomicBoolean(false)
-        compose.setContent { MaterialTheme { SourceToolsScreen(repository, onClose = {}, onRead = { capture, _ -> captured = capture }) } }
-        compose.runOnIdle {
-            browser = webView(compose.activity.window.decorView)!!
-            val view = browser!!
+        compose.setContent { MaterialTheme { SourceToolsScreen(repository, onClose = {}, onRead = { capture, _ -> captured = capture },
+            onBrowserReady = { view ->
+            browser = view
             assertTrue(view.settings.javaScriptEnabled)
             assertFalse(view.settings.allowFileAccess)
             assertFalse(view.settings.allowContentAccess)
@@ -69,8 +68,12 @@ class WebBrowserReaderTest {
                     return WebResourceResponse("image/png", null, ByteArrayInputStream(png))
                 }
             }
-            view.loadUrl("https://fixture.test/read/1")
-        }
+        }) } }
+        compose.onNodeWithTag("web_address").assertIsDisplayed()
+        compose.runOnIdle { assertNull(webView(compose.activity.window.decorView)) }
+        compose.onNodeWithTag("web_address").performTextInput("https://fixture.test/read/1")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("web_go").performClick()
         compose.waitUntil(15_000) { loaded.get() }
         compose.onNodeWithTag("web_analyze").performClick()
         try {

@@ -24,6 +24,17 @@
 Em **Explorar**, toque em **Pesquisar na web / gerenciar fontes**. Também há uma
 entrada no painel de filtros.
 
+### Abertura da tela
+
+O painel inicial é nativo e aparece antes da criação da WebView, inclusive sem
+conexão ou com um provedor WebView indisponível. Consultas e links recebidos ficam
+preenchidos no campo; toque em **Abrir / buscar** para iniciar a navegação. A criação
+do navegador ocorre após a tela e o indicador de progresso serem apresentados.
+Falhas de inicialização exibem mensagem e preservam o acesso ao gerenciamento.
+
+O teste `WebEntryNavigationTest` cobre o botão de Explorar dentro do Scaffold,
+NavHost e tema escuro reais, com uma consulta anterior, teclado aberto e reentrada.
+
 ### Navegar e ler
 
 - Digite uma consulta ou cole um endereço HTTPS.
