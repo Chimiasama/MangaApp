@@ -182,7 +182,12 @@ class MangaRepository(
             val destination = sourceWorkspace?.destination(source.id)
             next[source.id] = if (destination == null) source else com.example.source.RelocatedSource(source, destination)
         }
-        add(com.example.source.MangaDashSource(downloadManager.pdfStore::open, fetchFor("mangadash", "https://mangadash.net")))
+        val dashDestination = sourceWorkspace?.destination("mangadash")
+        add(com.example.source.MangaDashSource({ url ->
+            val actual = if (dashDestination == null) url else com.example.source.WebUrls.relocate(url, "https://mangadash.net", dashDestination)
+            com.example.source.SourceHttp.rememberImages(listOf(actual), dashDestination ?: "https://mangadash.net")
+            downloadManager.pdfStore.open(actual)
+        }, fetchFor("mangadash", "https://mangadash.net")))
         com.example.source.HtmlMangaSource.Site.entries.forEach { site ->
             add(com.example.source.HtmlMangaSource(site, fetchFor(site.key, site.origin)))
         }

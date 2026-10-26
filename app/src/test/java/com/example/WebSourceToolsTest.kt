@@ -117,6 +117,13 @@ class WebSourceToolsTest {
         assertFalse(source.supportsLanguage("pt-br"))
         assertTrue(runCatching { ConsumetInstanceSource("https://api.test", "fixture", "en") { throw java.io.IOException("offline") }.searchManga("book") }.isFailure)
     }
+    @Test fun `relocation rewrites first party covers and pages but leaves external CDN intact`() = runBlocking {
+        val rules = SourceWorkspace(context).parseRules(json).single()
+        val html = "<div class='book'><h3>Book</h3><a href='/book/1'>Open</a><img src='/cover.jpg'></div><div class='reader'><img src='/page.jpg'><img src='https://cdn.test/page.jpg'></div>"
+        val moved = RelocatedSource(DynamicJsoupSource(rules) { html }, "https://new.test")
+        assertEquals("https://new.test/cover.jpg", moved.getPopularManga().single().coverUrl)
+        assertEquals(listOf("https://new.test/page.jpg", "https://cdn.test/page.jpg"), moved.getPages("https://old.test/chapter/1"))
+    }
     @Test fun `manifest host update preserves canonical base and rejects downgrades`() {
         val workspace = SourceWorkspace(context)
         workspace.applyRules(json)
