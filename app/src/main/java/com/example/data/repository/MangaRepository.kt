@@ -202,6 +202,25 @@ class MangaRepository(
 
     fun getSourceById(id: String): MangaSource? = sourceRegistry[id]
 
+    // Fetch independent sources together, then merge/cache in registry order. Keeping
+    // database writes outside async blocks avoids racing favorite/cache updates.
+    private suspend fun fetchSources(
+        sources: List<MangaSource>,
+        fetch: suspend (MangaSource) -> List<MangaModel>
+    ): List<Result<List<MangaModel>>> = kotlinx.coroutines.coroutineScope {
+        sources.map { source ->
+            async {
+                try {
+                    Result.success(fetch(source))
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+            }
+        }.awaitAll()
+    }
+
     private suspend fun cacheMangaToDb(mangaList: List<MangaModel>) {
         for (manga in mangaList) {
             val existing = mangaDao.getMangaByUrlSync(manga.url)
@@ -236,9 +255,12 @@ class MangaRepository(
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
+        val fetched = fetchSources(sourcesToFetch.filter { it.supportsLanguage(language) }) {
+            it.getPopularManga(language)
+        }
+        for (result in fetched) {
             try {
-                val list = src.getPopularManga(language)
+                val list = result.getOrThrow()
                 val filtered = list.filter { manga ->
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     true
@@ -298,11 +320,14 @@ class MangaRepository(
         var lastFailure: Exception? = null
         var completedSources = 0
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
+        val fetched = fetchSources(sourcesToFetch.filter { it.supportsLanguage(language) }) { src ->
+            if (period != null) src.searchManga(query, language, category, period)
+            else if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
+            else src.searchManga(query, language, category)
+        }
+        for (result in fetched) {
             try {
-                val list = if (period != null) src.searchManga(query, language, category, period)
-                    else if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
-                    else src.searchManga(query, language, category)
+                val list = result.getOrThrow()
                 val filtered = list.filter { manga ->
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     com.example.source.MangaCategories.matches(manga.genres, category) && (period == null || period.matches(manga.publicationYear))
@@ -389,13 +414,15 @@ class MangaRepository(
     ): List<ChapterModel> = kotlinx.coroutines.coroutineScope {
         val primarySource = sourceRegistry[primarySourceId] ?: sourceRegistry.values.first()
         var primaryFailure: Exception? = null
-        val primaryChapters = try {
-            primarySource.getChapters(mangaUrl, language)
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            primaryFailure = e
-            emptyList()
+        val primaryChapters = async {
+            try {
+                primarySource.getChapters(mangaUrl, language)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                primaryFailure = e
+                emptyList()
+            }
         }
 
         val chapterMap = LinkedHashMap<Pair<Float, String>, ChapterModel>()
@@ -409,11 +436,10 @@ class MangaRepository(
                 }
             }
         }
-        addChapters(primaryChapters)
 
         // Cross-reference with other sources concurrently to fill missing chapter gaps
         val secondarySources = if (primarySource.canAggregateChapters) {
-            sourceRegistry.values.filter { it.id != primarySourceId && it.canAggregateChapters }
+            sourceRegistry.values.filter { it.id != primarySourceId && it.canAggregateChapters && it.supportsLanguage(language) }
         } else emptyList()
         val deferredList = secondarySources.map { src ->
             async {
@@ -441,6 +467,7 @@ class MangaRepository(
             }
         }
 
+        addChapters(primaryChapters.await())
         deferredList.forEach { addChapters(it.await()) }
         val mergedList = chapterMap.values.sortedByDescending { it.chapterNumber }
 
