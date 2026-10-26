@@ -15,6 +15,7 @@ import com.example.ui.viewmodel.MangaViewModel
 import com.example.ui.viewmodel.SettingsViewModel
 import com.example.util.ImageCacheConfig
 
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -23,6 +24,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : ComponentActivity() {
+    private var incomingText by androidx.compose.runtime.mutableStateOf("")
+    private fun readSharedLink(intent: android.content.Intent?) {
+        if (intent?.action == android.content.Intent.ACTION_SEND && intent.type == "text/plain") {
+            val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT).orEmpty()
+            incomingText = Regex("https://[^\\s<>]+" ).find(text)?.value?.let { runCatching { com.example.source.WebUrls.valid(it) }.getOrNull() }.orEmpty()
+        }
+    }
+    override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); setIntent(intent); readSharedLink(intent) }
+
 
     private val mangaRepository: MangaRepository by lazy {
         val db = AppDatabase.getDatabase(applicationContext)
@@ -69,6 +79,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        readSharedLink(intent)
         enableEdgeToEdge()
 
         // Configure Coil Disk & Memory Image Caching for Manga Pages and Covers
@@ -84,7 +95,8 @@ class MainActivity : ComponentActivity() {
             MangaReaderTheme(themeMode = settingsUiState.themeMode) {
                 MangaApp(
                     mangaViewModel = mangaViewModel,
-                    settingsViewModel = settingsViewModel
+                    settingsViewModel = settingsViewModel,
+                    incomingText = incomingText
                 )
             }
         }

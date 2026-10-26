@@ -17,6 +17,7 @@ class ChapterDownloadManager(
     private val context: Context,
     private val downloadDao: DownloadDao,
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .cookieJar(com.example.source.SourceHttp.browserCookies)
         .addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
 ) {
 
@@ -36,7 +37,7 @@ class ChapterDownloadManager(
     ) = withContext(Dispatchers.IO) {
         if (pageUrls.isEmpty()) return@withContext
 
-        val chapterDir = File(downloadsDir, "${manga.url.hashCode()}_${chapter.id}")
+        val chapterDir = File(downloadsDir, downloadStorageKey(manga.url, chapter.id))
         if (!chapterDir.exists()) {
             chapterDir.mkdirs()
         }
@@ -169,3 +170,9 @@ class ChapterDownloadManager(
         }
     }
 }
+
+/** Opaque external IDs/URLs are data, never filesystem paths. Existing downloads use their saved localPath. */
+internal fun downloadStorageKey(mangaUrl: String, chapterId: String): String = "chapter_" +
+    java.security.MessageDigest.getInstance("SHA-256")
+        .digest("${mangaUrl.length}:$mangaUrl$chapterId".toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }

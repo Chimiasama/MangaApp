@@ -59,15 +59,28 @@ object MangaDestinations {
     const val SETTINGS = "settings"
     const val DETAIL = "detail"
     const val READER = "reader"
+    const val WEB = "web_sources"
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MangaApp(
     mangaViewModel: MangaViewModel,
-    settingsViewModel: SettingsViewModel
+    settingsViewModel: SettingsViewModel,
+    incomingText: String = ""
 ) {
     val navController = rememberNavController()
+    var webInput by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    var webError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(incomingText) {
+        if (incomingText.isNotBlank()) {
+            webInput = incomingText
+            navController.navigate(MangaDestinations.WEB) { launchSingleTop = true }
+        }
+    }
+    if (webError != null) androidx.compose.material3.AlertDialog(onDismissRequest = { webError = null },
+        title = { Text("Não foi possível abrir") }, text = { Text(webError.orEmpty()) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { webError = null }) { Text("OK") } })
     val importContext = LocalContext.current
     val importScope = androidx.compose.runtime.rememberCoroutineScope()
     var importingPdf by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -198,9 +211,19 @@ fun MangaApp(
             popEnterTransition = { fadeIn(animationSpec = tween(250)) },
             popExitTransition = { fadeOut(animationSpec = tween(250)) }
         ) {
+            composable(MangaDestinations.WEB) {
+                com.example.ui.screens.SourceToolsScreen(mangaViewModel.repository, webInput,
+                    onClose = { mangaViewModel.refresh(); navController.popBackStack() },
+                    onRead = { capture, addToLibrary ->
+                        val (book, chapter) = mangaViewModel.repository.importWebCapture(capture, addToLibrary)
+                        mangaViewModel.openReader(book, chapter, listOf(chapter))
+                        navController.navigate(MangaDestinations.READER)
+                    })
+            }
             composable(MangaDestinations.BROWSE) {
                 BrowseScreen(
                     state = browseState,
+                    onOpenWeb = { webInput = browseState.searchQuery; navController.navigate(MangaDestinations.WEB) },
                     onQueryChange = { query -> mangaViewModel.searchManga(query, saveToHistory = false) },
                     onSearchSubmit = { query -> mangaViewModel.submitSearch(query) },
                     onSearchCommitted = { query -> mangaViewModel.rememberSearch(query) },
@@ -337,6 +360,11 @@ fun MangaApp(
                     },
                     onDeleteDownload = { chapterId ->
                         mangaViewModel.deleteDownload(chapterId)
+                    },
+                    onOpenWeb = { title -> webInput = title; navController.navigate(MangaDestinations.WEB) },
+                    onSearchAlternatives = { title ->
+                        mangaViewModel.searchAlternativeSources(title)
+                        navController.navigate(MangaDestinations.BROWSE) { popUpTo(MangaDestinations.BROWSE); launchSingleTop = true }
                     },
                     onSearchRecommendation = { title ->
                         mangaViewModel.searchManga(title, saveToHistory = true)

@@ -3,7 +3,7 @@ name: Validar leitor Android
 on:
   pull_request:
   push:
-    branches: [main, 'fix/reader-*']
+    branches: [main, 'fix/reader-*', 'feat/web-reader-*']
   workflow_dispatch:
     inputs:
       live_pdf:

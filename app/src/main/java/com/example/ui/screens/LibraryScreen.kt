@@ -465,7 +465,7 @@ private fun HistoryList(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(history) { progress ->
+                items(history, key = { it.mangaUrl }) { progress ->
                     SwipeableLibraryItem(
                         onDelete = { onDeleteHistory(progress.mangaUrl) },
                         onRefresh = { onContinueReading(progress) },

@@ -37,6 +37,7 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -161,46 +162,99 @@ class MangaRepository(
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
-    private val sourceRegistry = mutableMapOf<String, MangaSource>()
+    @Volatile private var sourceRegistry: Map<String, MangaSource> = emptyMap()
+    private val _sourceRevision = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val sourceRevision = _sourceRevision.asStateFlow()
+    val sourceWorkspace = appContext?.let { com.example.source.SourceWorkspace(it) }
+    val webLibrary = appContext?.let { com.example.source.WebLibrarySource(it) }
 
-    init {
-        // Register default source (MangaDex as requested)
-        registerSource(MangaDexSource())
-        registerSource(com.example.source.LocalPdfSource(downloadManager.pdfStore))
-        registerSource(com.example.source.MangaDashSource(downloadManager.pdfStore::open))
-        com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
-    }
+    init { reloadSourceWorkspace() }
 
-    fun registerSource(source: MangaSource) {
-        sourceRegistry[source.id] = source
-    }
-
-    fun clearSources() {
-        sourceRegistry.clear()
-    }
-
-    fun loadScraperRulesFromJson(json: String): Boolean {
-        return try {
-            val listType = Types.newParameterizedType(List::class.java, SourceRuleConfig::class.java)
-            val adapter = moshi.adapter<List<SourceRuleConfig>>(listType)
-            val rulesList = adapter.fromJson(json) ?: emptyList()
-            
-            for (rule in rulesList) {
-                val dynamicSource = DynamicJsoupSource(rule)
-                registerSource(dynamicSource)
-            }
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+    @Synchronized fun reloadSourceWorkspace() {
+        val next = linkedMapOf<String, MangaSource>()
+        next["mangadex"] = MangaDexSource()
+        next["localpdf"] = com.example.source.LocalPdfSource(downloadManager.pdfStore)
+        fun fetchFor(id: String, original: String): suspend (String) -> String {
+            val destination = sourceWorkspace?.destination(id)
+            return { url -> com.example.source.SourceHttp.get(if (destination == null) url else com.example.source.WebUrls.relocate(url, original, destination)) }
         }
+        fun add(source: MangaSource) {
+            val destination = sourceWorkspace?.destination(source.id)
+            next[source.id] = if (destination == null) source else com.example.source.RelocatedSource(source, destination)
+        }
+        val dashDestination = sourceWorkspace?.destination("mangadash")
+        add(com.example.source.MangaDashSource({ url ->
+            val actual = if (dashDestination == null) url else com.example.source.WebUrls.relocate(url, "https://mangadash.net", dashDestination)
+            com.example.source.SourceHttp.rememberImages(listOf(actual), dashDestination ?: "https://mangadash.net")
+            downloadManager.pdfStore.open(actual)
+        }, fetchFor("mangadash", "https://mangadash.net")))
+        com.example.source.HtmlMangaSource.Site.entries.forEach { site ->
+            add(com.example.source.HtmlMangaSource(site, fetchFor(site.key, site.origin)))
+        }
+        sourceWorkspace?.rules()?.forEach { rule -> add(DynamicJsoupSource(rule, fetchFor(rule.id, rule.baseUrl))) }
+        sourceWorkspace?.snapshot()?.optJSONObject("api")?.let { api ->
+            next["experimental_api"] = com.example.source.ConsumetInstanceSource(api.getString("endpoint"), api.getString("provider"), api.getString("language"))
+        }
+        webLibrary?.let { next[it.id] = it }
+        sourceRegistry = next.toMap()
+        _sourceRevision.value++
     }
+
+    @Synchronized fun registerSource(source: MangaSource) { sourceRegistry = sourceRegistry + (source.id to source) }
+    @Synchronized fun clearSources() { sourceRegistry = emptyMap() }
+
+    fun loadScraperRulesFromJson(json: String): Boolean = try {
+        if (sourceWorkspace != null) {
+            sourceWorkspace.applyRules(json)
+            reloadSourceWorkspace()
+        } else {
+            val type = Types.newParameterizedType(List::class.java, SourceRuleConfig::class.java)
+            val rules = moshi.adapter<List<SourceRuleConfig>>(type).fromJson(json) ?: error("JSON inválido")
+            val sources = rules.map { DynamicJsoupSource(it) }
+            sources.forEach(::registerSource)
+        }
+        true
+    } catch (_: Exception) { false }
+
+    suspend fun importWebCapture(capture: com.example.source.WebCapture, addToLibrary: Boolean = true): Pair<MangaModel, ChapterModel> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val library = webLibrary ?: error("Biblioteca web indisponível.")
+        library.save(capture)
+        val book = MangaModel(capture.url, capture.url, capture.title, capture.pages.first(), sourceId = library.id)
+        cacheMangaToDb(listOf(book))
+        if (addToLibrary) mangaDao.updateFavoriteStatus(book.url, true)
+        val ch = library.chapter(capture)
+        val existing = chapterDao?.getChapterByIdSync(ch.id)
+        chapterDao?.insertChapter(ChapterEntity(id = ch.id, mangaUrl = book.url, title = ch.title, chapterUrl = ch.chapterUrl,
+            chapterNumber = 1f, language = ch.language, isRead = existing?.isRead ?: false, lastPageRead = existing?.lastPageRead ?: 0))
+        book to ch
+    }
+
+    fun getManagedSources(): List<MangaSource> = sourceRegistry.values.filter { !it.isNsfw && it.id !in setOf("web", "localpdf") }
 
     fun getAvailableSources(): List<MangaSource> {
-        return sourceRegistry.values.filter { source -> !source.isNsfw && source.id != com.example.source.LocalPdfSource.ID }
+        return sourceRegistry.values.filter { source -> !source.isNsfw && source.id != com.example.source.LocalPdfSource.ID && source.id != "web" && sourceWorkspace?.isDisabled(source.id) != true }
     }
 
     fun getSourceById(id: String): MangaSource? = sourceRegistry[id]
+
+    // Fetch independent sources together, then merge/cache in registry order. Keeping
+    // database writes outside async blocks avoids racing favorite/cache updates.
+    private suspend fun fetchSources(
+        sources: List<MangaSource>,
+        fetch: suspend (MangaSource) -> List<MangaModel>
+    ): List<Result<List<MangaModel>>> = kotlinx.coroutines.coroutineScope {
+        sources.filter { sourceWorkspace?.isDisabled(it.id) != true }.map { source ->
+            async {
+                try {
+                    Result.success(fetch(source))
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+            }
+        }.awaitAll()
+    }
 
     private suspend fun cacheMangaToDb(mangaList: List<MangaModel>) {
         for (manga in mangaList) {
@@ -236,9 +290,12 @@ class MangaRepository(
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
+        val fetched = fetchSources(sourcesToFetch.filter { it.supportsLanguage(language) }) {
+            it.getPopularManga(language)
+        }
+        for (result in fetched) {
             try {
-                val list = src.getPopularManga(language)
+                val list = result.getOrThrow()
                 val filtered = list.filter { manga ->
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     true
@@ -298,11 +355,14 @@ class MangaRepository(
         var lastFailure: Exception? = null
         var completedSources = 0
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
+        val fetched = fetchSources(sourcesToFetch.filter { it.supportsLanguage(language) }) { src ->
+            if (period != null) src.searchManga(query, language, category, period)
+            else if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
+            else src.searchManga(query, language, category)
+        }
+        for (result in fetched) {
             try {
-                val list = if (period != null) src.searchManga(query, language, category, period)
-                    else if (com.example.source.MangaCategories.isAll(category)) src.searchManga(query, language)
-                    else src.searchManga(query, language, category)
+                val list = result.getOrThrow()
                 val filtered = list.filter { manga ->
                     if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     com.example.source.MangaCategories.matches(manga.genres, category) && (period == null || period.matches(manga.publicationYear))
@@ -389,13 +449,15 @@ class MangaRepository(
     ): List<ChapterModel> = kotlinx.coroutines.coroutineScope {
         val primarySource = sourceRegistry[primarySourceId] ?: sourceRegistry.values.first()
         var primaryFailure: Exception? = null
-        val primaryChapters = try {
-            primarySource.getChapters(mangaUrl, language)
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            primaryFailure = e
-            emptyList()
+        val primaryChapters = async {
+            try {
+                primarySource.getChapters(mangaUrl, language)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                primaryFailure = e
+                emptyList()
+            }
         }
 
         val chapterMap = LinkedHashMap<Pair<Float, String>, ChapterModel>()
@@ -409,11 +471,10 @@ class MangaRepository(
                 }
             }
         }
-        addChapters(primaryChapters)
 
         // Cross-reference with other sources concurrently to fill missing chapter gaps
         val secondarySources = if (primarySource.canAggregateChapters) {
-            sourceRegistry.values.filter { it.id != primarySourceId && it.canAggregateChapters }
+            sourceRegistry.values.filter { it.id != primarySourceId && it.canAggregateChapters && it.supportsLanguage(language) }
         } else emptyList()
         val deferredList = secondarySources.map { src ->
             async {
@@ -441,8 +502,13 @@ class MangaRepository(
             }
         }
 
+        val primaryResult = primaryChapters.await()
+        addChapters(primaryResult)
         deferredList.forEach { addChapters(it.await()) }
-        val mergedList = chapterMap.values.sortedByDescending { it.chapterNumber }
+        val mergedList = if (!primarySource.canAggregateChapters) {
+            // Different editions/groups may reuse chapter numbers; preserve their real IDs.
+            primaryResult.filter { ChapterLanguage.matches(it.language, language) }.distinctBy { it.id }.sortedByDescending { it.chapterNumber }
+        } else chapterMap.values.sortedByDescending { it.chapterNumber }
 
         if (mergedList.isNotEmpty() && chapterDao != null) {
             val entities = mergedList.mapIndexed { index, ch ->
@@ -538,7 +604,7 @@ class MangaRepository(
             chapterUrl
         }
 
-        val resolvedSourceId = detectSourceIdFromUrl(resolvedChapterUrl) ?: sourceId.ifBlank { "mangadex" }
+        val resolvedSourceId = if (sourceId == "web") "web" else detectSourceIdFromUrl(resolvedChapterUrl) ?: sourceId.ifBlank { "mangadex" }
         val source = sourceRegistry[resolvedSourceId]
             ?: throw java.io.IOException("A fonte $resolvedSourceId não está disponível.")
         val pages = source.getPages(resolvedChapterUrl)
@@ -554,6 +620,9 @@ class MangaRepository(
     suspend fun getChapterByIdSync(chapterId: String): ChapterEntity? = chapterDao?.getChapterByIdSync(chapterId)
 
     fun detectSourceIdFromUrl(url: String): String? {
+        sourceRegistry.values.filterIsInstance<com.example.source.RelocatedSource>().firstOrNull {
+            runCatching { com.example.source.WebUrls.origin(url) == it.canonicalOrigin }.getOrDefault(false)
+        }?.let { return it.id }
         val host = runCatching { java.net.URI(url).host }.getOrNull()
         if (host != null) sourceRegistry.values.firstOrNull {
             runCatching { java.net.URI(it.baseUrl).host.equals(host, ignoreCase = true) }.getOrDefault(false)

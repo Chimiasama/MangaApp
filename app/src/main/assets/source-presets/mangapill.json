@@ -1,0 +1,23 @@
+[
+  {
+    "id": "mangapill",
+    "name": "MangaPill (EN, experimental)",
+    "baseUrl": "https://mangapill.com",
+    "version": 1,
+    "lang": "en",
+    "isNsfw": false,
+    "popularPath": "/search",
+    "searchPath": "/search?q={query}",
+    "listSelector": ".grid > div:has(> a[href^='/manga/'])",
+    "titleSelector": ".font-black",
+    "detailTitleSelector": "h1",
+    "coverAttrSelector": "img[data-src*='/i/'], img[src*='/i/']",
+    "linkAttrSelector": "a[href^='/manga/']",
+    "detailDescSelector": "p.text--secondary",
+    "chapterListSelector": "#chapters a[href^='/chapters/']",
+    "chapterTitleSelector": "a",
+    "chapterLinkSelector": "a",
+    "pageImageSelector": "img.js-page",
+    "pageImageAttr": "data-src"
+  }
+]

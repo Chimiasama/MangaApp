@@ -100,7 +100,9 @@ fun MangaDetailScreen(
     onDownloadChapter: (ChapterModel) -> Unit,
     onDownloadMultipleChapters: (List<ChapterModel>) -> Unit = {},
     onDeleteDownload: (String) -> Unit,
-    onSearchRecommendation: (String) -> Unit = {}
+    onSearchRecommendation: (String) -> Unit = {},
+    onSearchAlternatives: (String) -> Unit = {},
+    onOpenWeb: (String) -> Unit = {}
 ) {
     val manga = state.manga ?: return
     val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, selectedLanguage) }
@@ -270,6 +272,10 @@ fun MangaDetailScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Fonte: ${state.sourceName.ifBlank { com.example.source.SourcePresentation.name(manga.sourceId) }}",
                         style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("manga_source"))
+                    Row {
+                        TextButton(onClick = { onSearchAlternatives(manga.title) }, modifier = Modifier.testTag("search_alternative_sources")) { Text("Outras fontes") }
+                        TextButton(onClick = { onOpenWeb(manga.title) }) { Text("Buscar na web") }
+                    }
                     manga.publicationYear?.let { year ->
                         Text("Publicação original: $year", style = MaterialTheme.typography.bodySmall)
                     }
