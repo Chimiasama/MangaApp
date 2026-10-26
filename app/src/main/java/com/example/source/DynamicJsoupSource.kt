@@ -39,7 +39,7 @@ class DynamicJsoupSource(val rules: SourceRuleConfig, private val fetch: suspend
     }.distinctBy { it.url }
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel = withContext(Dispatchers.IO) {
         val doc = document(mangaUrl)
-        val title = doc.selectFirst(rules.titleSelector)?.text()?.takeIf { it.isNotBlank() } ?: throw IOException("O seletor de título não encontrou conteúdo. Revise as regras da fonte.")
+        val title = doc.selectFirst(rules.detailTitleSelector.ifBlank { rules.titleSelector })?.text()?.takeIf { it.isNotBlank() } ?: throw IOException("O seletor de título não encontrou conteúdo. Revise as regras da fonte.")
         MangaModel(mangaUrl, mangaUrl.hashCode().toString(), title, image(doc, doc.selectFirst(rules.coverAttrSelector)),
             description = if (rules.detailDescSelector.isBlank()) "" else doc.select(rules.detailDescSelector).text(),
             author = if (rules.detailAuthorSelector.isBlank()) "" else doc.select(rules.detailAuthorSelector).text(), sourceId = id, isNsfw = isNsfw)
@@ -58,6 +58,6 @@ class DynamicJsoupSource(val rules: SourceRuleConfig, private val fetch: suspend
         val doc = document(chapterUrl)
         doc.select(rules.pageImageSelector).mapNotNull { el ->
             resolved(doc, el.attr(rules.pageImageAttr).ifBlank { el.attr("data-src").ifBlank { el.attr("src") } }).takeIf { it.isNotBlank() }
-        }.distinct().also { if (it.isEmpty()) throw IOException("Nenhuma página encontrada. Revise o seletor de imagens ou abra no navegador.") }
+        }.distinct().also { if (it.isEmpty()) throw IOException("Nenhuma página encontrada. Revise o seletor de imagens ou abra no navegador."); SourceHttp.rememberImages(it, chapterUrl) }
     }
 }

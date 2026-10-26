@@ -33,7 +33,7 @@ class SourceWorkspace(context: Context) {
                 require(it.isNotBlank() && it.length <= 500) { "Seletores obrigatórios ausentes ou grandes demais." }
                 Jsoup.parse("<div></div>").select(it)
             }
-            listOf(rule.detailDescSelector, rule.detailAuthorSelector).filter { it.isNotBlank() }.forEach { Jsoup.parse("").select(it) }
+            listOf(rule.detailTitleSelector, rule.detailDescSelector, rule.detailAuthorSelector).filter { it.isNotBlank() }.forEach { Jsoup.parse("").select(it) }
             require(rule.pageImageAttr.matches(Regex("[a-zA-Z][a-zA-Z0-9_-]{0,60}")))
             require(rule.searchPath.startsWith("/") && !rule.searchPath.startsWith("//") && rule.searchPath.contains("{query}")) { "searchPath precisa ser relativo e incluir {query}." }
             require(rule.popularPath.startsWith("/") && !rule.popularPath.startsWith("//"))

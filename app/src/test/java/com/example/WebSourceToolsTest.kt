@@ -151,6 +151,36 @@ class WebSourceToolsTest {
         workspace.rollback()
         assertFalse(SourceWorkspace(context).isDisabled("mangadash"))
     }
+    @Test fun `bundled real source preset separates search title from detail title`() = runBlocking {
+        val preset = context.assets.open("source-presets/mangapill.json").bufferedReader().use { it.readText() }
+        val rules = SourceWorkspace(context).parseRules(preset).single()
+        val html = "<div class='font-black'>Quick Search</div><h1>Dragon Ball</h1><div class='grid'><div><a href='/manga/1063/dragon-ball'><img data-src='https://cdn.test/i/1063.jpg'></a><div class='font-black'>Dragon Ball</div></div></div><div id='chapters'><a href='/chapters/1063-1/dragon-ball-chapter-1'>Chapter 1</a></div><img class='js-page' data-src='https://cdn.test/page1.jpg'>"
+        val source = DynamicJsoupSource(rules) { html }
+        val book = source.searchManga("dragon ball").single()
+        assertEquals("Dragon Ball", book.title)
+        assertEquals("Dragon Ball", source.getMangaDetails(book.url).title)
+        assertEquals(1, source.getChapters(book.url).size)
+        assertEquals(listOf("https://cdn.test/page1.jpg"), source.getPages("https://mangapill.com/chapters/1063-1/chapter-1"))
+    }
+    @Test fun `nonaggregating sources retain distinct groups with repeated chapter numbers`() = runBlocking {
+        val downloads = MangaRepositoryTest.FakeDownloadDao()
+        val repository = com.example.data.repository.MangaRepository(MangaRepositoryTest.FakeMangaDao(), MangaRepositoryTest.FakeProgressDao(),
+            downloads, MangaRepositoryTest.FakeReadingSessionDao(), com.example.data.download.ChapterDownloadManager(context, downloads),
+            com.example.data.preferences.UserPreferencesRepository(context))
+        repository.clearSources()
+        val rules = SourceWorkspace(context).parseRules(json).single()
+        repository.registerSource(DynamicJsoupSource(rules) { "<div class='chapter'><a href='/group2/chapter-1'>Group 2 Chapter 1</a></div><div class='chapter'><a href='/chapter-1'>Chapter 1</a></div>" })
+        assertEquals(2, repository.getAggregatedChapters("Book", "https://old.test/book", rules.id).size)
+    }
+    @Test fun `next chapter stays within an explicitly labeled group`() {
+        val first = ChapterModel("g1c1", "Chapter 1", "https://fixture.test/1", 1f)
+        val second = first.copy(id = "g1c2", title = "Chapter 2", chapterNumber = 2f)
+        val other = first.copy(id = "g2c1", title = "Group 2 Chapter 1")
+        val otherSecond = second.copy(id = "g2c2", title = "Group 2 Chapter 2")
+        val chapters = listOf(other, first, otherSecond, second)
+        assertEquals(second.id, com.example.ui.reader.adjacentChapter(chapters, first.id, true)!!.id)
+        assertEquals(otherSecond.id, com.example.ui.reader.adjacentChapter(chapters, other.id, true)!!.id)
+    }
     @Test fun `directed web search encodes queries without interpreting javascript`() {
         val url = WebUrls.search("Dragon & Ball", listOf("one.test", "two.test"))
         assertTrue(url.startsWith("https://www.google.com/search?"))

@@ -18,6 +18,7 @@ data class SourceRuleConfig(
     @Json(name = "linkAttrSelector") val linkAttrSelector: String,
     
     // Selectors for details
+    @Json(name = "detailTitleSelector") val detailTitleSelector: String = "",
     @Json(name = "detailDescSelector") val detailDescSelector: String = "",
     @Json(name = "detailAuthorSelector") val detailAuthorSelector: String = "",
     

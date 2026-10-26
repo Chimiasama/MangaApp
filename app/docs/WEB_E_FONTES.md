@@ -66,6 +66,23 @@ A correção de domínio preserva os caminhos. Mudanças de slug, IDs, paginaç�
 protocolo de API ou estrutura HTML podem exigir atualização de regras ou código.
 MangaDex e protocolos de API não aceitam uma troca genérica de domínio.
 
+### Fonte real preparada: MangaPill (inglês)
+
+Em **Regras / API → Preparar fonte MangaPill (EN)**, o app acrescenta um preset
+embutido ao JSON em edição. Use **Validar e revisar → Aplicar**. Depois escolha
+**Inglês** e **MangaPill** nos filtros. Não exige servidor ou digitar seletores.
+O preset foi verificado com busca, detalhes, capítulos e decodificação da primeira
+imagem de uma obra real; disponibilidade e estrutura podem mudar.
+
+A fonte pode apresentar grupos diferentes reutilizando números de capítulos.
+Seus IDs são preservados e a navegação permanece no grupo explicitamente rotulado.
+
+Teste externo opcional (baixa apenas uma imagem para verificar decodificação):
+
+```sh
+./gradlew :app:testDebugUnitTest -PliveSources=true --tests com.example.LiveWebSourceCheck
+```
+
 ### Atualizar regras sem APK
 
 Em **Regras / API**, cole uma lista JSON ou busque um arquivo HTTPS. O aplicativo
@@ -170,3 +187,25 @@ O workflow `reader-checks.yml` também roda `connectedDebugAndroidTest` em Andro
 API 35. `WebSourceToolsTest` usa documentos e JSON controlados; `WebBrowserReaderTest`
 carrega HTML em uma WebView real, analisa a página, abre a prévia e verifica a
 persistência da importação, sem depender de Google ou de uma fonte externa.
+
+## Verificação de fontes reais em 2026-10-26
+
+- MangaPill: busca retornou 50 resultados; detalhes de Dragon Ball, 520 entradas
+  de capítulos (incluindo grupos com numeração repetida), capítulo com 18 páginas
+  e primeira imagem decodificada. O preset distingue seletor de título de lista
+  e de detalhes para evitar capturar o cabeçalho de pesquisa.
+- WeebCentral: 520 capítulos; primeiro capítulo testado com 36 páginas e capítulo
+  recente com 18 páginas; primeira e última imagem decodificadas em ambos.
+- LeerCapítulo: Dragon Ball Full Color, 520 capítulos; capítulos de teste com 33
+  e 21 páginas; primeira e última imagem decodificadas em ambos.
+- MangaDex: metadados de Phoenix e 145 capítulos responderam; a primeira imagem
+  do capítulo escolhido retornou HTTP 404. Esta obra/capítulo não foi validada para
+  leitura nesta execução. Isso não estabelece indisponibilidade de toda a API.
+- MangaDash: catálogo JSON respondeu HTTP 200 à consulta; não se repetiu neste
+  ambiente a validação completa de um PDF real.
+- Os candidatos públicos Consumet verificados não entregaram o contrato de API:
+  houve recusa de acesso em um e texto de código no lugar de JSON em outro.
+  Nenhuma dessas instâncias foi pré-configurada como fonte funcional.
+
+Esses resultados são observações pontuais, não garantia de disponibilidade futura.
+Os testes externos são opcionais e separados da suíte determinística.

@@ -31,6 +31,7 @@ import org.json.JSONTokener
 fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", onClose: () -> Unit,
     onRead: suspend (WebCapture, Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val workspace = repository.sourceWorkspace
     val revision by (workspace?.revision ?: kotlinx.coroutines.flow.MutableStateFlow(0)).collectAsState()
     val registryRevision by repository.sourceRevision.collectAsState()
@@ -77,7 +78,6 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
         }.onFailure { message = it.message }
     }
     fun search(query: String, hosts: List<String> = emptyList()) { navigate(WebUrls.search(query, hosts)) }
-    DisposableEffect(browser) { val current = browser; onDispose { current?.stopLoading(); current?.destroy() } }
     BackHandler { if (tab == 0 && browser?.canGoBack() == true) browser?.goBack() else onClose() }
     LaunchedEffect(initialInput) {
         if (initialInput.isNotBlank()) {
@@ -224,6 +224,15 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
                 item {
                     Text("Regras de fontes HTML", style = MaterialTheme.typography.titleMedium)
                     Text("Importe dados de uma origem em que confia. A lista substitui as fontes personalizadas; não executa scripts. Fontes padrão permanecem.", style = MaterialTheme.typography.bodySmall)
+                    Button(enabled = !busy, onClick = { launchTask {
+                        val preset = withContext(Dispatchers.IO) { context.assets.open("source-presets/mangapill.json").bufferedReader().use { it.readText() } }
+                        val merged = org.json.JSONArray()
+                        val existing = org.json.JSONArray(workspace?.snapshot()?.optString("rules", "[]") ?: "[]")
+                        for (index in 0 until existing.length()) if (existing.getJSONObject(index).optString("id") != "mangapill") merged.put(existing.getJSONObject(index))
+                        merged.put(org.json.JSONArray(preset).getJSONObject(0))
+                        rules = merged.toString(2); pendingRules = null
+                        "Preset real MangaPill preparado. Valide e aplique; selecione Inglês nos filtros. Compatibilidade pode mudar com o site."
+                    } }, modifier = Modifier.testTag("load_mangapill_preset")) { Text("Preparar fonte MangaPill (EN)") }
                     OutlinedTextField(manifestUrl, { manifestUrl = it }, label = { Text("URL HTTPS do arquivo JSON") }, modifier = Modifier.fillMaxWidth())
                     Button(enabled = !busy, onClick = { launchTask {
                         val json = withContext(Dispatchers.IO) { SourceHttp.get(WebUrls.valid(manifestUrl)) }
@@ -292,7 +301,7 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
                 }
                 browser = this
                 if (location.isNotBlank()) loadUrl(location)
-            } }, modifier = Modifier.fillMaxSize())
+            } }, onRelease = { view -> view.stopLoading(); view.destroy() }, modifier = Modifier.fillMaxSize())
         }
     }
 }

@@ -502,9 +502,13 @@ class MangaRepository(
             }
         }
 
-        addChapters(primaryChapters.await())
+        val primaryResult = primaryChapters.await()
+        addChapters(primaryResult)
         deferredList.forEach { addChapters(it.await()) }
-        val mergedList = chapterMap.values.sortedByDescending { it.chapterNumber }
+        val mergedList = if (!primarySource.canAggregateChapters) {
+            // Different editions/groups may reuse chapter numbers; preserve their real IDs.
+            primaryResult.filter { ChapterLanguage.matches(it.language, language) }.distinctBy { it.id }.sortedByDescending { it.chapterNumber }
+        } else chapterMap.values.sortedByDescending { it.chapterNumber }
 
         if (mergedList.isNotEmpty() && chapterDao != null) {
             val entities = mergedList.mapIndexed { index, ch ->
