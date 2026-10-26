@@ -11,7 +11,7 @@ import okhttp3.OkHttpClient
 object ImageCacheConfig {
 
     fun setupCoilImageLoader(context: Context): ImageLoader {
-        val okHttpClient = OkHttpClient.Builder().addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
+        val okHttpClient = OkHttpClient.Builder().cookieJar(com.example.source.SourceHttp.browserCookies).addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
 
         return ImageLoader.Builder(context)
             .okHttpClient(okHttpClient)

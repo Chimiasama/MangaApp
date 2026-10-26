@@ -28,5 +28,8 @@ data class SourceRuleConfig(
     
     // Selectors for chapter reader pages
     @Json(name = "pageImageSelector") val pageImageSelector: String,
-    @Json(name = "pageImageAttr") val pageImageAttr: String = "src"
+    @Json(name = "pageImageAttr") val pageImageAttr: String = "src",
+    @Json(name = "searchPath") val searchPath: String = "/search?q={query}",
+    @Json(name = "popularPath") val popularPath: String = "/",
+    @Json(name = "version") val version: Int = 1
 )

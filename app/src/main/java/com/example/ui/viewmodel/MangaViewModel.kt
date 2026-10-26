@@ -412,6 +412,13 @@ class MangaViewModel(
         }
     }
 
+    fun searchAlternativeSources(title: String) {
+        _selectedSourceId.value = "all"
+        _selectedGenre.value = "all"
+        _publicationPeriod.value = null
+        submitSearch(title)
+    }
+
     fun submitSearch(query: String) {
         val trimmed = query.trim()
         _isLoadingBrowse.value = true
