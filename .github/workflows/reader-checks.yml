@@ -3,14 +3,8 @@ name: Validar leitor Android
 on:
   pull_request:
   push:
-    branches: [main, 'fix/reader-*', 'feat/web-reader-*']
+    branches: [main, 'fix/reader-*']
   workflow_dispatch:
-    inputs:
-      live_pdf:
-        description: 'Verificar também um PDF real do MangaDash (acessa a fonte externa)'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -62,43 +56,4 @@ jobs:
           name: reader-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 14
-
-  pdf-android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '13114758'
-          log-accepted-android-sdk-licenses: false
-          packages: 'platform-tools platforms;android-36.1 build-tools;36.0.0'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Preparar assinatura e aceleração Android
-        run: |
-          keytool -genkeypair -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname 'CN=Android Debug,O=Android,C=US'
-          sudo chmod a+rw /dev/kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: default
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew :app:connectedDebugAndroidTest ${{ github.event.inputs.live_pdf == 'true' && '-PliveSources=true' || '' }} --stacktrace --no-daemon
-      - name: Guardar testes de PDF no Android
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pdf-android-reports
-          path: |
-            app/build/reports/androidTests/
-            app/build/outputs/androidTest-results/
-            app/build/outputs/connected_android_test_additional_output/
           retention-days: 14

@@ -82,12 +82,13 @@ class ChapterDownloadWorker(
         )
 
         return try {
-            repository.downloadChapter(manga, chapter)
-            if (db.downloadDao().getDownloadSync(chapter.id)?.downloadState == com.example.data.local.DownloadEntity.STATE_COMPLETED) {
+            val pages = repository.getPages(chapterUrl, chapterId, sourceId)
+            if (pages.isNotEmpty()) {
+                downloadManager.downloadChapter(manga, chapter, pages)
                 Result.success()
-            } else Result.retry()
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
+            } else {
+                Result.retry()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             Result.retry()

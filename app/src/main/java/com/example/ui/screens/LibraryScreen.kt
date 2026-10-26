@@ -98,9 +98,7 @@ fun LibraryScreen(
     onDeleteBookmark: (Long) -> Unit = {},
     onDeleteHistory: (String) -> Unit = {},
     onDeleteFavorite: (String) -> Unit = {},
-    onSyncClicked: () -> Unit = {},
-    onImportPdf: () -> Unit = {},
-    importingPdf: Boolean = false
+    onSyncClicked: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
@@ -116,12 +114,6 @@ fun LibraryScreen(
             .fillMaxSize()
             .testTag("library_screen")
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
-            androidx.compose.material3.TextButton(onClick = onImportPdf, enabled = !importingPdf,
-                modifier = Modifier.testTag("import_pdf_button")) {
-                Text(if (importingPdf) "Importando PDF…" else "Importar PDF")
-            }
-        }
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -401,7 +393,6 @@ private fun FavoritesList(
                         title = entity.title,
                         coverUrl = entity.coverUrl,
                         description = entity.description,
-                        publicationYear = entity.publicationYear,
                         genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
                         isNsfw = entity.isNsfw,
                         sourceId = entity.sourceId
@@ -465,7 +456,7 @@ private fun HistoryList(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(history, key = { it.mangaUrl }) { progress ->
+                items(history) { progress ->
                     SwipeableLibraryItem(
                         onDelete = { onDeleteHistory(progress.mangaUrl) },
                         onRefresh = { onContinueReading(progress) },

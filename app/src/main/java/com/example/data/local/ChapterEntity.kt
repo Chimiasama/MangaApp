@@ -20,9 +20,7 @@ data class ChapterEntity(
     val lastPageRead: Int = 0,
     val totalPages: Int = 0,
     val fetchedTimestamp: Long = System.currentTimeMillis(),
-    @ColumnInfo(defaultValue = "''") val language: String = "",
-    @ColumnInfo(defaultValue = "''") val externalUrl: String = "",
-    val pageCount: Int? = null
+    @ColumnInfo(defaultValue = "''") val language: String = ""
 )
 
 /**

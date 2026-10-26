@@ -42,7 +42,6 @@ data class MangaDexMangaAttributesDto(
     val description: Map<String, String>? = emptyMap(),
     val status: String? = null,
     val publicationDemographic: String? = null,
-    val year: Int? = null,
     val originalLanguage: String? = null,
     val contentRating: String? = null,
     val tags: List<MangaDexTagDto>? = emptyList()
@@ -98,7 +97,7 @@ data class MangaDexChapterAttributesDto(
     val translatedLanguage: String? = null,
     val externalUrl: String? = null,
     val publishAt: String? = null,
-    val pages: Int? = null
+    val pages: Int? = 0
 )
 
 @JsonClass(generateAdapter = true)
@@ -167,6 +166,3 @@ class LenientStringMapAdapter {
         writer.endObject()
     }
 }
-
-@JsonClass(generateAdapter = true)
-data class MangaDexTagListResponse(val data: List<MangaDexTagDto> = emptyList())

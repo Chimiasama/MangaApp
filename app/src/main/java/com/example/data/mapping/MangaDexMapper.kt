@@ -140,7 +140,6 @@ object MangaDexMapper {
             description = extractDescription(dto),
             sourceId = sourceId,
             genres = genres.joinToString(", "),
-            publicationYear = dto.attributes?.year,
             isFavorite = isFavorite,
             isNsfw = isNsfw(dto),
             addedTimestamp = System.currentTimeMillis()
@@ -170,8 +169,7 @@ object MangaDexMapper {
             isNsfw = isNsfw(dto),
             sourceId = sourceId,
             author = extractAuthor(dto),
-            status = dto.attributes?.status ?: "Unknown",
-            publicationYear = dto.attributes?.year
+            status = dto.attributes?.status ?: "Unknown"
         )
     }
 
@@ -218,7 +216,6 @@ object MangaDexMapper {
             isRead = false,
             lastPageRead = 0,
             totalPages = totalPages,
-            pageCount = attr?.pages, externalUrl = attr?.externalUrl?.takeUnless { it == "null" }.orEmpty(),
             language = lang,
             fetchedTimestamp = System.currentTimeMillis()
         )
@@ -243,8 +240,7 @@ object MangaDexMapper {
             chapterUrl = entity.chapterUrl,
             chapterNumber = entity.chapterNumber,
             dateUpload = entity.dateUpload,
-            language = entity.language,
-            externalUrl = entity.externalUrl, pageCount = entity.pageCount
+            language = entity.language
         )
     }
 
@@ -261,7 +257,6 @@ object MangaDexMapper {
             description = description,
             sourceId = sourceId,
             genres = genres.joinToString(", "),
-            publicationYear = publicationYear,
             isFavorite = isFavorite,
             isNsfw = isNsfw,
             addedTimestamp = System.currentTimeMillis()
@@ -280,8 +275,7 @@ object MangaDexMapper {
             isNsfw = isNsfw,
             sourceId = sourceId,
             author = "",
-            status = "Unknown",
-            publicationYear = publicationYear
+            status = "Unknown"
         )
     }
 
@@ -294,7 +288,6 @@ object MangaDexMapper {
             chapterNumber = chapterNumber,
             dateUpload = dateUpload,
             language = language,
-            externalUrl = externalUrl, pageCount = pageCount,
             isRead = false,
             lastPageRead = 0,
             totalPages = 0,
@@ -309,8 +302,7 @@ object MangaDexMapper {
             chapterUrl = chapterUrl,
             chapterNumber = chapterNumber,
             dateUpload = dateUpload,
-            language = language,
-            externalUrl = externalUrl, pageCount = pageCount
+            language = language
         )
     }
 }

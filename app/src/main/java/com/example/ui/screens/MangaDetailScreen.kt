@@ -5,8 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,7 +85,6 @@ import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.MangaDetailUiState
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MangaDetailScreen(
     state: MangaDetailUiState,
@@ -100,15 +97,11 @@ fun MangaDetailScreen(
     onDownloadChapter: (ChapterModel) -> Unit,
     onDownloadMultipleChapters: (List<ChapterModel>) -> Unit = {},
     onDeleteDownload: (String) -> Unit,
-    onSearchRecommendation: (String) -> Unit = {},
-    onSearchAlternatives: (String) -> Unit = {},
-    onOpenWeb: (String) -> Unit = {}
+    onSearchRecommendation: (String) -> Unit = {}
 ) {
     val manga = state.manga ?: return
     val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, selectedLanguage) }
-    val readableChapters = visibleChapters.filter { it.externalUrl.isBlank() && it.pageCount != 0 }
     val context = LocalContext.current
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf(setOf<String>()) }
@@ -270,40 +263,6 @@ fun MangaDetailScreen(
             // Description & Action
             item {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Fonte: ${state.sourceName.ifBlank { com.example.source.SourcePresentation.name(manga.sourceId) }}",
-                        style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("manga_source"))
-                    Row {
-                        TextButton(onClick = { onSearchAlternatives(manga.title) }, modifier = Modifier.testTag("search_alternative_sources")) { Text("Outras fontes") }
-                        TextButton(onClick = { onOpenWeb(manga.title) }) { Text("Buscar na web") }
-                    }
-                    manga.publicationYear?.let { year ->
-                        Text("Publicação original: $year", style = MaterialTheme.typography.bodySmall)
-                    }
-                    val loadedLanguages = state.chapters.map { com.example.source.SourcePresentation.language(it.language) }.distinct()
-                    if (loadedLanguages.isNotEmpty()) Text("Idiomas dos capítulos carregados: ${loadedLanguages.joinToString(", ")}",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    com.example.source.SourcePresentation.mangaUrl(manga)?.let { url ->
-                        TextButton(onClick = { runCatching { uriHandler.openUri(url) } }, modifier = Modifier.testTag("open_manga_source")) {
-                            Text("Abrir página da fonte")
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    val categories = com.example.source.MangaCategories.display(manga.genres)
-                    if (categories.isNotEmpty()) {
-                        Text("Categorias", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.testTag("manga_categories")) {
-                            categories.forEach { category ->
-                                androidx.compose.material3.Surface(shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    modifier = Modifier.padding(vertical = 4.dp)) {
-                                    Text(category, style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                    }
                     Text(
                         text = "Sinopse",
                         fontWeight = FontWeight.Bold,
@@ -368,9 +327,9 @@ fun MangaDetailScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                    } else if (readableChapters.isNotEmpty()) {
+                    } else if (visibleChapters.isNotEmpty()) {
                         // Banner de início direto para novos leitores
-                        val firstChapter = readableChapters.minBy { it.chapterNumber }
+                        val firstChapter = visibleChapters.minBy { it.chapterNumber }
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CrimsonRed.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(12.dp),
@@ -553,7 +512,7 @@ fun MangaDetailScreen(
 
                                     Button(
                                         onClick = {
-                                            val selectedList = readableChapters.filter { it.id in selectedChapterIds }
+                                            val selectedList = visibleChapters.filter { it.id in selectedChapterIds }
                                             if (selectedList.isNotEmpty()) {
                                                 onDownloadMultipleChapters(selectedList)
                                                 Toast.makeText(
@@ -696,7 +655,7 @@ fun MangaDetailScreen(
 
                                     Button(
                                         onClick = {
-                                            val unDownloaded = readableChapters.filter { ch ->
+                                            val unDownloaded = visibleChapters.filter { ch ->
                                                 downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
                                             }
                                             if (unDownloaded.isNotEmpty()) {
@@ -879,15 +838,14 @@ fun MangaDetailScreen(
                             else -> "Todas as línguas"
                         }
                         Text(
-                            text = state.chapterError ?: "Nenhum capítulo disponível em $langLabel.",
+                            text = "Nenhum capítulo disponível em $langLabel.",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (state.chapterError != null) TextButton(onClick = { onLanguageSelected(selectedLanguage) }) { Text("Tentar novamente") }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = if (state.chapterError == null) "Tentar outro idioma:" else "Verifique a fonte ou tente novamente:",
+                            text = "Tentar outro idioma:",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1216,13 +1174,6 @@ private fun ChapterRowItem(
                     fontSize = 14.sp,
                     color = if (isCurrentReading || isSelected) PrimaryPurple else MaterialTheme.colorScheme.onSurface
                 )
-                Text(com.example.source.SourcePresentation.language(chapter.language),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.testTag("chapter_language_${chapter.id}"))
-                if (chapter.externalUrl.isNotBlank() || chapter.pageCount == 0) {
-                    Text(if (chapter.externalUrl.isNotBlank()) "Leitura no site externo" else "Fonte informa zero páginas",
-                        style = MaterialTheme.typography.labelSmall, color = PrimaryPurple)
-                }
                 if (chapter.dateUpload.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -1281,7 +1232,6 @@ private fun ChapterRowItem(
                     else -> {
                         IconButton(
                             onClick = onDownloadChapter,
-                            enabled = chapter.externalUrl.isBlank() && chapter.pageCount != 0,
                             modifier = Modifier.size(32.dp).testTag("download_button_${chapter.id}")
                         ) {
                             Icon(

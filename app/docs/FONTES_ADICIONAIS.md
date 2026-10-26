@@ -5,7 +5,6 @@ Verificação em 25/10/2026. PT-BR continua sendo a seleção padrão. As fontes
 | Fonte ativa | Idiomas | Evidência de leitura pelo código de produção |
 | --- | --- | --- |
 | MangaDex | PT-BR, EN, ES e outros | Integração existente mantida |
-| MangaDash | PT-BR | Capítulos em imagens ou PDF, pelo mesmo leitor; consulte LEITURA_PDF.md |
 | WeebCentral | EN | Dragon Ball: 520 capítulos listados; capítulo inicial com 36 páginas e final (Dragon Ball Z 325) com 18 |
 | LeerCapítulo | ES | Dragon Ball Full Color: 520 capítulos listados; capítulo inicial com 33 páginas e final (519) com 21 |
 
@@ -27,7 +26,7 @@ Nas duas fontes novas, a verificação remota baixou e decodificou a capa e as i
 - **Mugiwaras Oficial:** o acesso testado ao capítulo 1 de One Piece retornou uma tela de acesso, sem páginas para o leitor.
 - **Tsundoku Traduções:** as amostras consultadas foram principalmente novels; não foi validado um arquivo de páginas de mangá.
 - **MangaFire:** a página inicial respondeu, mas isso não confirmou a entrega dos capítulos.
-- **MangaDash:** a integração de PDF foi adicionada; consulte [LEITURA_PDF.md](LEITURA_PDF.md). A fonte PT-BR agora faz parte do registro padrão.
+- **MangaDash:** busca encontrou Dragon Ball com 527 entradas, porém o capítulo 1 testado entrega PDF. Precisa de integração própria de PDF antes de entrar no leitor de imagens.
 - **Comick/Consumet:** permanecem desativados por padrão; as consultas anteriores não comprovaram entrega funcional.
 
 ## Verificação reproduzível

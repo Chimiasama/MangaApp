@@ -6,7 +6,5 @@ data class ChapterModel(
     val chapterUrl: String,
     val chapterNumber: Float = 1.0f,
     val dateUpload: String = "",
-    val language: String = "",
-    val externalUrl: String = "",
-    val pageCount: Int? = null
+    val language: String = ""
 )

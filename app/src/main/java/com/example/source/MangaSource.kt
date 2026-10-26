@@ -15,14 +15,6 @@ interface MangaSource {
     suspend fun searchManga(query: String): List<MangaModel>
     suspend fun searchManga(query: String, language: String): List<MangaModel> = searchManga(query)
 
-    suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
-        val candidates = if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
-        return candidates.filter { MangaCategories.matches(it.genres, category) }
-    }
-
-    suspend fun searchManga(query: String, language: String, category: String, period: PublicationPeriod?): List<MangaModel> =
-        searchManga(query, language, category).filter { period == null || period.matches(it.publicationYear) }
-
     suspend fun getMangaDetails(mangaUrl: String): MangaModel
 
     suspend fun getChapters(mangaUrl: String): List<ChapterModel>

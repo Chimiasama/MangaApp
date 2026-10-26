@@ -27,24 +27,6 @@ interface MangaDexApiService {
         @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
     ): MangaDexMangaListResponse
 
-    @GET("manga")
-    suspend fun getFilteredMangaList(
-        @Query("title") title: String? = null,
-        @Query("publicationDemographic[]") demographics: List<String>? = null,
-        @Query("includedTags[]") includedTags: List<String>? = null,
-        @Query("availableTranslatedLanguage[]") translatedLanguages: List<String>? = null,
-        @Query("limit") limit: Int = 100,
-        @Query("order[followedCount]") order: String? = "desc",
-        @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
-        @Query("contentRating[]") ratings: List<String> = listOf("safe", "suggestive"),
-        @Query("year") year: Int? = null,
-        @Query("order[year]") orderYear: String? = null,
-        @Query("offset") offset: Int = 0
-    ): MangaDexMangaListResponse
-
-    @GET("manga/tag")
-    suspend fun getMangaTags(): com.example.data.network.model.MangaDexTagListResponse
-
     @GET("manga/{id}")
     suspend fun getMangaDetails(
         @Path("id") mangaId: String,

@@ -31,7 +31,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -40,9 +39,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.verticalScroll
@@ -94,10 +90,7 @@ fun BrowseScreen(
     onDeleteSearchHistoryItem: (Long) -> Unit = {},
     onClearSearchHistory: () -> Unit = {},
     onRefresh: () -> Unit = {},
-    onClearFilters: () -> Unit = {},
-    onSearchCommitted: (String) -> Unit = {},
-    onPeriodSelected: (com.example.source.PublicationPeriod?) -> Unit = {},
-    onOpenWeb: () -> Unit = {}
+    onClearFilters: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -105,25 +98,11 @@ fun BrowseScreen(
 
     var searchFocused by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
-    val keyboardVisible = WindowInsets.isImeVisible
-    val latestCommit by androidx.compose.runtime.rememberUpdatedState({ onSearchCommitted(queryInput) })
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { latestCommit() } }
-    var imeWasVisible by remember { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(keyboardVisible) {
-        if (imeWasVisible && !keyboardVisible) latestCommit()
-        imeWasVisible = keyboardVisible
-    }
-    fun dismissSearchKeyboard() {
-        onSearchCommitted(queryInput)
-        keyboardController?.hide()
-        focusManager.clearFocus(force = true)
-    }
 
     if (showFilters) {
         ModalBottomSheet(onDismissRequest = { showFilters = false }) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                 Text("Filtros", style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = { showFilters = false; dismissSearchKeyboard(); onOpenWeb() }, modifier = Modifier.testTag("open_web_sources")) { Text("Navegador web e gerenciamento de fontes") }
                 Text("Idioma dos capítulos", modifier = Modifier.padding(top = 20.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("pt-br" to "Português", "en" to "Inglês", "es" to "Espanhol", "all" to "Todos").forEach { (code, label) ->
@@ -140,7 +119,7 @@ fun BrowseScreen(
                             label = { Text(source.name + when (source.lang) { "en" -> " · EN"; "es" -> " · ES"; else -> "" }) }, modifier = Modifier.testTag("source_chip_${source.id}"))
                     }
                 }
-                Text("Categorias", modifier = Modifier.padding(top = 16.dp))
+                Text("Gênero", modifier = Modifier.padding(top = 16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("all" to "Todos", "Shounen" to "Shounen", "Sci-Fi" to "Sci-Fi", "Shoujo" to "Shoujo", "Yuri" to "Yuri",
                         "Ninja" to "Ninja", "Ação" to "Ação", "Aventura" to "Aventura", "Fantasia" to "Fantasia", "Isekai" to "Isekai",
@@ -149,18 +128,6 @@ fun BrowseScreen(
                             label = { Text(label) }, modifier = Modifier.testTag("genre_chip_$key"))
                     }
                 }
-                Text("Ano original de publicação", modifier = Modifier.padding(top = 16.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = state.publicationPeriod == null, onClick = { onPeriodSelected(null) }, label = { Text("Todas as épocas") })
-                    com.example.source.PublicationPeriod.presets().forEach { period ->
-                        FilterChip(selected = state.publicationPeriod == period, onClick = { onPeriodSelected(period) },
-                            label = { Text(period.label) }, modifier = Modifier.testTag("period_${period.from}_${period.through}"))
-                    }
-                }
-                Text("MangaDex e MangaDash permitem consultar por ano. WeebCentral filtra o catálogo carregado; LeerCapítulo e obras sem ano informado ficam fora do filtro. A data de envio dos capítulos não é usada.",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-                Text("Categorias usam a classificação de cada fonte. Nome e categoria são combinados; a disponibilidade varia por fonte e idioma.",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 Button(onClick = { showFilters = false }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
             }
         }
@@ -169,10 +136,8 @@ fun BrowseScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
             .testTag("browse_screen")
     ) {
-        TextButton(onClick = { dismissSearchKeyboard(); onOpenWeb() }, modifier = Modifier.testTag("browse_web_sources")) { Text("Pesquisar na web / gerenciar fontes") }
         // Clean Minimal Header Area
         Column(
             modifier = Modifier
@@ -183,41 +148,27 @@ fun BrowseScreen(
                 OutlinedTextField(
                     value = queryInput,
                     onValueChange = { queryInput = it; onQueryChange(it) },
-                    modifier = Modifier.weight(1f).onFocusChanged {
-                        val wasFocused = searchFocused
-                        searchFocused = it.isFocused
-                        if (wasFocused && !it.isFocused) onSearchCommitted(queryInput)
-                    }.testTag("search_input"),
+                    modifier = Modifier.weight(1f).onFocusChanged { searchFocused = it.isFocused }.testTag("search_input"),
                     placeholder = { Text("Buscar mangás") },
                     leadingIcon = {
-                        IconButton(onClick = { dismissSearchKeyboard(); onSearchSubmit(queryInput) }, modifier = Modifier.testTag("search_icon_button")) {
+                        IconButton(onClick = { keyboardController?.hide(); focusManager.clearFocus(); onSearchSubmit(queryInput) }, modifier = Modifier.testTag("search_icon_button")) {
                             Icon(Icons.Default.Search, contentDescription = "Buscar")
                         }
                     },
                     trailingIcon = {
-                        Row {
-                            if (queryInput.isNotEmpty()) IconButton(onClick = { queryInput = ""; onSearchSubmit("") }, modifier = Modifier.testTag("search_clear_button")) {
-                                Icon(Icons.Default.Clear, contentDescription = "Limpar busca")
-                            }
-                            if (searchFocused || keyboardVisible) IconButton(onClick = { dismissSearchKeyboard() },
-                                modifier = Modifier.testTag("hide_search_keyboard")) {
-                                Icon(Icons.Default.KeyboardHide, contentDescription = "Ocultar teclado")
-                            }
+                        if (queryInput.isNotEmpty()) IconButton(onClick = { queryInput = ""; onSearchSubmit("") }, modifier = Modifier.testTag("search_clear_button")) {
+                            Icon(Icons.Default.Clear, contentDescription = "Limpar busca")
                         }
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { dismissSearchKeyboard(); onSearchSubmit(queryInput) }),
+                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide(); focusManager.clearFocus(); onSearchSubmit(queryInput) }),
                     shape = RoundedCornerShape(16.dp), singleLine = true
                 )
-                IconButton(onClick = { dismissSearchKeyboard(); showFilters = true }, modifier = Modifier.testTag("open_filters_button")) {
+                IconButton(onClick = { keyboardController?.hide(); focusManager.clearFocus(); showFilters = true }, modifier = Modifier.testTag("open_filters_button")) {
                     Icon(Icons.Default.FilterList, contentDescription = "Filtros")
                 }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.publicationPeriod?.let { period ->
-                    InputChip(selected = false, onClick = { onPeriodSelected(null) }, label = { Text(period.label) },
-                        trailingIcon = { Icon(Icons.Default.Close, "Remover período", Modifier.size(16.dp)) })
-                }
                 if (state.selectedLanguage != "all") {
                     val label = when (state.selectedLanguage) { "pt-br" -> "Português"; "en" -> "Inglês"; "es" -> "Espanhol"; else -> state.selectedLanguage }
                     InputChip(selected = false, onClick = { showFilters = true }, label = { Text(label) })
@@ -230,19 +181,56 @@ fun BrowseScreen(
             }
 
             // Recent Search History Chips (if present)
-            if (searchFocused && state.searchHistory.isNotEmpty()) {
+            if (searchFocused && queryInput.isBlank() && state.searchHistory.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Recentes",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    TextButton(
+                        onClick = onClearSearchHistory,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .height(48.dp)
+                            .testTag("clear_history_button")
+                    ) {
+                        Text(
+                            text = "Limpar",
+                            fontSize = 10.sp,
+                            color = CrimsonRed
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(Icons.Default.History, "Buscas recentes", modifier = Modifier.size(16.dp).align(Alignment.CenterVertically))
-                    state.searchHistory.take(5).forEach { history ->
+                    state.searchHistory.forEach { history ->
                         InputChip(
                             selected = false,
                             onClick = {
-                                dismissSearchKeyboard()
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
                                 queryInput = history.query
                                 onSearchSubmit(history.query)
                             },
@@ -255,20 +243,16 @@ fun BrowseScreen(
                             modifier = Modifier.testTag("search_history_chip_${history.id}")
                         )
                     }
-                    TextButton(onClick = onClearSearchHistory, modifier = Modifier.testTag("clear_history_button")) {
-                        Text("Limpar", style = MaterialTheme.typography.labelSmall)
-                    }
                 }
             }
 
         }
 
-        val isFilterOrSearchActive = state.publicationPeriod != null || state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all"
+        val isFilterOrSearchActive = state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all"
 
-        // Some IMEs/OEMs dispatch Back to the app before dismissing the keyboard.
-        // Editing must end before Back can clear the current search or filters.
-        BackHandler(enabled = !showFilters && (searchFocused || keyboardVisible || isFilterOrSearchActive)) {
-            if (searchFocused || keyboardVisible) dismissSearchKeyboard() else onClearFilters()
+        // Intercept back button to return to full carousel view when filtering
+        BackHandler(enabled = isFilterOrSearchActive && !showFilters) {
+            onClearFilters()
         }
 
         PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
@@ -386,7 +370,7 @@ fun BrowseScreen(
                         val isFav = favoriteUrls.contains(manga.url)
                         MangaCard(
                             manga = manga,
-                            onClick = { dismissSearchKeyboard(); onMangaClick(manga) },
+                            onClick = { onMangaClick(manga) },
                             isFavorite = isFav,
                             onFavoriteToggle = { onFavoriteToggle(manga) },
                             showSource = state.mangaList.map { it.sourceId }.distinct().size > 1
@@ -512,7 +496,7 @@ fun BrowseScreen(
                                 val isFav = favoriteUrls.contains(manga.url)
                                 MangaCard(
                                     manga = manga,
-                                    onClick = { dismissSearchKeyboard(); onMangaClick(manga) },
+                                    onClick = { onMangaClick(manga) },
                                     isFavorite = isFav,
                                     onFavoriteToggle = { onFavoriteToggle(manga) },
                                     showSource = section.items.map { it.sourceId }.distinct().size > 1,

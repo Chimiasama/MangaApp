@@ -10,8 +10,7 @@ data class MangaModel(
     val isNsfw: Boolean = false,
     val sourceId: String,
     val author: String = "",
-    val status: String = "Unknown",
-    val publicationYear: Int? = null
+    val status: String = "Unknown"
 )
 
 /**

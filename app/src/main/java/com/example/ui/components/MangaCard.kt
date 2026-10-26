@@ -76,7 +76,7 @@ fun MangaCard(
                         .padding(8.dp)
                 ) {
                     Text(
-                        text = if (manga.sourceId == "localpdf") "PDF LOCAL" else manga.sourceId.uppercase(),
+                        text = manga.sourceId.uppercase(),
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.SemiBold,

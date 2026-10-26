@@ -75,10 +75,7 @@ fun nextDoubleTapScale(scale: Float, stepped: Boolean): Float = if (!stepped) {
 }
 
 fun adjacentChapter(chapters: List<ChapterModel>, currentId: String?, next: Boolean): ChapterModel? {
-    val current = chapters.firstOrNull { it.id == currentId }
-    fun group(chapter: ChapterModel) = Regex("(?i)^(?:group|grupo)\\s+(\\d+)\\b").find(chapter.title.trim())?.groupValues?.get(1).orEmpty()
-    val sequence = if (current != null && chapters.any { group(it).isNotEmpty() }) chapters.filter { group(it) == group(current) } else chapters
-    val ordered = sequence.distinctBy { it.id }.sortedBy { it.chapterNumber }
+    val ordered = chapters.distinctBy { it.id }.sortedBy { it.chapterNumber }
     val index = ordered.indexOfFirst { it.id == currentId }
     return if (index < 0) null else ordered.getOrNull(index + if (next) 1 else -1)
 }

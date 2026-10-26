@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -71,15 +70,6 @@ class SettingsViewModel(
     private val preferencesRepository: UserPreferencesRepository,
     private val aniListSyncManager: com.example.data.sync.AniListSyncManager = com.example.data.sync.AniListSyncManager()
 ) : ViewModel() {
-
-    init {
-        viewModelScope.launch {
-            val saved = preferencesRepository.customRulesJson.first()
-            if (!saved.isNullOrBlank() && repository.sourceWorkspace?.snapshot()?.has("rules") == false) {
-                kotlinx.coroutines.withContext(Dispatchers.IO) { repository.loadScraperRulesFromJson(saved) }
-            }
-        }
-    }
 
     private val _rulesStatus = MutableStateFlow<Boolean?>(null)
     private val _cacheSize = MutableStateFlow("0 B")
@@ -201,7 +191,7 @@ class SettingsViewModel(
 
     fun importScraperRulesJson(json: String) {
         viewModelScope.launch {
-            val success = kotlinx.coroutines.withContext(Dispatchers.IO) { repository.loadScraperRulesFromJson(json) }
+            val success = repository.loadScraperRulesFromJson(json)
             if (success) {
                 preferencesRepository.saveCustomRulesJson(json)
                 _rulesStatus.value = true

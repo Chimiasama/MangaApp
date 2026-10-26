@@ -41,46 +41,26 @@ class HtmlMangaSource(
     override suspend fun getPopularManga(language: String): List<MangaModel> =
         if (!ChapterLanguage.matches(lang, language)) emptyList() else searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)
-    override suspend fun searchManga(query: String, language: String): List<MangaModel> = searchManga(query, language, "all")
-    override suspend fun searchManga(query: String, language: String, category: String): List<MangaModel> {
+    override suspend fun searchManga(query: String, language: String): List<MangaModel> {
         if (!ChapterLanguage.matches(lang, language)) return emptyList()
-        val categoryValue = if (MangaCategories.isAll(category)) null else {
-            val filters = document(if (site == Site.WEEBCENTRAL) "$baseUrl/search" else "$baseUrl/manga/")
-            when (site) {
-                Site.WEEBCENTRAL -> filters.select("input[id$=-value]").firstOrNull {
-                    MangaCategories.key(it.attr("value")) == MangaCategories.key(category)
-                }?.attr("value")
-                Site.LEERCAPITULO -> filters.select("select[name=genre] option").firstOrNull {
-                    MangaCategories.key(it.text()) == MangaCategories.key(category)
-                }?.attr("value")?.let { baseUrl.toHttpUrl().resolve(it)?.queryParameter("genre") }
-            } ?: return emptyList()
-        }
         val url = when (site) {
             Site.WEEBCENTRAL -> "$baseUrl/search/data".toHttpUrl().newBuilder()
                 .addQueryParameter("text", query).addQueryParameter("limit", "50")
                 .addQueryParameter("offset", "0").addQueryParameter("display_mode", "Full Display")
-                .apply { if (categoryValue != null) addQueryParameter("included_tag", categoryValue) }
                 .addQueryParameter("sort", "Popularity").addQueryParameter("order", "Descending").build().toString()
-            Site.LEERCAPITULO -> "$baseUrl/manga/".toHttpUrl().newBuilder().addQueryParameter("q", query)
-                .apply { if (categoryValue != null) addQueryParameter("genre", categoryValue) }.build().toString()
+            Site.LEERCAPITULO -> "$baseUrl/manga/".toHttpUrl().newBuilder().addQueryParameter("q", query).build().toString()
         }
         val doc = document(url)
         return when (site) {
             Site.WEEBCENTRAL -> doc.select("article > section > a[href*=/series/]").mapNotNull { a ->
                 val title = a.selectFirst("img")?.attr("alt")?.removeSuffix(" cover")?.trim().orEmpty()
-                val genres = a.closest("article")?.select("div:has(> strong:contains(Tag)) > span")
-                    ?.map { it.text().trim().trimEnd(',') }.orEmpty()
-                if (title.isEmpty()) null else model(a.absUrl("href"), title, image(a), genres).copy(publicationYear =
-                    a.closest("article")?.selectFirst("div:has(> strong:contains(Year)) > span")?.text()?.toIntOrNull())
+                if (title.isEmpty()) null else model(a.absUrl("href"), title, image(a))
             }
             Site.LEERCAPITULO -> doc.select("article.lc-card").mapNotNull { card ->
                 val a = card.selectFirst("a.lc-card-name") ?: return@mapNotNull null
                 model(a.absUrl("href"), a.text(), image(card))
             }
-        }.distinctBy { it.url }.map { manga ->
-            if (categoryValue == null || manga.genres.isNotEmpty()) manga
-            else manga.copy(genres = listOf(MangaCategories.key(category)))
-        }
+        }.distinctBy { it.url }
     }
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel {
         val doc = document(mangaUrl)
@@ -98,10 +78,7 @@ class HtmlMangaSource(
             Site.WEEBCENTRAL -> doc.selectFirst("li:has(strong:contains(Description)) > p")?.text()
             Site.LEERCAPITULO -> doc.selectFirst("#sinopsis p:not(.lc-muted)")?.text()
         }.orEmpty()
-        val year = if (site == Site.WEEBCENTRAL) doc.selectFirst("li:has(strong:contains(Released)), li:has(strong:contains(Year))")?.text()
-            ?.let { Regex("\\b(18|19|20)\\d{2}\\b").find(it)?.value?.toIntOrNull() } else null
-        val author = if (site == Site.WEEBCENTRAL) doc.select("li:has(strong:contains(Author)) a").joinToString(", ") { it.text() } else ""
-        return model(mangaUrl, title, cover, genres).copy(description = description, publicationYear = year, author = author)
+        return model(mangaUrl, title, cover, genres).copy(description = description)
     }
     override suspend fun getChapters(mangaUrl: String) = getChapters(mangaUrl, lang)
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {
