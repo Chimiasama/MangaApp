@@ -181,6 +181,14 @@ class WebSourceToolsTest {
         assertEquals(second.id, com.example.ui.reader.adjacentChapter(chapters, first.id, true)!!.id)
         assertEquals(otherSecond.id, com.example.ui.reader.adjacentChapter(chapters, other.id, true)!!.id)
     }
+    @Test fun `opaque chapter URLs and traversal strings never become download paths`() {
+        val first = com.example.data.download.downloadStorageKey("https://fixture.test/book", "../../outside/file?token=x/y")
+        val second = com.example.data.download.downloadStorageKey("https://fixture.test/book", "https://fixture.test/chapter/1")
+        assertTrue(first.matches(Regex("chapter_[0-9a-f]{64}")))
+        assertTrue(second.matches(Regex("chapter_[0-9a-f]{64}")))
+        assertNotEquals(first, second)
+        assertEquals(first, com.example.data.download.downloadStorageKey("https://fixture.test/book", "../../outside/file?token=x/y"))
+    }
     @Test fun `directed web search encodes queries without interpreting javascript`() {
         val url = WebUrls.search("Dragon & Ball", listOf("one.test", "two.test"))
         assertTrue(url.startsWith("https://www.google.com/search?"))
