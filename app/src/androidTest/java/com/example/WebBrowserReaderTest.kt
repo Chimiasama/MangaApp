@@ -52,6 +52,7 @@ class WebBrowserReaderTest {
         compose.runOnIdle {
             browser = webView(compose.activity.window.decorView)!!
             val view = browser!!
+            assertTrue(view.settings.javaScriptEnabled)
             assertFalse(view.settings.allowFileAccess)
             assertFalse(view.settings.allowContentAccess)
             assertEquals(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW, view.settings.mixedContentMode)
@@ -68,7 +69,17 @@ class WebBrowserReaderTest {
         }
         compose.waitUntil(15_000) { loaded.get() }
         compose.onNodeWithTag("web_analyze").performClick()
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag("web_read").fetchSemanticsNodes().isNotEmpty() }
+        try {
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithTag("web_read").fetchSemanticsNodes().isNotEmpty() ||
+                    compose.onAllNodesWithTag("source_tools_message").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onRoot().printToLog("WEB_CAPTURE_TEST")
+            compose.onNodeWithTag("web_read").assertExists()
+        } catch (error: Throwable) {
+            compose.onRoot().printToLog("WEB_CAPTURE_TEST")
+            throw error
+        }
         compose.onNodeWithTag("web_read").performClick()
         compose.runOnIdle { assertNotNull(captured) }
         val capture = captured!!
