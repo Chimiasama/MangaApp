@@ -61,11 +61,15 @@ class WebBrowserReaderTest {
                 override fun onPageStarted(web: WebView, url: String?, favicon: Bitmap?) { original.onPageStarted(web, url, favicon) }
                 override fun onPageFinished(web: WebView, url: String?) { original.onPageFinished(web, url); loaded.set(true) }
                 override fun shouldInterceptRequest(web: WebView, request: WebResourceRequest): WebResourceResponse {
+                    if (request.isForMainFrame) {
+                        val html = "<html><head><title>Fixture chapter</title></head><body><div class='reader-images'><img src='https://fixture.test/1.png'><img src='https://fixture.test/2.png'></div></body></html>"
+                        return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(html.toByteArray()))
+                    }
                     val png = android.util.Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII=", android.util.Base64.DEFAULT)
                     return WebResourceResponse("image/png", null, ByteArrayInputStream(png))
                 }
             }
-            view.loadDataWithBaseURL("https://fixture.test/read/1", "<html><head><title>Fixture chapter</title></head><body><div class='reader-images'><img src='https://fixture.test/1.png'><img src='https://fixture.test/2.png'></div></body></html>", "text/html", "UTF-8", null)
+            view.loadUrl("https://fixture.test/read/1")
         }
         compose.waitUntil(15_000) { loaded.get() }
         compose.onNodeWithTag("web_analyze").performClick()
