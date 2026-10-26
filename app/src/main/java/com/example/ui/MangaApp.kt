@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
@@ -205,7 +206,7 @@ fun MangaApp(
         NavHost(
             navController = navController,
             startDestination = MangaDestinations.BROWSE,
-            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding),
             enterTransition = { fadeIn(animationSpec = tween(250)) },
             exitTransition = { fadeOut(animationSpec = tween(250)) },
             popEnterTransition = { fadeIn(animationSpec = tween(250)) },

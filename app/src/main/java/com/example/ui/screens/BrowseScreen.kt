@@ -123,7 +123,7 @@ fun BrowseScreen(
         ModalBottomSheet(onDismissRequest = { showFilters = false }) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                 Text("Filtros", style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = { showFilters = false; onOpenWeb() }, modifier = Modifier.testTag("open_web_sources")) { Text("Navegador web e gerenciamento de fontes") }
+                TextButton(onClick = { showFilters = false; dismissSearchKeyboard(); onOpenWeb() }, modifier = Modifier.testTag("open_web_sources")) { Text("Navegador web e gerenciamento de fontes") }
                 Text("Idioma dos capítulos", modifier = Modifier.padding(top = 20.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("pt-br" to "Português", "en" to "Inglês", "es" to "Espanhol", "all" to "Todos").forEach { (code, label) ->
@@ -172,7 +172,7 @@ fun BrowseScreen(
             .imePadding()
             .testTag("browse_screen")
     ) {
-        TextButton(onClick = onOpenWeb, modifier = Modifier.testTag("browse_web_sources")) { Text("Pesquisar na web / gerenciar fontes") }
+        TextButton(onClick = { dismissSearchKeyboard(); onOpenWeb() }, modifier = Modifier.testTag("browse_web_sources")) { Text("Pesquisar na web / gerenciar fontes") }
         // Clean Minimal Header Area
         Column(
             modifier = Modifier

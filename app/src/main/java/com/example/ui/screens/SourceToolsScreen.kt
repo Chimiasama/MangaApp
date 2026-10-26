@@ -29,9 +29,11 @@ import org.json.JSONTokener
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", onClose: () -> Unit,
-    onRead: suspend (WebCapture, Boolean) -> Unit) {
+    onRead: suspend (WebCapture, Boolean) -> Unit, onBrowserReady: (WebView) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val workspace = repository.sourceWorkspace
     val revision by (workspace?.revision ?: kotlinx.coroutines.flow.MutableStateFlow(0)).collectAsState()
     val registryRevision by repository.sourceRevision.collectAsState()
@@ -39,6 +41,9 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
     var input by rememberSaveable { mutableStateOf(initialInput) }
     var location by rememberSaveable { mutableStateOf("") }
     var browser by remember { mutableStateOf<WebView?>(null) }
+    var browserRequested by remember { mutableStateOf(false) }
+    var browserAttempt by remember { mutableIntStateOf(0) }
+    var lastInitialInput by rememberSaveable { mutableStateOf(initialInput) }
     var generation by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -73,17 +78,32 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
     }
     fun navigate(value: String) {
         runCatching { WebUrls.valid(value) }.onSuccess {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
             tab = 0; generation++; preview = null; selected = emptySet(); message = null
-            location = it; browser?.loadUrl(it)
+            location = it; loading = true
+            if (browser == null) { browserRequested = false; browserAttempt++ } else browser?.loadUrl(it)
         }.onFailure { message = it.message }
     }
     fun search(query: String, hosts: List<String> = emptyList()) { navigate(WebUrls.search(query, hosts)) }
     BackHandler { if (tab == 0 && browser?.canGoBack() == true) browser?.goBack() else onClose() }
     LaunchedEffect(initialInput) {
-        if (initialInput.isNotBlank()) {
-            if (initialInput.trim().startsWith("https://")) navigate(initialInput.trim()) else search(initialInput)
+        // Opening this destination always exposes native controls first. A search/link
+        // is prefilled; the user starts navigation explicitly.
+        if (initialInput != lastInitialInput) { input = initialInput; lastInitialInput = initialInput }
+    }
+    LaunchedEffect(location, browserAttempt) {
+        if (location.isNotBlank() && browser == null) {
+            loading = true
+            // Let the screen and progress indicator reach the display before the
+            // platform synchronously initializes its WebView provider.
+            withFrameNanos { }
+            withFrameNanos { }
+            browserRequested = true
         }
     }
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground) {
     Column(Modifier.fillMaxSize().padding(12.dp).testTag("source_tools")) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onClose) { Text("Voltar") }
@@ -283,8 +303,8 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
             }
         }
         // Keep the browser mounted while showing a preview or another tab: no page/session reset.
-        Box(if (tab == 0 && preview == null) Modifier.weight(1f).fillMaxWidth() else Modifier.size(0.dp)) {
-            AndroidView(factory = { context -> WebView(context).apply {
+        if (browserRequested) Box(if (tab == 0 && preview == null) Modifier.weight(1f).fillMaxWidth() else Modifier.size(0.dp)) {
+            AndroidView(factory = { context -> try { WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = false
@@ -301,9 +321,19 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
                     }
                 }
                 browser = this
+                onBrowserReady(this)
                 if (location.isNotBlank()) loadUrl(location)
-            } }, onRelease = { view -> view.stopLoading(); view.destroy() }, modifier = Modifier.fillMaxSize())
+            } } catch (error: Exception) {
+                loading = false
+                browser = null
+                message = "Não foi possível iniciar o navegador. Confira se o Android System WebView ou o Chrome está instalado e atualizado. Você pode continuar gerenciando as fontes e tentar abrir novamente."
+                android.widget.TextView(context).apply {
+                    text = "Navegador indisponível. As opções de pesquisa e fontes continuam acima."
+                    setTextColor(android.graphics.Color.GRAY)
+                }
+            } }, onRelease = { view -> (view as? WebView)?.let { it.stopLoading(); it.destroy() } }, modifier = Modifier.fillMaxSize())
         }
+    }
     }
 }
 
