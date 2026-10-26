@@ -134,6 +134,16 @@ class WebSourceToolsTest {
         workspace.rollback()
         assertEquals(1, workspace.rules().single().version)
     }
+    @Test fun `paused source is not queried even when it was selected before pausing`() = runBlocking {
+        val downloads = MangaRepositoryTest.FakeDownloadDao()
+        val repository = com.example.data.repository.MangaRepository(MangaRepositoryTest.FakeMangaDao(), MangaRepositoryTest.FakeProgressDao(),
+            downloads, MangaRepositoryTest.FakeReadingSessionDao(), com.example.data.download.ChapterDownloadManager(context, downloads),
+            com.example.data.preferences.UserPreferencesRepository(context), appContext = context)
+        val rule = SourceWorkspace(context).parseRules(json).single()
+        repository.registerSource(DynamicJsoupSource(rule) { throw AssertionError("Paused source performed a request") })
+        repository.sourceWorkspace!!.setDisabled(rule.id, true)
+        assertTrue(repository.searchManga("book", rule.id).isEmpty())
+    }
     @Test fun `paused source state persists and is reversible`() {
         val workspace = SourceWorkspace(context)
         workspace.setDisabled("mangadash", true)

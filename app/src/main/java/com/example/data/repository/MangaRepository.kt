@@ -243,7 +243,7 @@ class MangaRepository(
         sources: List<MangaSource>,
         fetch: suspend (MangaSource) -> List<MangaModel>
     ): List<Result<List<MangaModel>>> = kotlinx.coroutines.coroutineScope {
-        sources.map { source ->
+        sources.filter { sourceWorkspace?.isDisabled(it.id) != true }.map { source ->
             async {
                 try {
                     Result.success(fetch(source))
