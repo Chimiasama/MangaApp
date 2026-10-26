@@ -64,7 +64,7 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
     fun launchTask(task: suspend () -> String) {
         if (busy) return
         busy = true; message = null
-        scope.launch {
+        scope.launch(Dispatchers.Main.immediate) {
             try { message = task() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { message = SourcePresentation.readError(error) }
@@ -115,12 +115,13 @@ fun SourceToolsScreen(repository: MangaRepository, initialInput: String = "", on
                         val address = view.url ?: return@TextButton
                         val ticket = generation
                         val requestedSelector = selector
+                        val requestedLanguage = language
                         busy = true
                         view.evaluateJavascript(CAPTURE_DOM) { encoded ->
-                            scope.launch {
+                            scope.launch(Dispatchers.Main.immediate) {
                                 try {
                                     val html = JSONTokener(encoded).nextValue() as? String ?: error("O site não permitiu analisar a página.")
-                                    val result = withContext(Dispatchers.Default) { WebExtraction.extract(html, address, requestedSelector, language) }
+                                    val result = withContext(Dispatchers.Default) { WebExtraction.extract(html, address, requestedSelector, requestedLanguage) }
                                     if (ticket == generation && view.url == address) {
                                         preview = result; selected = result.pages.toSet()
                                         SourceHttp.rememberImages(result.pages, result.url)
