@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [MangaEntity::class, ChapterEntity::class, ProgressEntity::class, DownloadEntity::class, ReadingSessionEntity::class, BookmarkEntity::class, SearchHistoryEntity::class],
-    version = 8,
+    entities = [ReadChapterEntity::class, MangaEntity::class, ChapterEntity::class, ProgressEntity::class, DownloadEntity::class, ReadingSessionEntity::class, BookmarkEntity::class, SearchHistoryEntity::class],
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,6 +21,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun searchHistoryDao(): SearchHistoryDao
 
     companion object {
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS read_chapters (mangaUrl TEXT NOT NULL, sourceId TEXT NOT NULL, chapterId TEXT NOT NULL, completedAt INTEGER NOT NULL, PRIMARY KEY(mangaUrl, sourceId, chapterId))")
+                // Only recover chapters with evidence of completion; opening a chapter used to set isRead.
+                db.execSQL("INSERT OR IGNORE INTO read_chapters SELECT c.mangaUrl, m.sourceId, c.id, c.fetchedTimestamp FROM chapters c INNER JOIN manga_favorites m ON m.url = c.mangaUrl WHERE c.totalPages > 0 AND c.lastPageRead >= c.totalPages - 1")
+            }
+        }
+
         val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE chapters ADD COLUMN language TEXT NOT NULL DEFAULT ''")
@@ -36,7 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "manga_reader_db"
-                ).addMigrations(MIGRATION_7_8).fallbackToDestructiveMigration().build()
+                ).addMigrations(MIGRATION_7_8, MIGRATION_8_9).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }

@@ -18,6 +18,8 @@ import com.example.source.MangaSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -53,7 +55,8 @@ data class MangaDetailUiState(
     val isLoading: Boolean = false,
     val isFavorite: Boolean = false,
     val readingProgress: ProgressEntity? = null,
-    val malRecommendations: List<MalRecommendationItem> = emptyList()
+    val malRecommendations: List<MalRecommendationItem> = emptyList(),
+    val readChapterIds: Set<String> = emptySet()
 )
 
 data class ReaderUiState(
@@ -192,7 +195,7 @@ class MangaViewModel(
     private val _detailMalRecommendations = MutableStateFlow<List<MalRecommendationItem>>(emptyList())
     private val aniListSyncManager = AniListSyncManager()
 
-    val detailUiState: StateFlow<MangaDetailUiState> = combine(
+    private val baseDetailUiState = combine(
         _detailManga,
         _detailChapters,
         _isLoadingDetail,
@@ -210,6 +213,20 @@ class MangaViewModel(
             malRecommendations = recs
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val detailUiState: StateFlow<MangaDetailUiState> = combine(
+        baseDetailUiState,
+        _detailManga.flatMapLatest { manga ->
+            if (manga == null) kotlinx.coroutines.flow.flowOf(Triple("", "", emptyList<String>()))
+            else repository.getReadChapterIds(manga.url, manga.sourceId)
+                .map { ids -> Triple(manga.url, manga.sourceId, ids) }
+        }
+    ) { detail, read ->
+        val matchesManga = detail.manga?.url == read.first && detail.manga?.sourceId == read.second
+        detail.copy(readChapterIds = if (matchesManga) read.third.toSet() else emptySet())
+    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
 
     // Reader State
     private val _readerState = MutableStateFlow(ReaderUiState())
@@ -890,6 +907,9 @@ class MangaViewModel(
         val chapter = state.currentChapter ?: return
         if (state.pages.isEmpty()) return
         state.viewport?.let { repository.preferencesRepository.saveReaderViewport(state.mangaUrl, it) }
+        if (state.currentPageIndex >= state.pages.lastIndex) {
+            repository.markChapterRead(state.mangaUrl, state.sourceId, chapter.id)
+        }
         repository.saveReadingProgress(state.mangaUrl, chapter.id, chapter.title, chapter.chapterUrl,
             state.currentPageIndex, state.pages.size, state.scrollOffset)
         repository.saveAutoScrollBookmark(mangaUrl = state.mangaUrl, mangaTitle = state.mangaTitle.ifBlank { "Mangá" },

@@ -23,6 +23,19 @@ class ChapterLanguageScreenTest {
     private val manga = MangaModel("manga", "manga", "Teste", "", sourceId = "mangadex")
     private val russian = ChapterModel("ru", "Конец. [RU]", "ru", 115f, language = "ru")
     private val portuguese = ChapterModel("pt", "Epílogo", "pt", 115.5f, language = "pt-br")
+    @Test fun `detail identifies completed chapters separately from unread chapters`() {
+        val unread = portuguese.copy(id = "unread", chapterNumber = 116f)
+        compose.setContent {
+            MaterialTheme { MangaDetailScreen(state = MangaDetailUiState(manga = manga,
+                chapters = listOf(portuguese, unread), readChapterIds = setOf(portuguese.id)),
+                downloads = emptyList(), onBack = {}, onToggleFavorite = {},
+                onChapterClick = {}, onDownloadChapter = {}, onDeleteDownload = {}) }
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("chapter_item_pt"))
+        compose.onNodeWithTag("chapter_read_pt", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("chapter_read_unread", useUnmergedTree = true).assertDoesNotExist()
+    }
+
     @Test fun `read now uses Portuguese even when the supplied list contains a lower Russian chapter`() {
         var opened = ""
         compose.setContent {

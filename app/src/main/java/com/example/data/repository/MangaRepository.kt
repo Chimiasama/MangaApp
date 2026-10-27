@@ -577,6 +577,13 @@ class MangaRepository(
         mangaDao.deleteFavoriteByUrl(url)
     }
 
+    fun getReadChapterIds(mangaUrl: String, sourceId: String): Flow<List<String>> =
+        progressDao.getReadChapterIds(mangaUrl, sourceId)
+
+    suspend fun markChapterRead(mangaUrl: String, sourceId: String, chapterId: String) {
+        progressDao.markChapterRead(com.example.data.local.ReadChapterEntity(mangaUrl, sourceId, chapterId))
+    }
+
     // Room Reading Progress
     val readingProgress: Flow<List<ProgressEntity>> = progressDao.getAllProgress()
 

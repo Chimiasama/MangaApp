@@ -28,7 +28,7 @@ class ChapterLanguagePersistenceTest {
         sqlite.version = 7
         sqlite.close()
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name).allowMainThreadQueries()
-            .addMigrations(AppDatabase.MIGRATION_7_8).build()
+            .addMigrations(AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9).build()
         try {
             val old = migrated.chapterDao().getChapterByIdSync("saved")!!
             assertTrue(old.isRead)

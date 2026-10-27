@@ -931,6 +931,7 @@ fun MangaDetailScreen(
                             ChapterRowItem(
                                 chapter = chapter,
                                 isCurrentReading = state.readingProgress?.chapterId == chapter.id,
+                                isRead = chapter.id in state.readChapterIds,
                                 downloadRecord = downloads.find { it.chapterId == chapter.id },
                                 isSelectionMode = isSelectionMode,
                                 isSelected = selectedChapterIds.contains(chapter.id),
@@ -970,6 +971,7 @@ fun MangaDetailScreen(
                     ChapterRowItem(
                         chapter = chapter,
                         isCurrentReading = state.readingProgress?.chapterId == chapter.id,
+                        isRead = chapter.id in state.readChapterIds,
                         downloadRecord = downloads.find { it.chapterId == chapter.id },
                         isSelectionMode = isSelectionMode,
                         isSelected = selectedChapterIds.contains(chapter.id),
@@ -1112,6 +1114,7 @@ private fun ChapterGroupHeader(
 private fun ChapterRowItem(
     chapter: ChapterModel,
     isCurrentReading: Boolean,
+    isRead: Boolean,
     downloadRecord: DownloadEntity?,
     isSelectionMode: Boolean,
     isSelected: Boolean,
@@ -1168,6 +1171,15 @@ private fun ChapterRowItem(
             }
 
             Column(modifier = Modifier.weight(1f)) {
+                if (isRead) {
+                    Text(
+                        text = "✓ Lido",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.testTag("chapter_read_${chapter.id}")
+                    )
+                }
                 Text(
                     text = formatChapterTitle(chapter.title),
                     fontWeight = FontWeight.SemiBold,

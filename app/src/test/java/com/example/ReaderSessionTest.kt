@@ -54,6 +54,24 @@ class ReaderSessionTest {
                 MangaViewModel(repository, loadBrowseOnInit = false, readerPages = loader) as T
         })[MangaViewModel::class.java]
 
+    @Test fun `only reaching the final page records completion and rereading keeps it`() = runBlocking {
+        val vm = model { _, _ -> listOf("a", "b", "c") }
+        vm.openReader(manga, chapters[0], chapters)
+        withTimeout(10_000) { vm.readerUiState.first { it.currentChapter?.id == "1" && !it.isLoading } }
+        vm.updateReaderPageIndex(1)
+        vm.flushReaderScrollPosition()
+        withTimeout(10_000) { database.progressDao().getProgressForManga(manga.url).first { it?.lastPageRead == 1 } }
+        assertTrue(repository.getReadChapterIds(manga.url, manga.sourceId).first().isEmpty())
+        vm.updateReaderPageIndex(2)
+        vm.flushReaderScrollPosition()
+        withTimeout(10_000) { repository.getReadChapterIds(manga.url, manga.sourceId).first { "1" in it } }
+        vm.updateReaderPageIndex(0)
+        vm.navigateChapter(true)
+        withTimeout(10_000) { vm.readerUiState.first { it.currentChapter?.id == "2" && !it.isLoading } }
+        assertEquals(listOf("1"), repository.getReadChapterIds(manga.url, manga.sourceId).first())
+        assertTrue(repository.getReadChapterIds(manga.url, "another-source").first().isEmpty())
+    }
+
     @Test fun `rapid requests cannot let an old chapter replace the latest result`() = runBlocking {
         val firstRequest = CompletableDeferred<Unit>()
         val vm = model { chapter, _ ->
