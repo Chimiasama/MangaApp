@@ -406,7 +406,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Fantasia", "Sobrenatural"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Chugong"
+                author = "Chugong",
+                year = 2018
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/a1c7c817-4e59-43b7-9365-09675a149a6f",
@@ -417,7 +418,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Aventura", "Comédia", "Fantasia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Eiichiro Oda"
+                author = "Eiichiro Oda",
+                year = 1997
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/c52b2ce3-7f95-469c-96b0-479524fb7a1a",
@@ -428,7 +430,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Sobrenatural", "Escolar"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Gege Akutami"
+                author = "Gege Akutami",
+                year = 2018
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/e896c48c-3150-437d-ba57-d8567eb399ae",
@@ -439,7 +442,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Sobrenatural", "Comédia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Tatsuki Fujimoto"
+                author = "Tatsuki Fujimoto",
+                year = 2018
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/275c3ee8-bdeb-4070-a333-6add23a8415a",
@@ -450,7 +454,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ninja", "Ação", "Aventura"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Masashi Kishimoto"
+                author = "Masashi Kishimoto",
+                year = 1999
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/789642f8-ca89-4e4e-8f7b-eee4d17ea08b",
@@ -461,7 +466,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Sobrenatural", "Fantasia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Koyoharu Gotouge"
+                author = "Koyoharu Gotouge",
+                year = 2016
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/6b958848-c885-4735-9201-12ee77abcb3c",
@@ -472,7 +478,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Comédia", "Ação", "Escolar"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Tatsuya Endo"
+                author = "Tatsuya Endo",
+                year = 2019
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/a460ab18-22c1-47eb-a08a-9ee85fe37ec8",
@@ -483,7 +490,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Sobrenatural", "Fantasia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Tite Kubo"
+                author = "Tite Kubo",
+                year = 2001
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/529d7d4e-54ad-4370-8d12-163bf437c9d4",
@@ -494,7 +502,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Fantasia", "Mistério"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Hajime Isayama"
+                author = "Hajime Isayama",
+                year = 2009
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/1a051bb3-094e-4494-aa2e-fdac29b9ab5b",
@@ -505,7 +514,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Escolar", "Comédia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Kohei Horikoshi"
+                author = "Kohei Horikoshi",
+                year = 2014
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/b0b721ff-c388-4486-aa0f-c2b0bb321512",
@@ -516,7 +526,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Aventura", "Fantasia", "Magia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Kanehito Yamada"
+                author = "Kanehito Yamada",
+                year = 2020
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/61d81be6-2759-4cc4-9815-7952a3449149",
@@ -527,7 +538,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Isekai", "Fantasia", "Ação", "Comédia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Fuse"
+                author = "Fuse",
+                year = 2015
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/6114f59f-4047-496b-8605-c6264c76d49f",
@@ -538,7 +550,8 @@ class MangaDexSource(
                 genres = listOf("Isekai", "Fantasia", "Aventura", "Romance"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Rifujin na Magonote"
+                author = "Rifujin na Magonote",
+                year = 2014
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/a84264f6-a979-4573-89b3-09dd5c050c2b",
@@ -549,7 +562,8 @@ class MangaDexSource(
                 genres = listOf("Romance", "Comédia", "Escolar", "Seinen"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Aka Akasaka"
+                author = "Aka Akasaka",
+                year = 2015
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/a25e46ec-30f7-4db6-89df-cacbc1d9a900",
@@ -560,7 +574,8 @@ class MangaDexSource(
                 genres = listOf("Romance", "Comédia", "Escolar", "Shounen"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "HERO"
+                author = "HERO",
+                year = 2011
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/a96676e5-8ae2-425e-b549-7f15dd34a6d8",
@@ -571,7 +586,8 @@ class MangaDexSource(
                 genres = listOf("Comédia", "Escolar", "Shounen", "Romance"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Tomohito Oda"
+                author = "Tomohito Oda",
+                year = 2016
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/29c42e49-d6f5-4084-9cec-771f5660c90f",
@@ -582,7 +598,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Comédia", "Sci-Fi"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "ONE"
+                author = "ONE",
+                year = 2012
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/6e2d91b9-81b4-448c-8ace-fb17d4a99d44",
@@ -593,7 +610,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Comédia", "Sobrenatural", "Escolar"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "ONE"
+                author = "ONE",
+                year = 2012
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/869ad120-7341-4ea9-a980-f3545bc0503c",
@@ -604,7 +622,8 @@ class MangaDexSource(
                 genres = listOf("Sci-Fi", "Aventura", "Shounen", "Comédia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Riichiro Inagaki"
+                author = "Riichiro Inagaki",
+                year = 2017
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/801513ba-a712-498c-8f57-cae55b38cc92",
@@ -615,7 +634,8 @@ class MangaDexSource(
                 genres = listOf("Seinen", "Ação", "Aventura", "Fantasia", "Sobrenatural"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Kentaro Miura"
+                author = "Kentaro Miura",
+                year = 1989
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/91d928a1-7237-4d03-abc3-4b1440cc7d55",
@@ -626,7 +646,8 @@ class MangaDexSource(
                 genres = listOf("Isekai", "Ação", "Fantasia", "Comédia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Daisuke Aizawa"
+                author = "Daisuke Aizawa",
+                year = 2018
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/f9c9614d-0657-44c6-9c33-47fd58cd51b3",
@@ -637,7 +658,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Aventura", "Fantasia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Hiromu Arakawa"
+                author = "Hiromu Arakawa",
+                year = 2001
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/158e8c61-8146-45fc-b945-d8d08a405477",
@@ -648,7 +670,8 @@ class MangaDexSource(
                 genres = listOf("Sci-Fi", "Sobrenatural", "Mistério"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "5pb. / Nitroplus"
+                author = "5pb. / Nitroplus",
+                year = 2009
             ),
             MangaModel(
                 url = "https://api.mangadex.org/manga/db692d58-4b13-4174-ae8c-30c515c0689c",
@@ -659,7 +682,8 @@ class MangaDexSource(
                 genres = listOf("Shounen", "Ação", "Aventura", "Fantasia"),
                 isNsfw = false,
                 sourceId = "mangadex",
-                author = "Yoshihiro Togashi"
+                author = "Yoshihiro Togashi",
+                year = 1998
             )
         )
     }
