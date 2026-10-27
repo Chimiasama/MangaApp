@@ -878,6 +878,20 @@ class MangaViewModel(
         }
     }
 
+    fun setChapterRead(chapter: ChapterModel, read: Boolean) {
+        val manga = _detailManga.value ?: return
+        viewModelScope.launch {
+            if (read) repository.markChapterRead(manga.url, manga.sourceId, chapter.id)
+            else repository.markChapterUnread(manga.url, manga.sourceId, chapter.id)
+        }
+    }
+
+    fun completeReaderChapter(chapterId: String) {
+        val state = _readerState.value
+        if (state.isLoading || state.pages.isEmpty() || state.currentChapter?.id != chapterId) return
+        viewModelScope.launch { repository.markChapterRead(state.mangaUrl, state.sourceId, chapterId) }
+    }
+
     private var scrollSyncJob: kotlinx.coroutines.Job? = null
 
     fun updateReaderScrollPosition(pageIndex: Int, scrollOffset: Int) {

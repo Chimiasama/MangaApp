@@ -72,6 +72,17 @@ class ReaderSessionTest {
         assertTrue(repository.getReadChapterIds(manga.url, "another-source").first().isEmpty())
     }
 
+    @Test fun `completion signal persists even when viewport starts on an earlier page and ignores stale chapters`() = runBlocking {
+        val vm = model { _, _ -> listOf("a", "b", "c") }
+        vm.openReader(manga, chapters[0], chapters)
+        withTimeout(10_000) { vm.readerUiState.first { it.currentChapter?.id == "1" && !it.isLoading } }
+        vm.completeReaderChapter("stale-chapter")
+        assertTrue(repository.getReadChapterIds(manga.url, manga.sourceId).first().isEmpty())
+        vm.completeReaderChapter("1")
+        withTimeout(10_000) { repository.getReadChapterIds(manga.url, manga.sourceId).first { "1" in it } }
+        assertEquals(0, vm.readerUiState.value.currentPageIndex)
+    }
+
     @Test fun `rapid requests cannot let an old chapter replace the latest result`() = runBlocking {
         val firstRequest = CompletableDeferred<Unit>()
         val vm = model { chapter, _ ->

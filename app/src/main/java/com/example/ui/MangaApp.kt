@@ -271,6 +271,7 @@ fun MangaApp(
             ) {
                 val context = LocalContext.current
                 MangaDetailScreen(
+                    onChapterReadChanged = mangaViewModel::setChapterRead,
                     state = detailState,
                     downloads = downloads,
                     selectedLanguage = selectedLanguage,
@@ -323,6 +324,8 @@ fun MangaApp(
                     onRetryChapter = mangaViewModel::retryReaderChapter,
                     readerMode = settingsState.readerMode,
                     readerOrientation = settingsState.readerOrientation,
+                    onReaderOrientationChanged = settingsViewModel::setReaderOrientation,
+                    onChapterCompleted = mangaViewModel::completeReaderChapter,
                     defaultFullscreen = settingsState.defaultFullscreenReader,
                     readerBackgroundColor = settingsState.readerBackgroundColor,
                     readerInvertColors = settingsState.readerInvertColors,

@@ -97,7 +97,8 @@ fun MangaDetailScreen(
     onDownloadChapter: (ChapterModel) -> Unit,
     onDownloadMultipleChapters: (List<ChapterModel>) -> Unit = {},
     onDeleteDownload: (String) -> Unit,
-    onSearchRecommendation: (String) -> Unit = {}
+    onSearchRecommendation: (String) -> Unit = {},
+    onChapterReadChanged: (ChapterModel, Boolean) -> Unit = { _, _ -> }
 ) {
     val manga = state.manga ?: return
     val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, selectedLanguage) }
@@ -932,6 +933,7 @@ fun MangaDetailScreen(
                                 chapter = chapter,
                                 isCurrentReading = state.readingProgress?.chapterId == chapter.id,
                                 isRead = chapter.id in state.readChapterIds,
+                                onToggleRead = { onChapterReadChanged(chapter, chapter.id !in state.readChapterIds) },
                                 downloadRecord = downloads.find { it.chapterId == chapter.id },
                                 isSelectionMode = isSelectionMode,
                                 isSelected = selectedChapterIds.contains(chapter.id),
@@ -972,6 +974,7 @@ fun MangaDetailScreen(
                         chapter = chapter,
                         isCurrentReading = state.readingProgress?.chapterId == chapter.id,
                         isRead = chapter.id in state.readChapterIds,
+                        onToggleRead = { onChapterReadChanged(chapter, chapter.id !in state.readChapterIds) },
                         downloadRecord = downloads.find { it.chapterId == chapter.id },
                         isSelectionMode = isSelectionMode,
                         isSelected = selectedChapterIds.contains(chapter.id),
@@ -1115,6 +1118,7 @@ private fun ChapterRowItem(
     chapter: ChapterModel,
     isCurrentReading: Boolean,
     isRead: Boolean,
+    onToggleRead: () -> Unit,
     downloadRecord: DownloadEntity?,
     isSelectionMode: Boolean,
     isSelected: Boolean,
@@ -1196,6 +1200,14 @@ private fun ChapterRowItem(
                 }
             }
 
+            // Read status is independent of download status.
+            IconButton(onClick = onToggleRead, modifier = Modifier.testTag("chapter_toggle_read_${chapter.id}")) {
+                Icon(
+                    imageVector = if (isRead) Icons.Default.CheckCircle else Icons.Default.Checklist,
+                    contentDescription = if (isRead) "Marcar como não lido" else "Marcar como lido",
+                    tint = if (isRead) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             // Download Action / Status
             Row(verticalAlignment = Alignment.CenterVertically) {
                 when (downloadRecord?.downloadState) {

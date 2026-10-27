@@ -11,6 +11,9 @@ interface ProgressDao {
     @Query("SELECT chapterId FROM read_chapters WHERE mangaUrl = :mangaUrl AND sourceId = :sourceId")
     fun getReadChapterIds(mangaUrl: String, sourceId: String): Flow<List<String>>
 
+    @Query("DELETE FROM read_chapters WHERE mangaUrl = :mangaUrl AND sourceId = :sourceId AND chapterId = :chapterId")
+    suspend fun markChapterUnread(mangaUrl: String, sourceId: String, chapterId: String)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun markChapterRead(chapter: ReadChapterEntity)
 

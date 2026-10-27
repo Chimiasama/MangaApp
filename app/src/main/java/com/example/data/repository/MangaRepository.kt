@@ -584,6 +584,10 @@ class MangaRepository(
         progressDao.markChapterRead(com.example.data.local.ReadChapterEntity(mangaUrl, sourceId, chapterId))
     }
 
+    suspend fun markChapterUnread(mangaUrl: String, sourceId: String, chapterId: String) {
+        progressDao.markChapterUnread(mangaUrl, sourceId, chapterId)
+    }
+
     // Room Reading Progress
     val readingProgress: Flow<List<ProgressEntity>> = progressDao.getAllProgress()
 

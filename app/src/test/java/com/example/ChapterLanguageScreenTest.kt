@@ -36,6 +36,22 @@ class ChapterLanguageScreenTest {
         compose.onNodeWithTag("chapter_read_unread", useUnmergedTree = true).assertDoesNotExist()
     }
 
+    @Test fun `manual chapter toggle can correct an older reading record`() {
+        val read = androidx.compose.runtime.mutableStateOf(false)
+        compose.setContent {
+            MaterialTheme { MangaDetailScreen(state = MangaDetailUiState(manga = manga,
+                chapters = listOf(portuguese), readChapterIds = if (read.value) setOf(portuguese.id) else emptySet()),
+                downloads = emptyList(), onBack = {}, onToggleFavorite = {},
+                onChapterClick = {}, onDownloadChapter = {}, onDeleteDownload = {},
+                onChapterReadChanged = { chapter, value -> assertEquals(portuguese.id, chapter.id); read.value = value }) }
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("chapter_item_pt"))
+        compose.onNodeWithTag("chapter_toggle_read_pt").performClick()
+        compose.onNodeWithTag("chapter_read_pt", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("chapter_toggle_read_pt").performClick()
+        compose.onNodeWithTag("chapter_read_pt", useUnmergedTree = true).assertDoesNotExist()
+    }
+
     @Test fun `read now uses Portuguese even when the supplied list contains a lower Russian chapter`() {
         var opened = ""
         compose.setContent {

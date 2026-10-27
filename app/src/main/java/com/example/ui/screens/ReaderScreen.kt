@@ -99,7 +99,9 @@ fun ReaderScreen(
     onOptionsChanged: (ReaderOptions) -> Unit = {},
     onViewportChanged: (ReaderViewport) -> Unit = {},
     onChapterSelected: (ChapterModel) -> Unit = {},
-    onRetryChapter: () -> Unit = {}
+    onRetryChapter: () -> Unit = {},
+    onReaderOrientationChanged: (String) -> Unit = {},
+    onChapterCompleted: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -111,6 +113,7 @@ fun ReaderScreen(
     val rtl = mode == "PAGED_RTL"
     var controls by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    var orientationMenu by remember { mutableStateOf(false) }
     var chapters by remember { mutableStateOf(false) }
     var chapterQuery by remember { mutableStateOf("") }
     var interacting by remember { mutableStateOf(false) }
@@ -145,6 +148,7 @@ fun ReaderScreen(
     val next = adjacentChapter(state.chaptersList, state.currentChapter?.id, true)
     val latestState by rememberUpdatedState(state)
     val latestNavigate by rememberUpdatedState(onNavigateChapter)
+    val latestCompleted by rememberUpdatedState(onChapterCompleted)
     val latestFlush by rememberUpdatedState(onFlushScrollPosition)
     val latestScroll by rememberUpdatedState(onScrollPositionChanged)
     val latestViewport by rememberUpdatedState(onViewportChanged)
@@ -156,8 +160,8 @@ fun ReaderScreen(
     fun touch() { interactionVersion++ }
     val controlInteraction: (Boolean) -> Unit = remember { { active -> controlsInteracting = active; interactionVersion++ } }
     val timeoutMs = if (options.controlsTimeoutSeconds == 0) 0L else (options.controlsTimeoutSeconds * 1000L).coerceAtMost(2000L)
-    LaunchedEffect(controls, interactionVersion, controlsInteracting, settings, chapters, options.controlsTimeoutSeconds) {
-        if (controls && !settings && !chapters && timeoutMs > 0L) {
+    LaunchedEffect(controls, interactionVersion, controlsInteracting, settings, chapters, orientationMenu, options.controlsTimeoutSeconds) {
+        if (controls && !settings && !chapters && !orientationMenu && timeoutMs > 0L) {
             if (!controlsInteracting) {
                 delay(timeoutMs)
                 controls = false
@@ -174,7 +178,7 @@ fun ReaderScreen(
         activity?.requestedOrientation = when (readerOrientation) {
             "PORTRAIT" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             "LANDSCAPE" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         }
         activity?.window?.let { window ->
             WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -238,6 +242,18 @@ fun ReaderScreen(
             liveViewport = snapshot
             latestScroll(snapshot.pageIndex, offset)
             latestViewport(snapshot)
+        }
+    }
+    LaunchedEffect(state.contentVersion, mode, restoring, state.isLoading) {
+        if (restoring || state.isLoading || state.pages.isEmpty()) return@LaunchedEffect
+        val chapterId = state.currentChapter?.id ?: return@LaunchedEffect
+        snapshotFlow {
+            if (webtoon) {
+                !list.canScrollForward && list.layoutInfo.visibleItemsInfo.any { it.index == state.pages.lastIndex } &&
+                    list.layoutInfo.visibleItemsInfo.all { item -> state.pages.getOrNull(item.index) in imageSizes }
+            } else pager.settledPage == state.pages.lastIndex && state.pages.last() in imageSizes
+        }.distinctUntilChanged().collect { completed ->
+            if (completed && size.width == restoredWidth) latestCompleted(chapterId)
         }
     }
     var lastPage by remember { mutableIntStateOf(0) }
@@ -438,7 +454,7 @@ fun ReaderScreen(
                 }
             }
         }
-        if (batterySaverEnabled && batterySaverDimPercent > 0) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = batterySaverDimPercent / 100f)))
+        if (batterySaverDimPercent > 0) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = batterySaverDimPercent / 100f)))
         if (abs(pull) > 0) {
             val target = if (pull < 0) next else previous
             val ready = abs(pull) >= threshold
@@ -450,13 +466,6 @@ fun ReaderScreen(
                     Text("Recue o dedo para cancelar", style = MaterialTheme.typography.labelSmall)
                 }
             }
-        }
-        if (state.pages.isNotEmpty() && !controls && pull == 0f) {
-            Text("${pageIndex + 1} / ${state.pages.size}  •  ${"%.2f".format(scale)}×  •  $clock",
-                color = Color.White, modifier = Modifier.align(Alignment.BottomEnd)
-                    .background(Color.Black.copy(alpha = 0.7f)).padding(8.dp).testTag("reader_position"))
-            LinearProgressIndicator(progress = { (pageIndex + 1f) / state.pages.size },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp), color = CrimsonRed)
         }
         AnimatedVisibility(controls && state.pages.size > 1, modifier = Modifier.align(Alignment.CenterEnd)
             .readerControlInteraction(controlInteraction)) {
@@ -474,8 +483,25 @@ fun ReaderScreen(
                             Text(state.mangaTitle, maxLines = 1, style = MaterialTheme.typography.labelMedium)
                             Text(state.currentChapter?.title ?: "Leitor", maxLines = 1)
                         }
-                        IconButton(onClick = { applyZoom(1f / scale, Offset(size.width / 2f, size.height / 2f), Offset.Zero); touch() }, modifier = Modifier.testTag("reader_reset_zoom")) {
-                            Icon(Icons.Default.RestartAlt, "Restaurar enquadramento")
+                        Box {
+                            IconButton(onClick = { orientationMenu = true; touch() }, modifier = Modifier.testTag("reader_orientation")) {
+                                Icon(when (readerOrientation) {
+                                    "PORTRAIT" -> Icons.Default.ScreenLockPortrait
+                                    "LANDSCAPE" -> Icons.Default.ScreenLockLandscape
+                                    else -> Icons.Default.ScreenRotation
+                                }, when (readerOrientation) {
+                                    "PORTRAIT" -> "Orientação: retrato travado"
+                                    "LANDSCAPE" -> "Orientação: paisagem travada"
+                                    else -> "Orientação: rotação livre"
+                                })
+                            }
+                            DropdownMenu(expanded = orientationMenu, onDismissRequest = { orientationMenu = false; touch() }) {
+                                listOf("PORTRAIT" to "Travar em retrato", "LANDSCAPE" to "Travar em paisagem", "SENSOR" to "Liberar rotação").forEach { (value, label) ->
+                                    DropdownMenuItem(text = { Text(label) }, onClick = {
+                                        latestFlush(); onReaderOrientationChanged(value); orientationMenu = false; touch()
+                                    }, modifier = Modifier.testTag("reader_orientation_$value"))
+                                }
+                            }
                         }
                         IconButton(onClick = { settings = true; touch() }) { Icon(Icons.Default.Tune, "Opções do leitor") }
                         IconButton(onClick = { onToggleBookmark(pageIndex); touch() }) {
@@ -490,6 +516,11 @@ fun ReaderScreen(
                         TextButton(onClick = { chapters = true; touch() }, modifier = Modifier.testTag("nav_chapters")) { Text("Capítulos") }
                         TextButton(enabled = next != null && !state.isLoading, onClick = { latestNavigate(true); touch() }, modifier = Modifier.testTag("nav_next_chapter")) { Text("Próximo") }
                     }
+                    if (state.pages.isNotEmpty()) Text(
+                        "${pageIndex + 1} / ${state.pages.size}  •  ${"%.2f".format(scale)}×  •  $clock",
+                        modifier = Modifier.testTag("reader_position").padding(horizontal = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
                     if (state.pages.size > 1) Slider(value = pageIndex.toFloat(), valueRange = 0f..state.pages.lastIndex.toFloat(),
                         onValueChange = { value ->
                             touch(); scope.launch { if (webtoon) list.scrollToItem(value.roundToInt()) else pager.scrollToPage(value.roundToInt()) }
@@ -554,13 +585,11 @@ fun ReaderScreen(
                         TextButton(onClick = { onReaderBackgroundColorChanged(key) }) { Text(label) }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Economia de bateria", Modifier.weight(1f)); Switch(batterySaverEnabled, onBatterySaverToggled)
-                }
-                if (batterySaverEnabled) {
-                    Text("Escurecimento: $batterySaverDimPercent%")
-                    Slider(batterySaverDimPercent.toFloat(), onValueChange = { onBatterySaverDimPercentChanged(it.roundToInt()) }, valueRange = 0f..60f)
-                }
+                Text("Escurecimento da tela: $batterySaverDimPercent%")
+                Slider(batterySaverDimPercent.toFloat(), onValueChange = { onBatterySaverDimPercentChanged(it.roundToInt()) },
+                    valueRange = 0f..60f, modifier = Modifier.testTag("reader_dimming_slider"))
+                TextButton(onClick = { applyZoom(1f / scale, Offset(size.width / 2f, size.height / 2f), Offset.Zero); touch() },
+                    modifier = Modifier.testTag("reader_reset_zoom")) { Text("Restaurar zoom e enquadramento") }
                 Spacer(Modifier.height(32.dp))
             }
         }

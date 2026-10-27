@@ -41,6 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReaderInteractionTest {
     @get:Rule val compose = createComposeRule()
+    private val completed = mutableListOf<String>()
+    private val orientations = mutableListOf<String>()
     private val navigations = mutableListOf<Boolean>()
     private var snapshot: ReaderViewport? = null
     private val attempts = AtomicInteger()
@@ -69,10 +71,14 @@ class ReaderInteractionTest {
                      width: MutableState<Int>? = null, externalState: MutableState<ReaderUiState>? = null) {
         compose.setContent {
             MaterialTheme {
+                var orientation by remember { mutableStateOf("SENSOR") }
                 Box(Modifier.size((width?.value ?: 360).dp, 640.dp)) {
                     ReaderScreen(state = externalState?.value ?: ReaderUiState(mangaTitle = "Teste", currentChapter = current, pages = pages,
                         chaptersList = chapterList, contentVersion = 1,
                         viewport = initialViewport ?: ReaderViewport(current.id, scale = scale, mode = mode)),
+                        readerOrientation = orientation,
+                        onReaderOrientationChanged = { orientation = it; orientations += it },
+                        onChapterCompleted = { completed += it },
                         readerMode = mode, pagePreloadEnabled = false, defaultFullscreen = false,
                         onBack = {}, onNavigateChapter = { navigations += it }, onChapterSelected = onChapter,
                         onViewportChanged = { snapshot = it }, options = readerOptions)
@@ -83,6 +89,45 @@ class ReaderInteractionTest {
         compose.waitForIdle()
     }
     private fun screen() = compose.onNodeWithTag("reader_screen")
+
+    @Test fun `webtoon completes when final page is visible even with first page still on screen`() {
+        show(pages = listOf("short:1", "short:2"))
+        compose.waitUntil(10_000) { completed.isNotEmpty() }
+        assertEquals(0, snapshot!!.pageIndex)
+        assertEquals(listOf("two"), completed)
+    }
+
+    @Test fun `position information appears only together with controls`() {
+        show()
+        compose.onNodeWithTag("reader_position").assertDoesNotExist()
+        screen().performTouchInput { click(center) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("reader_position").assertExists()
+        compose.mainClock.advanceTimeBy(3000)
+        compose.waitForIdle()
+        compose.onNodeWithTag("reader_position").assertDoesNotExist()
+    }
+
+    @Test fun `orientation menu selects portrait landscape and free rotation`() {
+        show(readerOptions = ReaderOptions(controlsTimeoutSeconds = 0))
+        screen().performTouchInput { click(center) }
+        compose.mainClock.advanceTimeBy(400)
+        for (value in listOf("PORTRAIT", "LANDSCAPE", "SENSOR")) {
+            compose.onNodeWithTag("reader_orientation").performClick()
+            compose.onNodeWithTag("reader_orientation_$value").performClick()
+            compose.waitForIdle()
+        }
+        assertEquals(listOf("PORTRAIT", "LANDSCAPE", "SENSOR"), orientations)
+    }
+
+    @Test fun `dimming slider is available without enabling battery saver`() {
+        show(readerOptions = ReaderOptions(controlsTimeoutSeconds = 0))
+        screen().performTouchInput { click(center) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithContentDescription("Opções do leitor").performClick()
+        compose.onNodeWithTag("reader_dimming_slider").assertExists()
+        compose.onNodeWithText("Economia de bateria").assertDoesNotExist()
+    }
 
     @Test fun `pinch enlarges webtoon and vertical swipe still scrolls while zoomed`() {
         show()

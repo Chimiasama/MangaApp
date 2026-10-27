@@ -59,6 +59,7 @@ class MangaRepositoryTest {
 
     class FakeProgressDao : ProgressDao {
         override fun getReadChapterIds(mangaUrl: String, sourceId: String): Flow<List<String>> = flowOf(emptyList())
+        override suspend fun markChapterUnread(mangaUrl: String, sourceId: String, chapterId: String) {}
         override suspend fun markChapterRead(chapter: com.example.data.local.ReadChapterEntity) {}
 
         override fun getAllProgress(): Flow<List<ProgressEntity>> = flowOf(emptyList())

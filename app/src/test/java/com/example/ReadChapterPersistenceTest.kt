@@ -32,6 +32,10 @@ class ReadChapterPersistenceTest {
             assertEquals(setOf("one", "two"), db.progressDao().getReadChapterIds("work", "source-a").first().toSet())
             assertTrue(db.progressDao().getReadChapterIds("work", "source-b").first().isEmpty())
             assertTrue(db.progressDao().getReadChapterIds("other", "source-a").first().isEmpty())
+            db.progressDao().markChapterUnread("work", "source-b", "one")
+            assertEquals(2, db.progressDao().getReadChapterIds("work", "source-a").first().size)
+            db.progressDao().markChapterUnread("work", "source-a", "one")
+            assertEquals(listOf("two"), db.progressDao().getReadChapterIds("work", "source-a").first())
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
