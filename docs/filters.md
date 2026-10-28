@@ -107,41 +107,29 @@ truncamento, para permitir compartilhar o diagnóstico diretamente do celular.
 
 Após a consulta completa funcionar no navegador do mesmo aparelho enquanto o app
 recebia `SocketException: Connection reset`, a API e as imagens de
-`api.mangadex.org` e `uploads.mangadex.org` passaram a usar um cliente HTTPS com
-HTTP/1.1 e um pool de conexões separado. As demais fontes mantêm o protocolo
-negociado pelo cliente original. Os filtros, cabeçalhos e validações de
-certificado e nome do servidor são preservados. Os avisos da MangaDex identificam
-o perfil utilizado para permitir conferir qual versão foi testada no aparelho.
+`api.mangadex.org` e `uploads.mangadex.org` usam a negociação padrão de TLS e
+HTTP do OkHttp, preservando a validação de certificado, nome do servidor e SNI.
+O diagnóstico comparativo no aparelho mostrou o perfil experimental TLS 1.2 /
+HTTP/1.1 recusado com `TLSV1_ALERT_PROTOCOL_VERSION`, enquanto o OkHttp padrão
+recebeu HTTP 200 com TLS 1.3 e HTTP/2 e o HTTPS nativo também recebeu HTTP 200.
+Por isso as restrições experimentais foram removidas da busca e das capas.
+Esse resultado identifica a falha atual, sem atribuir os resets anteriores à
+mesma causa nem afirmar um bloqueio intencional.
 
-Este é um ajuste de compatibilidade para verificar no aparelho afetado; o reset
-observado não comprova, por si só, que HTTP/2 seja a causa. Os testes usam um
-servidor HTTPS local que oferece HTTP/2 e HTTP/1.1, conferem o protocolo efetivamente
-utilizado, o retorno das duas obras em português, os parâmetros originais da
-consulta, as capas e a rejeição de certificados não confiáveis.
+Os testes HTTPS locais verificam TLS 1.3 e HTTP/2 efetivamente negociados na API
+e nas capas, as duas obras em português de 1900–1950, os filtros originais e a
+rejeição de certificados não confiáveis. As demais fontes mantêm seu cliente.
 
-O modo HTTP/1.1 não eliminou o reset no aparelho relatado, portanto a causa ainda
-não foi atribuída ao protocolo HTTP. As falhas da MangaDex agora incluem uma
-sequência por chamada: resolução DNS e seus endereços, IP e porta selecionados,
-tipo de proxy, início/fim do TLS, protocolo negociado, envio dos cabeçalhos e
-recebimento da resposta. Isso permite identificar em qual etapa a conexão caiu.
-O diagnóstico também captura falhas durante a leitura do corpo da resposta,
-após a chegada dos cabeçalhos. Não registra consultas, cabeçalhos, cookies ou
-conteúdo recebido; os detalhes continuam disponíveis em “Copiar erro completo”.
-
-O relatório do aparelho mostrou DNS e TCP concluídos para os dois IPv4 públicos da
-MangaDex, com encerramento imediato na negociação TLS antes de qualquer envio HTTP.
-O perfil específico da MangaDex passa a oferecer TLS 1.2 com as cifras modernas de
-`RESTRICTED_TLS`, preservando certificado, nome do servidor e SNI. Isso é uma tentativa
-de compatibilidade com a negociação identificada no aparelho, não uma confirmação
-de que TLS 1.3 seja a causa. As demais fontes preservam o TLS original. Os testes
-conferem TLS 1.2 efetivamente negociado na API e nas capas e TLS 1.3 na fonte externa,
-além dos filtros originais e da rejeição de certificados não confiáveis.
+As falhas preservam o rastreio de DNS, TCP, TLS e leitura da resposta, sem registrar
+consultas privadas, cabeçalhos, cookies ou conteúdo recebido. Os detalhes continuam
+em “Copiar erro completo”. O texto de transporte agora informa negociação automática,
+sem afirmar uma versão de TLS que não chegou a ser negociada.
 
 ## Diagnóstico comparativo manual
 
 Na tela de erro, “Testar conexão com a MangaDex” compara três clientes dentro do
-mesmo app e rede: o perfil atual de compatibilidade, o OkHttp sem as restrições
-experimentais e o `HttpsURLConnection` nativo. Todos fazem o mesmo GET público
+mesmo app e rede: o OkHttp padrão usado na busca, o antigo perfil TLS 1.2 / HTTP/1.1
+(somente diagnóstico) e o `HttpsURLConnection` nativo. Todos fazem o mesmo GET público
 `/manga?year=1935&limit=1`, com a identificação real `MangaReaderApp/1.1.0`.
 Não há troca de DNS, proxy, navegador simulado ou certificados ignorados.
 

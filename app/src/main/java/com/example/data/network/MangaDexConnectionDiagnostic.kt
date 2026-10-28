@@ -42,8 +42,8 @@ class MangaDexConnectionDiagnostic(
     suspend fun run(): String {
         val results = mutableListOf<Result>()
         val probes: List<suspend () -> Result> = listOf(
-            { okhttp("Cliente atual: OkHttp / TLS 1.2 / HTTP/1.1", true) },
-            { okhttp("OkHttp padrão: negociação TLS/HTTP original", false) },
+            { okhttp("Cliente atual: OkHttp padrão / negociação TLS e HTTP automática", false) },
+            { okhttp("Perfil antigo: TLS 1.2 / HTTP/1.1 (somente diagnóstico)", true) },
             { native() }
         )
         for ((index, probe) in probes.withIndex()) {

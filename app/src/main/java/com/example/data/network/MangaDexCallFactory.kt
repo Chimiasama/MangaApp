@@ -8,12 +8,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 
-/** A scoped compatibility profile; HTTPS verification and the original request are preserved. */
+/** Scoped connection tracing; normal requests preserve the original TLS and HTTP negotiation. */
 class MangaDexCallFactory(
     private val defaultClient: OkHttpClient,
-    compatibilityProfile: Boolean = true
+    compatibilityProfile: Boolean = false
 ) : Call.Factory {
-    private val compatibleClient = defaultClient.newBuilder()
+    private val tracedClient = defaultClient.newBuilder()
         .apply {
             if (compatibilityProfile) {
                 protocols(listOf(Protocol.HTTP_1_1))
@@ -21,7 +21,7 @@ class MangaDexCallFactory(
                     .tlsVersions(TlsVersion.TLS_1_2).build()))
             }
         }
-        // Do not reuse a connection negotiated by the default HTTP/2 client.
+        // Keep MangaDex diagnostics scoped to its own connections.
         .connectionPool(ConnectionPool())
         .eventListenerFactory(object : okhttp3.EventListener.Factory {
             override fun create(call: Call): okhttp3.EventListener =
@@ -35,7 +35,7 @@ class MangaDexCallFactory(
             "api.mangadex.org", "uploads.mangadex.org" -> {
                 val traced = request.newBuilder()
                     .tag(MangaDexConnectionTrace::class.java, MangaDexConnectionTrace(request.url.host)).build()
-                compatibleClient.newCall(traced)
+                tracedClient.newCall(traced)
             }
             else -> defaultClient.newCall(request)
         }

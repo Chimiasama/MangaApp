@@ -40,7 +40,7 @@ class MangaDexCallFactoryTest {
         .sslSocketFactory(clientTls.sslSocketFactory(), clientTls.trustManager)
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).build()
 
-    @Test fun `real HTTPS API returns the two Portuguese works over TLS12 with original filters`() = runBlocking {
+    @Test fun `real HTTPS API returns the two Portuguese works over TLS13 and HTTP2 with original filters`() = runBlocking {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)
         server.protocols = listOf(Protocol.HTTP_2, Protocol.HTTP_1_1)
@@ -62,8 +62,8 @@ class MangaDexCallFactoryTest {
                 .build().create(MangaDexCatalogFilterApi::class.java)
             val result = MangaDexSource(catalogApi = api).getCatalogManga("", "pt-br", "1900-1950")
             assertEquals(listOf("Tank Tankuro", "Sazae-san"), result.map { it.title })
-            assertEquals(listOf(Protocol.HTTP_1_1), observed)
-            assertEquals(listOf(TlsVersion.TLS_1_2), tlsVersions)
+            assertEquals(listOf(Protocol.HTTP_2), observed)
+            assertEquals(listOf(TlsVersion.TLS_1_3), tlsVersions)
             val request = server.takeRequest(5, TimeUnit.SECONDS)!!
             assertEquals("MangaReaderApp/1.1.0", request.getHeader("User-Agent"))
             assertEquals(listOf("pt-br", "pt"), request.requestUrl!!.queryParameterValues("availableTranslatedLanguage[]"))
@@ -72,7 +72,7 @@ class MangaDexCallFactoryTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
-    @Test fun `covers use TLS12 while other hosts retain TLS13 and HTTP2`() {
+    @Test fun `covers and other hosts retain TLS13 and HTTP2`() {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)
         server.protocols = listOf(Protocol.HTTP_2, Protocol.HTTP_1_1)
@@ -81,7 +81,7 @@ class MangaDexCallFactoryTest {
         try {
             val factory = MangaDexCallFactory(base)
             for ((host, protocol, tls) in listOf(
-                Triple("uploads.mangadex.org", Protocol.HTTP_1_1, TlsVersion.TLS_1_2),
+                Triple("uploads.mangadex.org", Protocol.HTTP_2, TlsVersion.TLS_1_3),
                 Triple("api.mangadex.org.example.test", Protocol.HTTP_2, TlsVersion.TLS_1_3))) {
                 server.enqueue(MockResponse().setBody("original image bytes"))
                 val request = Request.Builder().url("https://$host:${server.port}/covers/test.jpg").build()
@@ -130,7 +130,7 @@ class MangaDexCallFactoryTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
-    @Test fun `compatibility mode still rejects an untrusted HTTPS certificate`() {
+    @Test fun `normal negotiation still rejects an untrusted HTTPS certificate`() {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)
         server.start()
