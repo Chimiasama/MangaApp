@@ -237,6 +237,31 @@ class BrowseSearchTest {
         assertEquals(listOf("completed"), state.mangaList.map { it.status })
     }
 
+    @Test fun `a new publication filter cannot be labelled complete with results from the previous selection`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val old = dragon.copy(year = 1985)
+        val modern = dragon.copy(id = "modern", url = "modern", year = 2024)
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga() = listOf(old, modern)
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+            override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> {
+                started.complete(Unit)
+                release.await()
+                return listOf(old)
+            }
+        })
+        val vm = model()
+        withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.mangaList.size == 2 } }
+        vm.selectYearRange("1980-1990")
+        withTimeout(10_000) { started.await() }
+        val pending = withTimeout(10_000) { vm.browseUiState.first { it.selectedYearRange == "1980-1990" && it.isLoading } }
+        assertTrue("Old results must not be attached to the new selection", pending.mangaList.isEmpty())
+        release.complete(Unit)
+        val ready = withTimeout(10_000) { vm.browseUiState.first { it.selectedYearRange == "1980-1990" && !it.isLoading } }
+        assertEquals(listOf(1985), ready.mangaList.map { it.year })
+    }
+
     @Test fun `matchesYearRange accurately validates manga publication years`() {
         // Range 1900 - 1950
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1920, "1900-1950"))

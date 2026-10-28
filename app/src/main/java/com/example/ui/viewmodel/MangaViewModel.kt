@@ -85,19 +85,20 @@ data class ReaderUiState(
     val nextChapterFirstPages: List<String> = emptyList()
 )
 
-private data class MangaData(
-    val list: List<MangaModel>,
-    val carousels: List<GenreCarouselSection>
+private data class BrowseSelection(
+    val source: String = "all", val genre: String = "all", val year: String = "all",
+    val language: String = "pt-br", val query: String = "", val classifications: CatalogFilters = CatalogFilters()
 )
 
-private data class BrowseParams(
-    val sourceId: String,
-    val genre: String,
-    val yearRange: String,
-    val language: String,
-    val query: String,
-    val loading: Boolean
+private data class MangaData(
+    val list: List<MangaModel>,
+    val carousels: List<GenreCarouselSection>,
+    val selection: BrowseSelection = BrowseSelection(),
+    val error: String? = null,
+    val unclassified: Int = 0
 )
+
+private fun normalizedBrowseQuery(query: String) = query.trim().replace(Regex("""\s+"""), " ")
 
 fun matchesYearRange(year: Int?, rangeKey: String, description: String = ""): Boolean {
     if (rangeKey.isBlank() || rangeKey == "all") return true
@@ -126,17 +127,14 @@ class MangaViewModel(
     private var browseRequestId = 0L
 
     private val _catalogFilters = MutableStateFlow(CatalogFilters())
-    private val _unclassifiedExcluded = MutableStateFlow(0)
     private val _selectedSourceId = MutableStateFlow("all")
     private val _selectedGenre = MutableStateFlow("all")
     private val _selectedYearRange = MutableStateFlow("all")
     private val _searchQuery = MutableStateFlow("")
     private val _isLoadingBrowse = MutableStateFlow(false)
-    private val _mangaList = MutableStateFlow<List<MangaModel>>(emptyList())
-    private val _carouselSections = MutableStateFlow<List<GenreCarouselSection>>(
-        buildCarouselSections(MangaDexSource.STARTER_FALLBACK_MANGAS)
-    )
-    private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _browseData = MutableStateFlow(MangaData(
+        emptyList(), buildCarouselSections(MangaDexSource.STARTER_FALLBACK_MANGAS)
+    ))
 
     // Room Flows
     val favorites: StateFlow<List<MangaEntity>> = repository.favorites
@@ -190,27 +188,29 @@ class MangaViewModel(
             Triple(sourceId, genre, yearRange) to (language to query)
         },
         _isLoadingBrowse,
-        combine(_mangaList, _carouselSections) { list, carousels ->
-            MangaData(list, carousels)
-        },
-        combine(_errorMessage, _catalogFilters, _unclassifiedExcluded) { error, advanced, unknown -> Triple(error, advanced, unknown) },
+        _browseData,
+        _catalogFilters,
         searchHistory
-    ) { (filters, langAndQuery), loading, mangaData, (error, advanced, unknown), history ->
+    ) { (filters, langAndQuery), loading, mangaData, advanced, history ->
         val sources = repository.getAvailableSources()
+        val effectiveFilters = advanced.withLegacy(filters.second)
+        val selection = BrowseSelection(filters.first, filters.second, filters.third,
+            langAndQuery.first, normalizedBrowseQuery(langAndQuery.second), effectiveFilters)
+        val matchesSelection = mangaData.selection == selection
         BrowseUiState(
             selectedSourceId = filters.first,
             selectedGenre = filters.second,
             selectedYearRange = filters.third,
             selectedLanguage = langAndQuery.first,
             searchQuery = langAndQuery.second,
-            isLoading = loading,
-            mangaList = mangaData.list,
-            carouselSections = mangaData.carousels,
+            isLoading = loading || !matchesSelection,
+            mangaList = if (matchesSelection) mangaData.list else emptyList(),
+            carouselSections = if (matchesSelection) mangaData.carousels else emptyList(),
             availableSources = sources,
             searchHistory = history,
-            errorMessage = error,
-            catalogFilters = advanced.withLegacy(filters.second),
-            unclassifiedExcluded = unknown
+            errorMessage = if (matchesSelection) mangaData.error else null,
+            catalogFilters = effectiveFilters,
+            unclassifiedExcluded = if (matchesSelection) mangaData.unclassified else 0
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowseUiState())
 
@@ -365,14 +365,16 @@ class MangaViewModel(
         val currentGenre = _selectedGenre.value
         val currentYearRange = _selectedYearRange.value
         val catalogFilters = _catalogFilters.value.withLegacy(currentGenre)
-        val query = _searchQuery.value.trim().replace(Regex("\\s+"), " ")
+        val query = normalizedBrowseQuery(_searchQuery.value)
+        var requestLanguage = selectedLanguage.value
+        fun selection() = BrowseSelection(currentSource, currentGenre, currentYearRange, requestLanguage, query, catalogFilters)
         _isLoadingBrowse.value = true
-        _errorMessage.value = null
-        _unclassifiedExcluded.value = 0
+        _browseData.update { it.copy(error = null) }
         browseJob = viewModelScope.launch {
             try {
                 if (debounceMillis > 0) kotlinx.coroutines.delay(debounceMillis)
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
+                requestLanguage = currentLanguage
                 val popular = query.isBlank() && !catalogFilters.isActive
                 val baseResults = when {
                     catalogFilters.isActive || (currentYearRange != "all" && currentYearRange.isNotBlank()) ->
@@ -392,16 +394,18 @@ class MangaViewModel(
 
                 ensureActive()
                 if (request != browseRequestId) return@launch
-                _unclassifiedExcluded.value = results.count { catalogFilters.missingExclusionData(it) }
-                _mangaList.value = results.filter(catalogFilters::matches)
-                _carouselSections.value = emptyList()
-                if (popular && currentYearRange == "all" && results.isNotEmpty()) _carouselSections.value = buildCarouselSections(results)
+                _browseData.value = MangaData(
+                    list = results.filter(catalogFilters::matches),
+                    carousels = if (popular && currentYearRange == "all" && results.isNotEmpty()) buildCarouselSections(results) else emptyList(),
+                    selection = selection(),
+                    unclassified = results.count { catalogFilters.missingExclusionData(it) }
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 if (request == browseRequestId) {
-                    _mangaList.value = emptyList()
-                    _errorMessage.value = "Erro ao carregar mangás: ${error.localizedMessage ?: "Verifique sua conexão."}"
+                    _browseData.value = MangaData(emptyList(), emptyList(), selection(),
+                        error = "Erro ao carregar mangás: ${error.localizedMessage ?: "Verifique sua conexão."}")
                 }
             } finally {
                 if (request == browseRequestId) _isLoadingBrowse.value = false
@@ -416,7 +420,6 @@ class MangaViewModel(
     fun clearFiltersAndReload() {
         _searchQuery.value = ""
         _catalogFilters.value = CatalogFilters()
-        _unclassifiedExcluded.value = 0
         _selectedGenre.value = "all"
         _selectedSourceId.value = "all"
         _selectedYearRange.value = "all"
