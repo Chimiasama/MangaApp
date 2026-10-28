@@ -169,7 +169,8 @@ object MangaDexMapper {
             isNsfw = isNsfw(dto),
             sourceId = sourceId,
             author = extractAuthor(dto),
-            status = dto.attributes?.status ?: "Unknown"
+            status = dto.attributes?.status ?: "Unknown",
+            year = dto.attributes?.year
         )
     }
 

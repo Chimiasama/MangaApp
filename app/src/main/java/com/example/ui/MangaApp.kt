@@ -171,6 +171,7 @@ fun MangaApp(
                     onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
                     onSourceSelected = { sourceId -> mangaViewModel.selectSource(sourceId) },
                     onGenreSelected = { genre -> mangaViewModel.selectGenre(genre) },
+                    onYearSelected = { range -> mangaViewModel.selectYearRange(range) },
                     onMangaClick = { manga ->
                         mangaViewModel.openMangaDetails(manga)
                         navController.navigate(MangaDestinations.DETAIL)

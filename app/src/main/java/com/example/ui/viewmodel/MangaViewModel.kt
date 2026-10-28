@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.firstOrNull
 data class BrowseUiState(
     val selectedSourceId: String = "all",
     val selectedGenre: String = "all",
+    val selectedYearRange: String = "all",
     val selectedLanguage: String = "pt-br",
     val searchQuery: String = "",
     val isLoading: Boolean = false,
@@ -87,10 +88,22 @@ private data class MangaData(
 private data class BrowseParams(
     val sourceId: String,
     val genre: String,
+    val yearRange: String,
     val language: String,
     val query: String,
     val loading: Boolean
 )
+
+fun matchesYearRange(year: Int?, rangeKey: String, description: String = ""): Boolean {
+    if (rangeKey.isBlank() || rangeKey == "all") return true
+    val actualYear = year ?: Regex("""\b(19\d\d|20[0-2]\d)\b""").find(description)?.value?.toIntOrNull()
+    if (actualYear == null) return false
+    val parts = rangeKey.split("-")
+    if (parts.size != 2) return true
+    val startYear = parts[0].toIntOrNull() ?: return true
+    val endYear = parts[1].toIntOrNull() ?: return true
+    return actualYear in startYear..endYear
+}
 
 class MangaViewModel(
     val repository: MangaRepository,
@@ -105,6 +118,7 @@ class MangaViewModel(
 
     private val _selectedSourceId = MutableStateFlow("all")
     private val _selectedGenre = MutableStateFlow("all")
+    private val _selectedYearRange = MutableStateFlow("all")
     private val _searchQuery = MutableStateFlow("")
     private val _isLoadingBrowse = MutableStateFlow(false)
     private val _mangaList = MutableStateFlow<List<MangaModel>>(emptyList())
@@ -161,22 +175,24 @@ class MangaViewModel(
     }
 
     val browseUiState: StateFlow<BrowseUiState> = combine(
-        combine(_selectedSourceId, _selectedGenre, selectedLanguage, _searchQuery, _isLoadingBrowse) { sourceId, genre, language, query, loading ->
-            BrowseParams(sourceId, genre, language, query, loading)
+        combine(_selectedSourceId, _selectedGenre, _selectedYearRange, selectedLanguage, _searchQuery) { sourceId, genre, yearRange, language, query ->
+            Triple(sourceId, genre, yearRange) to (language to query)
         },
+        _isLoadingBrowse,
         combine(_mangaList, _carouselSections) { list, carousels ->
             MangaData(list, carousels)
         },
         _errorMessage,
         searchHistory
-    ) { params, mangaData, error, history ->
+    ) { (filters, langAndQuery), loading, mangaData, error, history ->
         val sources = repository.getAvailableSources()
         BrowseUiState(
-            selectedSourceId = params.sourceId,
-            selectedGenre = params.genre,
-            selectedLanguage = params.language,
-            searchQuery = params.query,
-            isLoading = params.loading,
+            selectedSourceId = filters.first,
+            selectedGenre = filters.second,
+            selectedYearRange = filters.third,
+            selectedLanguage = langAndQuery.first,
+            searchQuery = langAndQuery.second,
+            isLoading = loading,
             mangaList = mangaData.list,
             carouselSections = mangaData.carousels,
             availableSources = sources,
@@ -311,6 +327,7 @@ class MangaViewModel(
         browseJob?.cancel()
         val currentSource = _selectedSourceId.value
         val currentGenre = _selectedGenre.value
+        val currentYearRange = _selectedYearRange.value
         val query = _searchQuery.value.trim().replace(Regex("\\s+"), " ")
         _isLoadingBrowse.value = true
         _errorMessage.value = null
@@ -319,7 +336,7 @@ class MangaViewModel(
                 if (debounceMillis > 0) kotlinx.coroutines.delay(debounceMillis)
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
                 val popular = query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")
-                val results = when {
+                val baseResults = when {
                     popular -> repository.getPopularManga(currentSource, currentLanguage)
                     query.isNotBlank() -> repository.searchManga(query, currentSource, currentLanguage)
                     else -> {
@@ -356,10 +373,19 @@ class MangaViewModel(
                         if (filtered.isNotEmpty()) filtered else baseList
                     }
                 }
+
+                val results = if (currentYearRange != "all" && currentYearRange.isNotBlank()) {
+                    baseResults.filter { manga ->
+                        matchesYearRange(manga.year, currentYearRange, manga.description)
+                    }
+                } else {
+                    baseResults
+                }
+
                 ensureActive()
                 if (request != browseRequestId) return@launch
                 _mangaList.value = results
-                if (popular && results.isNotEmpty()) _carouselSections.value = buildCarouselSections(results)
+                if (popular && currentYearRange == "all" && results.isNotEmpty()) _carouselSections.value = buildCarouselSections(results)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -381,11 +407,17 @@ class MangaViewModel(
         _searchQuery.value = ""
         _selectedGenre.value = "all"
         _selectedSourceId.value = "all"
+        _selectedYearRange.value = "all"
         loadBrowseManga()
     }
 
     fun selectGenre(genre: String) {
         _selectedGenre.value = genre
+        loadBrowseManga()
+    }
+
+    fun selectYearRange(yearRange: String) {
+        _selectedYearRange.value = yearRange
         loadBrowseManga()
     }
 
