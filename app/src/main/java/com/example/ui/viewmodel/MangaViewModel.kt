@@ -38,6 +38,9 @@ import com.example.data.network.model.MalRecommendationItem
 import com.example.data.sync.AniListSyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+enum class BrowseFailure { OFFLINE, TIMEOUT, SOURCE }
 
 data class BrowseUiState(
     val selectedSourceId: String = "all",
@@ -52,6 +55,7 @@ data class BrowseUiState(
     val searchHistory: List<SearchHistoryEntity> = emptyList(),
     val errorMessage: String? = null,
     val catalogFilters: CatalogFilters = CatalogFilters(),
+    val failure: BrowseFailure? = null,
     val unclassifiedExcluded: Int = 0
 )
 
@@ -95,6 +99,7 @@ private data class MangaData(
     val carousels: List<GenreCarouselSection>,
     val selection: BrowseSelection = BrowseSelection(),
     val error: String? = null,
+    val failure: BrowseFailure? = null,
     val unclassified: Int = 0
 )
 
@@ -209,6 +214,7 @@ class MangaViewModel(
             availableSources = sources,
             searchHistory = history,
             errorMessage = if (matchesSelection) mangaData.error else null,
+            failure = if (matchesSelection) mangaData.failure else null,
             catalogFilters = effectiveFilters,
             unclassifiedExcluded = if (matchesSelection) mangaData.unclassified else 0
         )
@@ -264,6 +270,13 @@ class MangaViewModel(
     init {
         // Initial load of browse items
         if (loadBrowseOnInit) loadBrowseManga()
+        viewModelScope.launch {
+            repository.connectivity.distinctUntilChanged().collect { online ->
+                if (applyFiltersJob?.isActive != true &&
+                    ((online && _browseData.value.failure == BrowseFailure.OFFLINE) ||
+                        (!online && _isLoadingBrowse.value))) loadBrowseManga()
+            }
+        }
     }
 
     private fun buildCarouselSections(allMangas: List<MangaModel>): List<GenreCarouselSection> {
@@ -369,15 +382,16 @@ class MangaViewModel(
         var requestLanguage = selectedLanguage.value
         fun selection() = BrowseSelection(currentSource, currentGenre, currentYearRange, requestLanguage, query, catalogFilters)
         _isLoadingBrowse.value = true
-        _browseData.update { it.copy(error = null) }
+        _browseData.update { it.copy(error = null, failure = null) }
         browseJob = viewModelScope.launch {
             try {
                 if (debounceMillis > 0) kotlinx.coroutines.delay(debounceMillis)
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
                 requestLanguage = currentLanguage
+                if (!repository.isNetworkAvailable()) throw java.net.UnknownHostException("offline")
                 val popular = query.isBlank() && !catalogFilters.isActive
                 var sourceWarning: String? = null
-                val baseResults = when {
+                val baseResults = kotlinx.coroutines.withTimeout(120_000) { when {
                     catalogFilters.isActive || (currentYearRange != "all" && currentYearRange.isNotBlank()) -> {
                         val catalog = repository.loadCatalog(query, currentSource, currentLanguage, currentYearRange, catalogFilters)
                         sourceWarning = catalog.warning
@@ -386,6 +400,8 @@ class MangaViewModel(
                     popular -> repository.getPopularManga(currentSource, currentLanguage)
                     query.isNotBlank() -> repository.searchManga(query, currentSource, currentLanguage)
                     else -> repository.getPopularManga(currentSource, currentLanguage)
+                }
+
                 }
 
                 val results = if (currentYearRange != "all" && currentYearRange.isNotBlank()) {
@@ -405,17 +421,32 @@ class MangaViewModel(
                     error = sourceWarning,
                     unclassified = results.count { catalogFilters.missingExclusionData(it) }
                 )
+            } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                if (request == browseRequestId) _browseData.value = browseError(selection(), error, BrowseFailure.TIMEOUT)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                if (request == browseRequestId) {
-                    _browseData.value = MangaData(emptyList(), emptyList(), selection(),
-                        error = "Erro ao carregar mangás: ${error.localizedMessage ?: "Verifique sua conexão."}")
-                }
+                if (request == browseRequestId) _browseData.value = browseError(selection(), error)
             } finally {
                 if (request == browseRequestId) _isLoadingBrowse.value = false
             }
         }
+    }
+
+    private fun browseError(selection: BrowseSelection, error: Throwable, kind: BrowseFailure? = null): MangaData {
+        val causes = generateSequence(error) { it.cause }.take(10).toList()
+        val failure = kind ?: when {
+            !repository.isNetworkAvailable() -> BrowseFailure.OFFLINE
+            causes.any { it is java.net.SocketTimeoutException } -> BrowseFailure.TIMEOUT
+            else -> BrowseFailure.SOURCE
+        }
+        val message = when (failure) {
+            BrowseFailure.OFFLINE -> "Aguardando conexão para pesquisar novamente. A busca será retomada quando a internet voltar."
+            BrowseFailure.TIMEOUT -> "A consulta demorou demais e foi interrompida. Tente novamente."
+            BrowseFailure.SOURCE -> "Não foi possível concluir a consulta às fontes. Tente novamente."
+        }
+        android.util.Log.w("BrowseSearch", "failure=$failure source=${selection.source} year=${selection.year} language=${selection.language}", error)
+        return MangaData(emptyList(), emptyList(), selection, error = message, failure = failure)
     }
 
     fun refresh() {

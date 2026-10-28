@@ -36,6 +36,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -56,6 +57,29 @@ class MangaRepository(
     private val searchHistoryDao: SearchHistoryDao? = null,
     private val appContext: android.content.Context? = null
 ) {
+
+    fun isNetworkAvailable(): Boolean {
+        val context = appContext ?: return true
+        val manager = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val capabilities = manager?.getNetworkCapabilities(manager.activeNetwork) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    val connectivity: Flow<Boolean> = if (appContext == null) kotlinx.coroutines.flow.flowOf(true) else
+        kotlinx.coroutines.flow.callbackFlow {
+            val manager = appContext.getSystemService(android.net.ConnectivityManager::class.java)
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { trySend(isNetworkAvailable()) }
+                override fun onLost(network: android.net.Network) { trySend(isNetworkAvailable()) }
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) {
+                    trySend(isNetworkAvailable())
+                }
+            }
+            manager.registerDefaultNetworkCallback(callback)
+            trySend(isNetworkAvailable())
+            awaitClose { manager.unregisterNetworkCallback(callback) }
+        }
 
     val recentSearchHistory: Flow<List<SearchHistoryEntity>> = searchHistoryDao?.getRecentSearchHistory() ?: kotlinx.coroutines.flow.flowOf(emptyList())
 
@@ -374,7 +398,7 @@ class MangaRepository(
                 entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
                 entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
             }
-            if (matched.isEmpty() && completedSources == 0 && lastFailure != null) {
+            if (matched.isEmpty() && lastFailure != null) {
                 throw java.io.IOException("Não foi possível consultar as fontes de mangá. Verifique sua conexão e tente novamente.", lastFailure)
             }
             return matched.map { entity ->

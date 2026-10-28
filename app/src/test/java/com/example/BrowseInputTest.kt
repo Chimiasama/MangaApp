@@ -57,6 +57,56 @@ class BrowseInputTest {
         compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
     }
 
+    @Test fun `opening filters and selecting only 1900 to 1950 preserves the saved language`() {
+        var applied: com.example.source.BrowseFilterRequest? = null
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(), onApplyFilters = { applied = it },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("open_filters_button").performClick()
+        compose.onNodeWithTag("lang_chip_pt-br").assertIsSelected()
+        compose.onNodeWithTag("year_chip_1900-1950").performScrollTo().performClick()
+        compose.onNodeWithTag("sheet_filter_summary")
+            .assertTextEquals("Data: 1900–1950 · Fonte: Todas · Idioma: Português · Origem: Todas · Classificação: Todas")
+        compose.onNodeWithTag("close_filters_button").performClick()
+        compose.runOnIdle {
+            assertEquals(com.example.source.BrowseFilterRequest("", "all", "pt-br", "1900-1950", com.example.source.CatalogFilters()), applied)
+        }
+    }
+
+    @Test fun `date only search displays every effective filter in a compact summary`() {
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(selectedYearRange = "1900-1950"),
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("active_filter_summary")
+            .assertTextEquals("Data: 1900–1950 · Fonte: Todas · Idioma: Português · Origem: Todas · Classificação: Todas")
+        compose.onNodeWithTag("open_filters_button").performClick()
+        compose.onNodeWithTag("sheet_filter_summary")
+            .assertTextEquals("Data: 1900–1950 · Fonte: Todas · Idioma: Português · Origem: Todas · Classificação: Todas")
+    }
+
+    @Test fun `offline and timeout messages never claim there are no matching manga`() {
+        val state = androidx.compose.runtime.mutableStateOf(BrowseUiState(
+            selectedYearRange = "1900-1950", failure = com.example.ui.viewmodel.BrowseFailure.OFFLINE,
+            errorMessage = "Aguardando conexão para pesquisar novamente."))
+        var retries = 0
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = state.value, onRefresh = { retries++ },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithText("Sem conexão com a internet").assertExists()
+        compose.onNodeWithText("Nenhum mangá encontrado").assertDoesNotExist()
+        compose.onNodeWithTag("retry_browse_button").performClick()
+        compose.runOnIdle {
+            assertEquals(1, retries)
+            state.value = state.value.copy(failure = com.example.ui.viewmodel.BrowseFailure.TIMEOUT,
+                errorMessage = "Tente novamente.")
+        }
+        compose.onNodeWithText("A pesquisa demorou demais").assertExists()
+        compose.onNodeWithText("Nenhum mangá encontrado").assertDoesNotExist()
+    }
+
     @Test fun `recent searches only appear when the empty search field has focus`() {
         compose.setContent {
             MaterialTheme { BrowseScreen(state = BrowseUiState(searchHistory = listOf(com.example.data.local.SearchHistoryEntity(id = 1, query = "dragon ball"))),

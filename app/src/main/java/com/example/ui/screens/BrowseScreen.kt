@@ -109,6 +109,23 @@ fun BrowseScreen(
     var filtersApplied by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
 
+    fun filterSummary(source: String, language: String, year: String, filters: CatalogFilters): String {
+        val languageLabel = when (language) { "pt-br" -> "Português"; "en" -> "Inglês"; "es" -> "Espanhol"; "all" -> "Todos"; else -> language }
+        val sourceLabel = if (source == "all") "Todas" else state.availableSources.find { it.id == source }?.name ?: source
+        val yearLabel = when (year) { "all", "" -> "Todas"; "unknown", "none" -> "Sem data definida"; else -> year.replace("-", "–") }
+        val originOptions = com.example.source.CatalogTaxonomy.options.filter { it.group == com.example.source.FilterGroup.ORIGIN }
+        val origin = originOptions.filter { it.id in filters.included || it.id in filters.excluded }
+            .joinToString(limit = 2, truncated = "…") { (if (it.id in filters.excluded) "Excluir " else "") + it.label }.ifBlank { "Todas" }
+        val classifications = (filters.included + filters.excluded).filter { id -> originOptions.none { it.id == id } }
+            .mapNotNull { com.example.source.CatalogTaxonomy.byId[it] }
+            .joinToString(limit = 2, truncated = "…") { (if (it.id in filters.excluded) "Excluir " else "") + it.label }.ifBlank { "Todas" }
+        val rules = if (filters.isActive) " · Inclusão: ${if (filters.includeMode == com.example.source.IncludeMode.ALL) "todas" else "qualquer uma"}" +
+            (if (filters.excluded.isNotEmpty()) " · Sem classificação: ${if (filters.hideUnknownForExclusions) "ocultar" else "mostrar"}" else "") else ""
+        return "Data: $yearLabel · Fonte: $sourceLabel · Idioma: $languageLabel · Origem: $origin · Classificação: $classifications$rules"
+    }
+    val activeSummary = filterSummary(state.selectedSourceId, state.selectedLanguage, state.selectedYearRange,
+        state.catalogFilters.withLegacy(state.selectedGenre))
+
     if (showFilters) {
         var draftSource by remember { mutableStateOf(state.selectedSourceId) }
         var draftLanguage by remember { mutableStateOf(state.selectedLanguage) }
@@ -119,6 +136,9 @@ fun BrowseScreen(
             Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                 Text("Filtros", style = MaterialTheme.typography.titleLarge)
+                Text(filterSummary(draftSource, draftLanguage, draftYear, draftFilters),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("sheet_filter_summary"))
                 Text("Idioma dos capítulos", modifier = Modifier.padding(top = 20.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("pt-br" to "Português", "en" to "Inglês", "es" to "Espanhol", "all" to "Todos").forEach { (code, label) ->
@@ -246,6 +266,9 @@ fun BrowseScreen(
                     trailingIcon = { Icon(Icons.Default.Close, "Remover fonte", Modifier.size(16.dp)) })
             }
 
+            Text(activeSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp).testTag("active_filter_summary"))
+
             // Recent Search History Chips (if present)
             if (searchFocused && queryInput.isBlank() && state.searchHistory.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -338,9 +361,10 @@ fun BrowseScreen(
                     CircularProgressIndicator(color = CrimsonRed)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(if (state.catalogFilters.isActive) "Aplicando filtros de classificação..." else "Buscando fontes de mangá...", fontSize = 14.sp)
+                    if (state.selectedYearRange != "all") Text("A consulta por data pode levar mais tempo.", fontSize = 12.sp)
                 }
             }
-        } else if (isFilterOrSearchActive && state.mangaList.isEmpty() && !state.isLoading) {
+        } else if ((isFilterOrSearchActive || state.errorMessage != null) && state.mangaList.isEmpty() && !state.isLoading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -359,7 +383,11 @@ fun BrowseScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = if (state.errorMessage != null) "Não foi possível concluir a busca" else "Nenhum mangá encontrado",
+                        text = when (state.failure) {
+                            com.example.ui.viewmodel.BrowseFailure.OFFLINE -> "Sem conexão com a internet"
+                            com.example.ui.viewmodel.BrowseFailure.TIMEOUT -> "A pesquisa demorou demais"
+                            else -> if (state.errorMessage != null) "Não foi possível concluir a busca" else "Nenhum mangá encontrado"
+                        },
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.onSurface

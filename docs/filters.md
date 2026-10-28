@@ -71,3 +71,20 @@ em vez de apresentar a busca como uma confirmação de que não existem obras.
 Validação online em 28/10/2026: consulta sem título, todas as fontes, idioma Todos
 e período 1900–1950 retornou 101 obras datadas no intervalo, vindas do MangaDex,
 sem aviso de consulta incompleta. O teste online fica separado dos testes de CI.
+
+## Resumo e estados da pesquisa
+
+O cabeçalho mostra um resumo discreto dos filtros efetivos, inclusive valores padrão:
+data, fonte, idioma dos capítulos, origem e classificação. O painel de filtros mostra
+esse mesmo resumo para a seleção em edição, antes de tocar em “Ver resultados”.
+Inclusões, exclusões, modo de combinação e tratamento de obras sem classificação
+aparecem quando aplicáveis. O idioma padrão continua sendo português.
+
+A tela diferencia uma consulta concluída sem correspondências, ausência de internet,
+tempo de consulta esgotado e falha ou resposta incompleta das fontes. Ausência de rede
+validada pelo Android apresenta “Sem conexão com a internet” e aguarda a reconexão
+para refazer a busca com os mesmos filtros. Uma fonte inacessível com a internet ativa
+não é identificada como falta de internet. A consulta tem limite de dois minutos;
+cancelamentos causados por uma nova busca não viram resultados vazios nem mensagens
+de erro da busca anterior. Dados parciais continuam acompanhados do aviso de consulta
+incompleta. O log `BrowseSearch` registra a categoria de falha, fonte, data e idioma.

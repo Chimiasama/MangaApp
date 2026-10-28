@@ -294,6 +294,72 @@ class BrowseSearchTest {
         assertNotNull(state.errorMessage)
     }
 
+    @Test fun `a source timeout is distinct from a successful empty search`() = runBlocking {
+        repository.registerSource(object : Source() {
+            override suspend fun searchManga(query: String): List<MangaModel> = throw java.net.SocketTimeoutException("timeout")
+        })
+        repository.registerSource(object : Source() {
+            override val id = "empty-secondary"
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        val vm = model()
+        vm.submitSearch("old manga")
+        val failed = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.searchQuery == "old manga" } }
+        assertEquals(com.example.ui.viewmodel.BrowseFailure.TIMEOUT, failed.failure)
+        assertNotNull(failed.errorMessage)
+        repository.clearSources()
+        repository.registerSource(object : Source() {
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        vm.refresh()
+        val empty = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.errorMessage == null } }
+        assertNull(empty.failure)
+        assertTrue(empty.mangaList.isEmpty())
+    }
+
+    @Test fun `offline year search waits for validated internet and retries the same filters`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val shadow = org.robolectric.Shadows.shadowOf(manager)
+        val network = manager.activeNetwork!!
+        val caps = org.robolectric.shadows.ShadowNetworkCapabilities.newInstance()
+        org.robolectric.Shadows.shadowOf(caps).addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        org.robolectric.Shadows.shadowOf(caps).removeCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        shadow.setNetworkCapabilities(network, caps)
+        repository = MangaRepository(db.mangaDao(), db.progressDao(), db.downloadDao(), db.readingSessionDao(),
+            ChapterDownloadManager(context, db.downloadDao()), repository.preferencesRepository, db.chapterDao(), appContext = context)
+        repository.clearSources()
+        var requests = 0
+        repository.registerSource(object : Source() {
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+            override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> {
+                requests++
+                assertEquals("", query)
+                assertEquals("pt-br", language)
+                assertEquals("1900-1950", yearRange)
+                return listOf(dragon.copy(year = 1940))
+            }
+        })
+        assertFalse(repository.isNetworkAvailable())
+        val vm = model()
+        vm.selectYearRange("1900-1950")
+        val offline = withTimeout(10_000) { vm.browseUiState.first {
+            !it.isLoading && it.selectedYearRange == "1900-1950" && it.failure == com.example.ui.viewmodel.BrowseFailure.OFFLINE
+        } }
+        assertTrue(offline.mangaList.isEmpty())
+        assertEquals(0, requests)
+        withTimeout(10_000) { while (shadow.networkCallbacks.isEmpty()) delay(10) }
+        org.robolectric.Shadows.shadowOf(caps).addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        shadow.setNetworkCapabilities(network, caps)
+        shadow.networkCallbacks.toList().forEach { it.onCapabilitiesChanged(network, caps) }
+        val restored = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.mangaList.isNotEmpty() } }
+        assertEquals(1, requests)
+        assertEquals("1900-1950", restored.selectedYearRange)
+        assertEquals("pt-br", restored.selectedLanguage)
+        assertNull(restored.failure)
+        assertNull(restored.errorMessage)
+    }
+
     @Test fun `matchesYearRange accurately validates manga publication years`() {
         // Range 1900 - 1950
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1920, "1900-1950"))
