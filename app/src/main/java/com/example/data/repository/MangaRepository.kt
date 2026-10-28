@@ -292,7 +292,8 @@ class MangaRepository(
         val warning = failures.takeIf { it.isNotEmpty() }?.joinToString(
             prefix = "Consulta incompleta: ", separator = "; ", postfix = ". Toque para tentar novamente."
         ) { (source, response) ->
-            "${source.name}: ${com.example.source.catalogFailureDescription(response.exceptionOrNull()!!)}"
+            "${source.name}: ${com.example.source.catalogFailureDescription(response.exceptionOrNull()!!)}" +
+                if (source.id == "mangadex") "\nTransporte: HTTPS / HTTP/1.1 (compatibilidade MangaDex)" else ""
         }
         return com.example.source.CatalogLoadResult(items, warning)
     }

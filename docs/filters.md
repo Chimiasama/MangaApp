@@ -102,3 +102,19 @@ A tela também mostra a mensagem integral de cada exceção e de suas causas,
 incluindo detalhes como ECONNRESET e EACCES. Mensagens longas podem ser roladas
 e selecionadas; “Copiar erro completo” copia o texto original exibido, sem
 truncamento, para permitir compartilhar o diagnóstico diretamente do celular.
+
+## Compatibilidade da conexão com a MangaDex
+
+Após a consulta completa funcionar no navegador do mesmo aparelho enquanto o app
+recebia `SocketException: Connection reset`, a API e as imagens de
+`api.mangadex.org` e `uploads.mangadex.org` passaram a usar um cliente HTTPS com
+HTTP/1.1 e um pool de conexões separado. As demais fontes mantêm o protocolo
+negociado pelo cliente original. Os filtros, cabeçalhos e validações de
+certificado e nome do servidor são preservados. Os avisos da MangaDex identificam
+o perfil utilizado para permitir conferir qual versão foi testada no aparelho.
+
+Este é um ajuste de compatibilidade para verificar no aparelho afetado; o reset
+observado não comprova, por si só, que HTTP/2 seja a causa. Os testes usam um
+servidor HTTPS local que oferece HTTP/2 e HTTP/1.1, conferem o protocolo efetivamente
+utilizado, o retorno das duas obras em português, os parâmetros originais da
+consulta, as capas e a rejeição de certificados não confiáveis.

@@ -14,7 +14,7 @@ object ImageCacheConfig {
         val okHttpClient = OkHttpClient.Builder().addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
 
         return ImageLoader.Builder(context)
-            .okHttpClient(okHttpClient)
+            .callFactory(com.example.data.network.MangaDexCallFactory(okHttpClient))
             .memoryCache {
                 MemoryCache.Builder(context)
                     .maxSizePercent(0.35) // 35% of memory for manga image caching

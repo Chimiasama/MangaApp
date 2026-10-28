@@ -49,10 +49,12 @@ object RetrofitClient {
         retrofit.create(RemoteMangaApiService::class.java)
     }
 
+    private val mangaDexCallFactory by lazy { MangaDexCallFactory(okHttpClient) }
+
     val mangaDexRetrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(MANGADEX_BASE_URL)
-            .client(okHttpClient)
+            .callFactory(mangaDexCallFactory)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
     }
@@ -129,7 +131,7 @@ object RetrofitClient {
         val formattedUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()
             .baseUrl(formattedUrl)
-            .client(okHttpClient)
+            .callFactory(mangaDexCallFactory)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(MangaDexApiService::class.java)
