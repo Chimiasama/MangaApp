@@ -23,7 +23,8 @@ interface MangaDexCatalogFilterApi {
         @Query("originalLanguage[]") originalLanguages: List<String>? = null,
         @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
         @Query("contentRating[]") ratings: List<String> = listOf("safe", "suggestive"),
-        @Query("order[followedCount]") popularity: String = "desc",
+        @Query("order[followedCount]") popularity: String? = "desc",
+        @Query("order[year]") orderYear: String? = null,
         @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
     ): MangaDexMangaListResponse
 }

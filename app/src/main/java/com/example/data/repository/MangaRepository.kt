@@ -222,45 +222,49 @@ class MangaRepository(
     }
 
     suspend fun getCatalogManga(query: String, sourceId: String?, language: String, yearRange: String,
-        filters: com.example.source.CatalogFilters = com.example.source.CatalogFilters()): List<MangaModel> {
+        filters: com.example.source.CatalogFilters = com.example.source.CatalogFilters()): List<MangaModel> =
+        loadCatalog(query, sourceId, language, yearRange, filters).items
+
+    suspend fun loadCatalog(query: String, sourceId: String?, language: String, yearRange: String,
+        filters: com.example.source.CatalogFilters = com.example.source.CatalogFilters()): com.example.source.CatalogLoadResult {
         if (!filters.isActive && (yearRange.isBlank() || yearRange == "all")) {
-            return if (query.isBlank()) getPopularManga(sourceId, language) else searchManga(query, sourceId, language)
+            val items = if (query.isBlank()) getPopularManga(sourceId, language) else searchManga(query, sourceId, language)
+            return com.example.source.CatalogLoadResult(items)
         }
-        val sources = if (sourceId.isNullOrBlank() || sourceId == "all") getAvailableSources()
-            else listOfNotNull(sourceRegistry[sourceId])
+        val sources = (if (sourceId.isNullOrBlank() || sourceId == "all") getAvailableSources()
+            else listOfNotNull(sourceRegistry[sourceId])).filter { it.supportsLanguage(language) }
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
+        fun allowed(manga: MangaModel) = !manga.isNsfw && manga.genres.none { adultTags.contains(it.trim().lowercase()) }
         val responses = kotlinx.coroutines.coroutineScope {
-            sources.filter { it.supportsLanguage(language) }.map { source ->
+            sources.map { source ->
                 async {
                     try {
-                        Result.success((if (filters.isActive) source.getFilteredCatalog(query, language, yearRange, filters)
-                            else source.getCatalogManga(query, language, yearRange)).filter { manga ->
-                            !manga.isNsfw && manga.genres.none { adultTags.contains(it.trim().lowercase()) }
-                        })
+                        Result.success(if (filters.isActive) source.getFilteredCatalog(query, language, yearRange, filters)
+                            else source.getCatalogManga(query, language, yearRange))
                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                     catch (error: Exception) { Result.failure<List<MangaModel>>(error) }
                 }
             }.awaitAll()
         }
-        val failure = responses.firstOrNull { it.isFailure }?.exceptionOrNull()
-        val completed = responses.count { it.isSuccess }
-        val results = responses.mapNotNull { it.getOrNull() }.flatten()
-        cacheMangaToDb(results)
-        if (completed == 0 && failure != null) {
-            val entities = if (sourceId.isNullOrBlank() || sourceId == "all") mangaDao.getAllCachedMangasSync()
-                else mangaDao.getCachedMangasBySourceSync(sourceId)
-            val cached = entities.filter { entity ->
-                !entity.isNsfw && entity.genres.split(',').none { it.trim().lowercase() in adultTags } &&
-                    (query.isBlank() || entity.title.contains(query.trim(), ignoreCase = true))
-            }.map { entity ->
+        val failedSources = sources.zip(responses).filter { it.second.isFailure }.map { it.first }
+        val partial = responses.flatMap { response -> response.getOrNull()
+            ?: (response.exceptionOrNull() as? com.example.source.SourceCatalogPartialException)?.items.orEmpty() }
+            .filter(::allowed)
+        cacheMangaToDb(partial)
+        val cached = failedSources.flatMap { source -> mangaDao.getCachedMangasBySourceSync(source.id) }
+            .filter { entity -> query.isBlank() || entity.title.contains(query.trim(), ignoreCase = true) }
+            .map { entity ->
                 MangaModel(url = entity.url, id = entity.id, title = entity.title, coverUrl = entity.coverUrl,
                     description = entity.description, genres = entity.genres.split(',').map { it.trim() }.filter { it.isNotBlank() },
-                    sourceId = entity.sourceId, year = entity.year, originalLanguage = entity.originalLanguage, status = entity.status)
-            }
-            if (cached.isEmpty()) throw java.io.IOException("Não foi possível consultar o catálogo com os filtros selecionados.", failure)
-            return cached
+                    sourceId = entity.sourceId, year = entity.year, originalLanguage = entity.originalLanguage, status = entity.status,
+                    isNsfw = entity.isNsfw)
+            }.filter(::allowed)
+        val items = (partial + cached).distinctBy { it.sourceId to it.url }
+        val warning = failedSources.takeIf { it.isNotEmpty() }?.let {
+            "Consulta incompleta: ${it.joinToString { source -> source.name }} não respondeu a todo o catálogo. " +
+                "Exibindo os dados disponíveis. Toque para tentar novamente."
         }
-        return results.distinctBy { it.sourceId to it.url }
+        return com.example.source.CatalogLoadResult(items, warning)
     }
 
     suspend fun getPopularManga(

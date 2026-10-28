@@ -262,6 +262,38 @@ class BrowseSearchTest {
         assertEquals(listOf(1985), ready.mangaList.map { it.year })
     }
 
+    @Test fun `failed historic source is not hidden by another source with modern or empty results`() = runBlocking {
+        repository.registerSource(object : Source() {
+            override val id = "broken"
+            override val name = "MangaDex"
+            override suspend fun getPopularManga(): List<MangaModel> = throw java.io.IOException("offline")
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga() = listOf(dragon.copy(year = 2024))
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        val vm = model()
+        vm.applyBrowseFilters(BrowseFilterRequest("", "all", "all", "1900-1950", CatalogFilters()))
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "1900-1950" } }
+        assertTrue(state.mangaList.isEmpty())
+        assertNotNull("A failed source must not be presented as an authoritative zero matches", state.errorMessage)
+        assertTrue(state.errorMessage!!.contains("MangaDex"))
+    }
+
+    @Test fun `historic records survive a partial source response with a visible warning`() = runBlocking {
+        val old = dragon.copy(year = 1947)
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga(): List<MangaModel> = throw SourceCatalogPartialException(listOf(old), java.io.IOException("page two"))
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        val vm = model()
+        vm.applyBrowseFilters(BrowseFilterRequest("", "all", "all", "1900-1950", CatalogFilters()))
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "1900-1950" } }
+        assertEquals(listOf(1947), state.mangaList.map { it.year })
+        assertNotNull(state.errorMessage)
+    }
+
     @Test fun `matchesYearRange accurately validates manga publication years`() {
         // Range 1900 - 1950
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1920, "1900-1950"))

@@ -47,3 +47,27 @@ O ano, o status e o idioma original são preservados no cache. A migração 10 �
 favoritos, histórico, capítulos lidos e downloads.
 
 A proposta etária permanece exclusivamente em [planos/classificacao-etaria.md](plans/classificacao-etaria.md).
+
+## Faixa histórica de 1900–1950
+
+A busca dessa faixa usa o catálogo do MangaDex em ordem crescente de ano, percorre
+as páginas necessárias e para ao ultrapassar 1950. Os limites 1900 e 1950 são inclusivos.
+Obras anteriores, posteriores ou sem ano não são inseridas nessa faixa. “Todos” os
+idiomas não acrescenta restrição de tradução e nenhum título é obrigatório.
+
+Isso substitui a sequência de 51 consultas de ano exato. Uma verificação da implementação
+anterior na fonte isolada encontrou 101 obras não adultas nessa faixa; não se tratava
+de inexistência de acervo. A reprodução determinística identificou que falhas de uma
+fonte podiam ser escondidas por respostas vazias ou modernas de outra fonte, resultando
+numa falsa mensagem de zero correspondências após o filtro de ano.
+
+Erros transitórios têm tentativas limitadas, respeitando cancelamento e esperas longas
+de rate limit. Se uma página posterior falhar, os registros já recebidos são preservados.
+O agregador mantém os resultados das fontes saudáveis e dados salvos das fontes que
+falharam. A interface informa quais consultas ficaram incompletas, inclusive quando
+nenhum dos dados disponíveis corresponde ao período. Nesse caso, oferece nova tentativa
+em vez de apresentar a busca como uma confirmação de que não existem obras.
+
+Validação online em 28/10/2026: consulta sem título, todas as fontes, idioma Todos
+e período 1900–1950 retornou 101 obras datadas no intervalo, vindas do MangaDex,
+sem aviso de consulta incompleta. O teste online fica separado dos testes de CI.

@@ -359,7 +359,7 @@ fun BrowseScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = if (state.errorMessage != null) "Erro ao conectar à API" else "Nenhum mangá encontrado",
+                        text = if (state.errorMessage != null) "Não foi possível concluir a busca" else "Nenhum mangá encontrado",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.onSurface
@@ -422,7 +422,7 @@ fun BrowseScreen(
                         Icon(Icons.Default.Warning, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Exibindo dados em cache / offline. Toque para recarregar.",
+                            text = state.errorMessage.orEmpty(),
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 12.sp,
                             modifier = Modifier.weight(1f)
@@ -472,7 +472,7 @@ fun BrowseScreen(
                             Icon(Icons.Default.Warning, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Exibindo dados em cache / offline. Toque para recarregar.",
+                                text = state.errorMessage.orEmpty(),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f)

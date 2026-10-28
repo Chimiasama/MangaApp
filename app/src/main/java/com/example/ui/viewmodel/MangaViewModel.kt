@@ -376,9 +376,13 @@ class MangaViewModel(
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
                 requestLanguage = currentLanguage
                 val popular = query.isBlank() && !catalogFilters.isActive
+                var sourceWarning: String? = null
                 val baseResults = when {
-                    catalogFilters.isActive || (currentYearRange != "all" && currentYearRange.isNotBlank()) ->
-                        repository.getCatalogManga(query, currentSource, currentLanguage, currentYearRange, catalogFilters)
+                    catalogFilters.isActive || (currentYearRange != "all" && currentYearRange.isNotBlank()) -> {
+                        val catalog = repository.loadCatalog(query, currentSource, currentLanguage, currentYearRange, catalogFilters)
+                        sourceWarning = catalog.warning
+                        catalog.items
+                    }
                     popular -> repository.getPopularManga(currentSource, currentLanguage)
                     query.isNotBlank() -> repository.searchManga(query, currentSource, currentLanguage)
                     else -> repository.getPopularManga(currentSource, currentLanguage)
@@ -398,6 +402,7 @@ class MangaViewModel(
                     list = results.filter(catalogFilters::matches),
                     carousels = if (popular && currentYearRange == "all" && results.isNotEmpty()) buildCarouselSections(results) else emptyList(),
                     selection = selection(),
+                    error = sourceWarning,
                     unclassified = results.count { catalogFilters.missingExclusionData(it) }
                 )
             } catch (cancelled: CancellationException) {

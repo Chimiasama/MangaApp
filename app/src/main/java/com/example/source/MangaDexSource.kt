@@ -104,7 +104,9 @@ class MangaDexSource(
     override val filterSupportNote = "MangaDex fornece gêneros, temas, formatos, público editorial, origem e publicação. A classificação depende das etiquetas de cada obra."
 
     override suspend fun getFilteredCatalog(query: String, language: String, yearRange: String, filters: CatalogFilters): List<MangaModel> = withContext(Dispatchers.IO) {
-        if (!filters.isActive) return@withContext getCatalogManga(query, language, yearRange)
+        val bounds = yearRange.split("-").mapNotNull { it.toIntOrNull() }
+        val historic = bounds.size == 2 && bounds[0] <= 1900 && bounds[1] <= 1950
+        if (!filters.isActive && !historic) return@withContext getCatalogManga(query, language, yearRange)
         val wanted = (filters.included - filters.excluded).mapNotNull(CatalogTaxonomy.byId::get)
         val excluded = filters.excluded.mapNotNull(CatalogTaxonomy.byId::get)
         // AND across native API fields is safe for ALL. For ANY across different native fields,
@@ -113,20 +115,28 @@ class MangaDexSource(
         val pushIncludes = filters.includeMode == IncludeMode.ALL || wanted.map(family).distinct().size <= 1
         val included = if (pushIncludes) wanted else emptyList()
         fun groupValues(group: FilterGroup) = included.filter { it.group == group }.map { it.id.substringAfter(':') }.takeIf { it.isNotEmpty() }
-        val bounds = yearRange.split("-").mapNotNull { it.toIntOrNull() }
         val years: List<Int?> = if (bounds.size == 2 && bounds[0] <= bounds[1]) (bounds[0]..bounds[1]).toList() else listOf(null)
         val languages = when (language) { "all" -> null; "pt-br" -> listOf("pt-br", "pt"); "es" -> listOf("es", "es-la"); else -> listOf(language) }
+        suspend fun page(year: Int?, offset: Int = 0, chronological: Boolean = false) = catalogApi.getFilteredCatalog(
+            title = query.trim().takeIf { it.isNotEmpty() }, year = year, offset = offset,
+            languages = languages, includedTags = included.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
+            includedMode = if (filters.includeMode == IncludeMode.ALL) "AND" else "OR",
+            excludedTags = excluded.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
+            demographics = groupValues(FilterGroup.PUBLIC), statuses = groupValues(FilterGroup.STATUS),
+            originalLanguages = groupValues(FilterGroup.ORIGIN)?.flatMap { if (it == "zh") listOf("zh", "zh-hk") else listOf(it) },
+            popularity = if (chronological) null else "desc", orderYear = if (chronological) "asc" else null)
+        if (historic) return@withContext historicMangaDexCatalog(bounds[0], bounds[1]) { offset -> page(null, offset, true) }
         val result = mutableListOf<MangaModel>()
-        for ((index, year) in years.withIndex()) {
-            kotlin.coroutines.coroutineContext.ensureActive()
-            if (index > 0) kotlinx.coroutines.delay(350)
-            result += catalogApi.getFilteredCatalog(title = query.trim().takeIf { it.isNotEmpty() }, year = year,
-                languages = languages, includedTags = included.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
-                includedMode = if (filters.includeMode == IncludeMode.ALL) "AND" else "OR",
-                excludedTags = excluded.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
-                demographics = groupValues(FilterGroup.PUBLIC), statuses = groupValues(FilterGroup.STATUS),
-                originalLanguages = groupValues(FilterGroup.ORIGIN)?.flatMap { if (it == "zh") listOf("zh", "zh-hk") else listOf(it) })
-                .data.orEmpty().map { it.toMangaModel(baseUrl, id) }
+        try {
+            for ((index, year) in years.withIndex()) {
+                kotlin.coroutines.coroutineContext.ensureActive()
+                if (index > 0) kotlinx.coroutines.delay(350)
+                result += mangaDexCatalogRequest { page(year) }.data.orEmpty().map { it.toMangaModel(baseUrl, id) }
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            if (result.isEmpty()) throw error
+            throw SourceCatalogPartialException(result.distinctBy { it.url }, error)
         }
         result.distinctBy { it.url }
     }
@@ -136,6 +146,9 @@ class MangaDexSource(
         if (bounds.size != 2 || bounds[0] > bounds[1]) {
             return@withContext if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
         }
+        if (bounds[0] <= 1900 && bounds[1] <= 1950) {
+            return@withContext getFilteredCatalog(query, language, yearRange, CatalogFilters())
+        }
         val languages = when (language) {
             "pt-br" -> listOf("pt-br", "pt")
             "es" -> listOf("es-la", "es")
@@ -143,23 +156,29 @@ class MangaDexSource(
             else -> listOf(language)
         }
         val results = mutableListOf<MangaModel>()
-        for (year in bounds[0]..bounds[1]) {
-            kotlin.coroutines.coroutineContext.ensureActive()
-            // MangaDex accepts an exact year, so query every year in the requested interval.
-            // Keep requests below its per-second rate limit.
-            if (year != bounds[0]) kotlinx.coroutines.delay(350)
-            var offset = 0
-            do {
-                val response = apiService.getMangaList(limit = 100, offset = offset,
-                    title = query.trim().takeIf { it.isNotEmpty() }, year = year,
-                    translatedLanguages = languages, orderFollowedCount = "desc")
-                val page = response.data.orEmpty()
-                results += page.map { it.toMangaModel(baseUrl, id) }
-                offset += page.size
-                val hasMore = page.size == 100 && offset < (response.total ?: 0).coerceAtMost(10_000)
-                if (!hasMore) break
-                kotlinx.coroutines.delay(350)
-            } while (true)
+        try {
+            for (year in bounds[0]..bounds[1]) {
+                kotlin.coroutines.coroutineContext.ensureActive()
+                // MangaDex accepts an exact year, so query every year in the requested interval.
+                // Keep requests below its per-second rate limit.
+                if (year != bounds[0]) kotlinx.coroutines.delay(350)
+                var offset = 0
+                do {
+                    val response = mangaDexCatalogRequest { apiService.getMangaList(limit = 100, offset = offset,
+                        title = query.trim().takeIf { it.isNotEmpty() }, year = year,
+                        translatedLanguages = languages, orderFollowedCount = "desc") }
+                    val page = response.data.orEmpty()
+                    results += page.map { it.toMangaModel(baseUrl, id) }
+                    offset += page.size
+                    val hasMore = page.size == 100 && offset < (response.total ?: 0).coerceAtMost(10_000)
+                    if (!hasMore) break
+                    kotlinx.coroutines.delay(350)
+                } while (true)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            if (results.isEmpty()) throw error
+            throw SourceCatalogPartialException(results.distinctBy { it.url }, error)
         }
         results.distinctBy { it.url }
     }
