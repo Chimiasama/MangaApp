@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -661,8 +662,11 @@ class MangaViewModel(
                 readerBookmarksJob?.cancel()
                 readerBookmarksJob = viewModelScope.launch {
                     repository.getBookmarksForChapter(chapter.id).collect { bookmarks ->
-                        if (_readerState.value.currentChapter?.id == chapter.id) {
-                            _readerState.value = _readerState.value.copy(bookmarkedPages = bookmarks.map { it.pageIndex }.toSet())
+                        val markedPages = bookmarks.map { it.pageIndex }.toSet()
+                        _readerState.update { current ->
+                            if (current.contentVersion == request && current.currentChapter?.id == chapter.id)
+                                current.copy(bookmarkedPages = markedPages)
+                            else current
                         }
                     }
                 }
@@ -712,7 +716,11 @@ class MangaViewModel(
                 ensureActive()
                 if (_readerState.value.currentChapter?.id == state.currentChapter?.id && pages.isNotEmpty()) {
                     prefetchedChapter = key to pages
-                    _readerState.value = _readerState.value.copy(nextChapterFirstPages = pages.take(2))
+                    _readerState.update { current ->
+                        if (current.contentVersion == state.contentVersion && !current.isLoading)
+                            current.copy(nextChapterFirstPages = pages.take(2))
+                        else current
+                    }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* Speculative loading must never interrupt reading. */ }

@@ -17,6 +17,8 @@ import com.example.ui.reader.ReaderViewport
 import com.example.ui.viewmodel.MangaViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.resetMain
@@ -131,6 +133,43 @@ class ReaderSessionTest {
         withTimeout(10_000) { vm.readerUiState.first { it.currentChapter != null && !it.isLoading } }
         assertEquals(viewport, vm.readerUiState.value.viewport)
     }
+    @Test fun `bookmark updates cannot discard a concurrently completed chapter prefetch`() = runBlocking {
+        preferences.setPagePreloadEnabled(true)
+        preferences.setBatterySaverEnabled(false)
+        val mappingStarted = java.util.concurrent.CountDownLatch(1)
+        val releaseMapping = java.util.concurrent.CountDownLatch(1)
+        val bookmark = com.example.data.local.BookmarkEntity(mangaUrl = manga.url, mangaTitle = manga.title,
+            chapterId = "1", chapterTitle = "Capítulo 1", pageIndex = 0, pageUrl = "a:1")
+        val delayedBookmarks = object : AbstractList<com.example.data.local.BookmarkEntity>() {
+            override val size = 1
+            override fun get(index: Int): com.example.data.local.BookmarkEntity {
+                mappingStarted.countDown()
+                check(releaseMapping.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                return bookmark
+            }
+        }
+        val bookmarks = object : com.example.data.local.BookmarkDao by database.bookmarkDao() {
+            override fun getBookmarksForChapter(chapterId: String) =
+                flowOf<List<com.example.data.local.BookmarkEntity>>(delayedBookmarks).flowOn(Dispatchers.IO)
+        }
+        repository = MangaRepository(database.mangaDao(), database.progressDao(), database.downloadDao(), database.readingSessionDao(),
+            ChapterDownloadManager(ApplicationProvider.getApplicationContext(), database.downloadDao()), preferences,
+            database.chapterDao(), bookmarks)
+        try {
+            val vm = model { chapter, _ ->
+                if (chapter.id == "2") withContext(Dispatchers.IO) {
+                    check(mappingStarted.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                }
+                listOf("a:${chapter.id}", "b:${chapter.id}")
+            }
+            vm.openReader(manga, chapters[0], chapters)
+            withTimeout(10_000) { vm.readerUiState.first { it.nextChapterFirstPages.size == 2 } }
+            releaseMapping.countDown()
+            val state = withTimeout(10_000) { vm.readerUiState.first { 0 in it.bookmarkedPages } }
+            assertEquals(listOf("a:2", "b:2"), state.nextChapterFirstPages)
+        } finally { releaseMapping.countDown() }
+    }
+
     @Test fun `upcoming chapter metadata is prefetched once and reused on navigation`() = runBlocking {
         preferences.setPagePreloadEnabled(true)
         preferences.setBatterySaverEnabled(false)
