@@ -20,8 +20,23 @@ class FirestoreSyncManager(
     private val mangaDao: MangaDao,
     private val progressDao: ProgressDao
 ) {
-    private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
-    private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
+    private fun getFirebaseAuth(): FirebaseAuth? {
+        return try {
+            FirebaseAuth.getInstance()
+        } catch (e: Throwable) {
+            Log.w("FirestoreSyncManager", "FirebaseAuth not available: ${e.message}")
+            null
+        }
+    }
+
+    private fun getFirebaseFirestore(): FirebaseFirestore? {
+        return try {
+            FirebaseFirestore.getInstance()
+        } catch (e: Throwable) {
+            Log.w("FirestoreSyncManager", "FirebaseFirestore not available: ${e.message}")
+            null
+        }
+    }
 
     private val _syncState = MutableStateFlow<CloudSyncState>(CloudSyncState.Idle())
     val syncState: StateFlow<CloudSyncState> = _syncState.asStateFlow()
@@ -32,18 +47,21 @@ class FirestoreSyncManager(
         if (!customSyncKey.isNullOrBlank()) {
             return@withContext customSyncKey!!
         }
-        val currentUser = auth.currentUser
-        if (currentUser != null) {
-            return@withContext currentUser.uid
-        }
-        try {
-            val authResult = auth.signInAnonymously().await()
-            val user = authResult.user
-            if (user != null) {
-                return@withContext user.uid
+        val firebaseAuth = getFirebaseAuth()
+        if (firebaseAuth != null) {
+            val currentUser = firebaseAuth.currentUser
+            if (currentUser != null) {
+                return@withContext currentUser.uid
             }
-        } catch (e: Exception) {
-            Log.e("FirestoreSyncManager", "Error signing in anonymously to Firebase", e)
+            try {
+                val authResult = firebaseAuth.signInAnonymously().await()
+                val user = authResult.user
+                if (user != null) {
+                    return@withContext user.uid
+                }
+            } catch (e: Exception) {
+                Log.e("FirestoreSyncManager", "Error signing in anonymously to Firebase", e)
+            }
         }
         return@withContext "guest_device_${UUID.randomUUID().toString().take(8)}"
     }
@@ -57,6 +75,15 @@ class FirestoreSyncManager(
         localProgress: List<ProgressEntity>
     ): CloudSyncState = withContext(Dispatchers.IO) {
         _syncState.value = CloudSyncState.Syncing
+        val firestore = getFirebaseFirestore()
+        if (firestore == null) {
+            val errorState = CloudSyncState.Error(
+                errorMessage = "O Firebase não está inicializado neste ambiente.",
+                cloudUserId = getSyncUserId()
+            )
+            _syncState.value = errorState
+            return@withContext errorState
+        }
         try {
             val userId = getSyncUserId()
             val userFavRef = firestore.collection("manga_sync").document(userId).collection("favorites")
@@ -174,6 +201,15 @@ class FirestoreSyncManager(
         localProgress: List<ProgressEntity>
     ): CloudSyncState = withContext(Dispatchers.IO) {
         _syncState.value = CloudSyncState.Syncing
+        val firestore = getFirebaseFirestore()
+        if (firestore == null) {
+            val errorState = CloudSyncState.Error(
+                errorMessage = "O Firebase não está inicializado neste ambiente.",
+                cloudUserId = getSyncUserId()
+            )
+            _syncState.value = errorState
+            return@withContext errorState
+        }
         try {
             val userId = getSyncUserId()
             val userFavRef = firestore.collection("manga_sync").document(userId).collection("favorites")
@@ -229,6 +265,15 @@ class FirestoreSyncManager(
 
     suspend fun restoreOnly(): CloudSyncState = withContext(Dispatchers.IO) {
         _syncState.value = CloudSyncState.Syncing
+        val firestore = getFirebaseFirestore()
+        if (firestore == null) {
+            val errorState = CloudSyncState.Error(
+                errorMessage = "O Firebase não está inicializado neste ambiente.",
+                cloudUserId = getSyncUserId()
+            )
+            _syncState.value = errorState
+            return@withContext errorState
+        }
         try {
             val userId = getSyncUserId()
             val userFavRef = firestore.collection("manga_sync").document(userId).collection("favorites")

@@ -131,18 +131,24 @@ fun BrowseScreen(
                 }
                 Text("Ano de lançamento", modifier = Modifier.padding(top = 16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        "all" to "Todas",
-                        "1900-1950" to "1900 - 1950",
-                        "1950-1960" to "1950 - 1960",
-                        "1960-1970" to "1960 - 1970",
-                        "1970-1980" to "1970 - 1980",
-                        "1980-1990" to "1980 - 1990",
-                        "1990-2000" to "1990 - 2000",
-                        "2000-2010" to "2000 - 2010",
-                        "2010-2020" to "2010 - 2020",
-                        "2020-2030" to "2020 - 2030"
-                    ).forEach { (key, label) ->
+                    val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+                    val effectiveCurrentYear = if (currentYear >= 2020) currentYear else 2026
+                    val yearRanges = remember(effectiveCurrentYear) {
+                        listOf(
+                            "all" to "Todas",
+                            "1900-1950" to "1900 - 1950",
+                            "1950-1960" to "1950 - 1960",
+                            "1960-1970" to "1960 - 1970",
+                            "1970-1980" to "1970 - 1980",
+                            "1980-1990" to "1980 - 1990",
+                            "1990-2000" to "1990 - 2000",
+                            "2000-2010" to "2000 - 2010",
+                            "2010-2020" to "2010 - 2020",
+                            "2020-$effectiveCurrentYear" to "2020 - $effectiveCurrentYear",
+                            "unknown" to "Sem data definida"
+                        )
+                    }
+                    yearRanges.forEach { (key, label) ->
                         FilterChip(
                             selected = state.selectedYearRange == key,
                             onClick = { onYearSelected(key) },
@@ -198,8 +204,19 @@ fun BrowseScreen(
                 }
                 if (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") InputChip(selected = false,
                     onClick = { onGenreSelected("all") }, label = { Text(state.selectedGenre) }, trailingIcon = { Icon(Icons.Default.Close, "Remover gênero", Modifier.size(16.dp)) })
-                if (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all") InputChip(selected = false,
-                    onClick = { onYearSelected("all") }, label = { Text(state.selectedYearRange.replace("-", " - ")) }, trailingIcon = { Icon(Icons.Default.Close, "Remover ano", Modifier.size(16.dp)) }, modifier = Modifier.testTag("active_year_chip"))
+                if (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all") {
+                    val activeYearLabel = when (state.selectedYearRange) {
+                        "unknown" -> "Sem data definida"
+                        else -> state.selectedYearRange.replace("-", " - ")
+                    }
+                    InputChip(
+                        selected = false,
+                        onClick = { onYearSelected("all") },
+                        label = { Text(activeYearLabel) },
+                        trailingIcon = { Icon(Icons.Default.Close, "Remover ano", Modifier.size(16.dp)) },
+                        modifier = Modifier.testTag("active_year_chip")
+                    )
+                }
                 if (state.selectedSourceId != "all") InputChip(selected = false, onClick = { onSourceSelected("all") },
                     label = { Text(state.availableSources.find { it.id == state.selectedSourceId }?.name ?: state.selectedSourceId) },
                     trailingIcon = { Icon(Icons.Default.Close, "Remover fonte", Modifier.size(16.dp)) })

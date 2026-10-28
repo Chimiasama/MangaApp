@@ -32,9 +32,22 @@ class ProgressSyncWorker(
             val mangaDao = db.mangaDao()
             val syncManager = FirestoreSyncManager(mangaDao, progressDao)
 
+            val firestore = try {
+                if (com.google.firebase.FirebaseApp.getApps(applicationContext).isEmpty()) {
+                    try {
+                        com.google.firebase.FirebaseApp.initializeApp(applicationContext)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "FirebaseApp.initializeApp failed: ${e.message}")
+                    }
+                }
+                FirebaseFirestore.getInstance()
+            } catch (e: Throwable) {
+                Log.d(TAG, "Firebase is not configured or initialized in this build. Skipping cloud sync.")
+                return Result.success()
+            }
+
             val targetMangaUrl = inputData.getString(KEY_MANGA_URL)
             val userId = syncManager.getSyncUserId()
-            val firestore = FirebaseFirestore.getInstance()
             val userProgRef = firestore.collection("manga_sync").document(userId).collection("progress")
 
             // 1. Prioritize immediate sync of the specific active reading progress if requested

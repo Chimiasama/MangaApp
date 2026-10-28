@@ -96,7 +96,10 @@ private data class BrowseParams(
 
 fun matchesYearRange(year: Int?, rangeKey: String, description: String = ""): Boolean {
     if (rangeKey.isBlank() || rangeKey == "all") return true
-    val actualYear = year ?: Regex("""\b(19\d\d|20[0-2]\d)\b""").find(description)?.value?.toIntOrNull()
+    val actualYear = year ?: Regex("""\b(19\d\d|20\d\d)\b""").find(description)?.value?.toIntOrNull()
+    if (rangeKey == "unknown" || rangeKey == "none") {
+        return actualYear == null
+    }
     if (actualYear == null) return false
     val parts = rangeKey.split("-")
     if (parts.size != 2) return true

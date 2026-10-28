@@ -150,16 +150,29 @@ class BrowseSearchTest {
         // Range 2010 - 2020
         assertTrue(com.example.ui.viewmodel.matchesYearRange(2018, "2010-2020"))
 
-        // Range 2020 - 2030
-        assertTrue(com.example.ui.viewmodel.matchesYearRange(2020, "2020-2030"))
+        // Range 2020 - 2026
+        assertTrue(com.example.ui.viewmodel.matchesYearRange(2020, "2020-2026"))
+        assertTrue(com.example.ui.viewmodel.matchesYearRange(2025, "2020-2026"))
+        assertFalse(com.example.ui.viewmodel.matchesYearRange(2027, "2020-2026"))
+
+        // Range 2026 - 2028 (e.g. current year 2028)
+        assertTrue(com.example.ui.viewmodel.matchesYearRange(2026, "2026-2028"))
+        assertTrue(com.example.ui.viewmodel.matchesYearRange(2028, "2026-2028"))
+        assertFalse(com.example.ui.viewmodel.matchesYearRange(2025, "2026-2028"))
 
         // Description fallback when year field is null
         assertTrue(com.example.ui.viewmodel.matchesYearRange(null, "1900-1950", "Lançado no ano de 1935."))
         assertFalse(com.example.ui.viewmodel.matchesYearRange(null, "1900-1950", "Lançado no ano de 1988."))
+        assertTrue(com.example.ui.viewmodel.matchesYearRange(null, "2026-2028", "Publicado em 2027 na Shonen Jump."))
 
         // 'all' range
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1940, "all"))
         assertTrue(com.example.ui.viewmodel.matchesYearRange(2022, "all"))
+
+        // 'unknown' range
+        assertTrue(com.example.ui.viewmodel.matchesYearRange(null, "unknown", "Uma obra qualquer."))
+        assertFalse(com.example.ui.viewmodel.matchesYearRange(2021, "unknown"))
+        assertFalse(com.example.ui.viewmodel.matchesYearRange(null, "unknown", "Lançado em 1999."))
     }
 
     @Test fun `year range filter filters popular manga in ViewModel`() = runBlocking {
@@ -167,15 +180,16 @@ class BrowseSearchTest {
         val manga1985 = MangaModel("https://test.com/m2", "2", "80s Classic", "", sourceId = "test", year = 1985)
         val manga1997 = MangaModel("https://test.com/m3", "3", "90s Hit", "", sourceId = "test", year = 1997)
         val manga2018 = MangaModel("https://test.com/m4", "4", "Modern Shounen", "", sourceId = "test", year = 2018)
+        val mangaUndated = MangaModel("https://test.com/m5", "5", "Undated Manga", "", sourceId = "test", year = null, description = "Sem data conhecida")
 
         repository.registerSource(object : Source() {
-            override suspend fun getPopularManga(): List<MangaModel> = listOf(manga1940, manga1985, manga1997, manga2018)
+            override suspend fun getPopularManga(): List<MangaModel> = listOf(manga1940, manga1985, manga1997, manga2018, mangaUndated)
             override suspend fun searchManga(query: String): List<MangaModel> = emptyList()
         })
 
         val vm = model()
         // Wait for initial load
-        withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.mangaList.size == 4 } }
+        withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.mangaList.size == 5 } }
 
         // Select 1900-1950
         vm.selectYearRange("1900-1950")
@@ -187,9 +201,14 @@ class BrowseSearchTest {
         val result1990 = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "1990-2000" } }
         assertEquals(listOf("90s Hit"), result1990.mangaList.map { it.title })
 
+        // Select unknown (Sem data definida)
+        vm.selectYearRange("unknown")
+        val resultUnknown = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "unknown" } }
+        assertEquals(listOf("Undated Manga"), resultUnknown.mangaList.map { it.title })
+
         // Clear filters
         vm.clearFiltersAndReload()
         val resultClear = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "all" } }
-        assertEquals(4, resultClear.mangaList.size)
+        assertEquals(5, resultClear.mangaList.size)
     }
 }
