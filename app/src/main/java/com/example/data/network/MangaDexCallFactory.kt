@@ -12,13 +12,21 @@ class MangaDexCallFactory(private val defaultClient: OkHttpClient) : Call.Factor
         .protocols(listOf(Protocol.HTTP_1_1))
         // Do not reuse a connection negotiated by the default HTTP/2 client.
         .connectionPool(ConnectionPool())
+        .eventListenerFactory(object : okhttp3.EventListener.Factory {
+            override fun create(call: Call): okhttp3.EventListener =
+                call.request().tag(MangaDexConnectionTrace::class.java) ?: okhttp3.EventListener.NONE
+        })
+        .addInterceptor(MangaDexTraceInterceptor)
         .build()
 
     override fun newCall(request: Request): Call {
-        val client = when (request.url.host) {
-            "api.mangadex.org", "uploads.mangadex.org" -> compatibleClient
-            else -> defaultClient
+        return when (request.url.host) {
+            "api.mangadex.org", "uploads.mangadex.org" -> {
+                val traced = request.newBuilder()
+                    .tag(MangaDexConnectionTrace::class.java, MangaDexConnectionTrace(request.url.host)).build()
+                compatibleClient.newCall(traced)
+            }
+            else -> defaultClient.newCall(request)
         }
-        return client.newCall(request)
     }
 }

@@ -11,6 +11,8 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
+import java.io.IOException
 import okhttp3.tls.HandshakeCertificates
 import okhttp3.tls.HeldCertificate
 import org.junit.Assert.*
@@ -84,6 +86,42 @@ class MangaDexCallFactoryTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
+    @Test fun `TLS handshake failure includes DNS and selected address without recording private query`() {
+        val server = MockWebServer()
+        server.useHttps(serverTls.sslSocketFactory(), false)
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.FAIL_HANDSHAKE))
+        server.start()
+        val base = client().newBuilder().retryOnConnectionFailure(false).build()
+        try {
+            val request = Request.Builder().url("https://api.mangadex.org:${server.port}/manga?title=private-query").build()
+            val error = assertThrows(IOException::class.java) { MangaDexCallFactory(base).newCall(request).execute().close() }
+            val report = error.message!!
+            assertTrue(report, report.contains("Etapa da falha: TLS"))
+            assertTrue(report, report.contains("DNS: 127.0.0.1"))
+            assertTrue(report, report.contains("TCP: 127.0.0.1:${server.port}"))
+            assertFalse(report.contains("private-query"))
+            assertNotNull(error.cause)
+        } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
+    @Test fun `interrupted response body identifies receive stage and retains original failure`() {
+        val server = MockWebServer()
+        server.useHttps(serverTls.sslSocketFactory(), false)
+        server.enqueue(MockResponse().setBody("response data".repeat(1000))
+            .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY))
+        server.start()
+        val base = client()
+        try {
+            val request = Request.Builder().url("https://uploads.mangadex.org:${server.port}/covers/test.jpg").build()
+            val error = assertThrows(IOException::class.java) {
+                MangaDexCallFactory(base).newCall(request).execute().use { it.body!!.string() }
+            }
+            assertTrue(error.message, error.message!!.contains("Etapa da falha: HTTP (dados)"))
+            assertTrue(error.message!!.contains("Resposta HTTP 200"))
+            assertNotNull(error.cause)
+        } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
     @Test fun `compatibility mode still rejects an untrusted HTTPS certificate`() {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)
@@ -91,7 +129,9 @@ class MangaDexCallFactoryTest {
         val base = OkHttpClient.Builder().dns(localDns).connectTimeout(5, TimeUnit.SECONDS).build()
         try {
             val request = Request.Builder().url("https://api.mangadex.org:${server.port}/manga").build()
-            assertThrows(SSLException::class.java) { MangaDexCallFactory(base).newCall(request).execute().close() }
+            val error = assertThrows(IOException::class.java) { MangaDexCallFactory(base).newCall(request).execute().close() }
+            assertTrue(generateSequence<Throwable>(error) { it.cause }.any { it is SSLException })
+            assertTrue(error.message!!.contains("Etapa da falha: TLS"))
             assertEquals(0, server.requestCount)
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }

@@ -118,3 +118,12 @@ observado não comprova, por si só, que HTTP/2 seja a causa. Os testes usam um
 servidor HTTPS local que oferece HTTP/2 e HTTP/1.1, conferem o protocolo efetivamente
 utilizado, o retorno das duas obras em português, os parâmetros originais da
 consulta, as capas e a rejeição de certificados não confiáveis.
+
+O modo HTTP/1.1 não eliminou o reset no aparelho relatado, portanto a causa ainda
+não foi atribuída ao protocolo HTTP. As falhas da MangaDex agora incluem uma
+sequência por chamada: resolução DNS e seus endereços, IP e porta selecionados,
+tipo de proxy, início/fim do TLS, protocolo negociado, envio dos cabeçalhos e
+recebimento da resposta. Isso permite identificar em qual etapa a conexão caiu.
+O diagnóstico também captura falhas durante a leitura do corpo da resposta,
+após a chegada dos cabeçalhos. Não registra consultas, cabeçalhos, cookies ou
+conteúdo recebido; os detalhes continuam disponíveis em “Copiar erro completo”.
