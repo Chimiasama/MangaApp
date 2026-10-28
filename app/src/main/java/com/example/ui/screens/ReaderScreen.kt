@@ -311,7 +311,6 @@ fun ReaderScreen(
         if (target in latestState.pages.indices) scope.launch { pager.animateScrollToPage(target) }
         else latestNavigate(forward)
     }
-    var pullHoldJob by remember { mutableStateOf<Job?>(null) }
     val nested = remember(mode, state.contentVersion) {
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
@@ -320,7 +319,6 @@ fun ReaderScreen(
                 val contentMoved = if (webtoon) consumed.y else consumed.x
                 if (contentMoved != 0f && abs(delta) < 0.1f) {
                     pull = 0f
-                    pullHoldJob?.cancel()
                     return Offset.Zero
                 }
                 val atStart = if (webtoon) !list.canScrollBackward else pager.currentPage == 0
@@ -330,24 +328,9 @@ fun ReaderScreen(
                     atEnd && latestNext != null, threshold)
                 val ready = abs(pull) >= threshold
                 if (!oldReady && ready) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                if (ready) {
-                    if (pullHoldJob == null || pullHoldJob?.isActive != true) {
-                        pullHoldJob = scope.launch {
-                            delay(500L)
-                            if (abs(pull) >= threshold && !latestState.isLoading) {
-                                val forward = pull < 0
-                                pull = 0f
-                                latestNavigate(forward)
-                            }
-                        }
-                    }
-                } else {
-                    pullHoldJob?.cancel()
-                }
                 return if (pull == 0f) Offset.Zero else if (webtoon) Offset(0f, available.y) else Offset(available.x, 0f)
             }
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                pullHoldJob?.cancel()
                 val direction = if (releasedNormally && !pinching && !latestState.isLoading) releasedChapterPull(pull, threshold) else null
                 pull = 0f
                 releasedNormally = false
