@@ -88,3 +88,12 @@ não é identificada como falta de internet. A consulta tem limite de dois minut
 cancelamentos causados por uma nova busca não viram resultados vazios nem mensagens
 de erro da busca anterior. Dados parciais continuam acompanhados do aviso de consulta
 incompleta. O log `BrowseSearch` registra a categoria de falha, fonte, data e idioma.
+
+Os avisos de consulta incompleta preservam a causa por fonte: status HTTP (como
+403, 429 ou 503), timeout, DNS, TLS, conexão recusada ou resposta em formato
+inesperado. O log registra a exceção original. O aviso não afirma que está
+exibindo dados quando não há correspondências. Uma resposta real do catálogo
+em português, capturada em 28/10/2026, também é reproduzida em teste com o
+conversor de produção e retorna Tank Tankuro (1935) e Sazae-san (1946).
+Esses testes de resposta gravada não verificam disponibilidade atual da fonte,
+da rede do aparelho ou do servidor das capas.

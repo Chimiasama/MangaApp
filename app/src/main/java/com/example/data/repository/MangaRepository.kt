@@ -284,9 +284,15 @@ class MangaRepository(
                     isNsfw = entity.isNsfw)
             }.filter(::allowed)
         val items = (partial + cached).distinctBy { it.sourceId to it.url }
-        val warning = failedSources.takeIf { it.isNotEmpty() }?.let {
-            "Consulta incompleta: ${it.joinToString { source -> source.name }} não respondeu a todo o catálogo. " +
-                "Exibindo os dados disponíveis. Toque para tentar novamente."
+        val failures = sources.zip(responses).filter { it.second.isFailure }
+        failures.forEach { (source, response) ->
+            android.util.Log.w("BrowseSearch", "Catalog failure: source=${source.id} language=$language year=$yearRange",
+                response.exceptionOrNull())
+        }
+        val warning = failures.takeIf { it.isNotEmpty() }?.joinToString(
+            prefix = "Consulta incompleta: ", separator = "; ", postfix = ". Toque para tentar novamente."
+        ) { (source, response) ->
+            "${source.name}: ${com.example.source.catalogFailureDescription(response.exceptionOrNull()!!)}"
         }
         return com.example.source.CatalogLoadResult(items, warning)
     }

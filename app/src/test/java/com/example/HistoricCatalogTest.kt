@@ -37,6 +37,21 @@ class HistoricCatalogTest {
             .build().create(MangaDexCatalogFilterApi::class.java)
         return MangaDexSource(catalogApi = api)
     }
+    @Test fun `Portuguese historic production payload returns the two dated works`() = runBlocking {
+        val raw = javaClass.getResourceAsStream("/mangadex-historic-ptbr.json")!!.bufferedReader().use { it.readText() }
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(raw.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val api = Retrofit.Builder().baseUrl("https://example.test/").client(client)
+            .addConverterFactory(MoshiConverterFactory.create(com.example.data.network.RetrofitClient.moshi))
+            .build().create(MangaDexCatalogFilterApi::class.java)
+        val result = MangaDexSource(catalogApi = api).getCatalogManga("", "pt-br", "1900-1950")
+        assertEquals(listOf("Tank Tankuro", "Sazae-san"), result.map { it.title })
+        assertEquals(listOf(1935, 1946), result.map { it.year })
+        assertEquals(2, result.size)
+    }
+
     @Test fun `1900 to 1950 pages by chronological year stops at 1951 and includes both boundaries`() = runBlocking {
         val result = source().getCatalogManga("", "all", "1900-1950")
         assertEquals(100, result.size)
