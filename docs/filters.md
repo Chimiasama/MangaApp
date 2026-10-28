@@ -150,12 +150,15 @@ de HTTP, ainda não há X-Request-ID para correlacionar a chamada do lado do ser
 ## Recuperação automática de transporte
 
 A busca e as capas tentam primeiro o OkHttp padrão. Somente em GET HTTPS para os
-hosts oficiais da API e das capas, se a chamada falhar por reset, timeout ou erro
+hosts oficiais da API e das capas ou URLs de páginas registrados pelo manifesto,
+se a chamada falhar por reset, timeout ou erro
 de protocolo TLS antes de entregar uma resposta, há uma tentativa com
 `HttpsURLConnection` nativo. A URL, os filtros e a identificação real são preservados;
 a validação de certificado permanece obrigatória. Não se força TLS 1.2.
 
-Há no máximo uma recuperação a cada 30 segundos por cliente compartilhado,
+Há no máximo uma recuperação a cada 30 segundos por cliente compartilhado para
+API/capas. Nas páginas, esse limite é por URL para não bloquear as páginas seguintes;
+falha da alternativa também impõe uma pausa geral (ver `reader-pages.md`). Há
 conexão/leitura de até 6 segundos e um prazo total de 20 segundos na recuperação.
 Cancelar a chamada também desconecta o transporte nativo. Fechar o corpo libera
 os recursos. Se ambos falham, o erro mantém os detalhes das duas tentativas.

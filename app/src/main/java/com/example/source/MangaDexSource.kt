@@ -282,26 +282,14 @@ class MangaDexSource(
     }
 
     override suspend fun getPages(chapterUrl: String): List<String> = withContext(Dispatchers.IO) {
-        val chapterId = chapterUrl.substringAfterLast("/").trim()
-        val pages = mutableListOf<String>()
-
+        val chapterId = chapterUrl.substringBefore('?').trimEnd('/').substringAfterLast('/').trim()
         try {
             val response = apiService.getAtHomeServer(chapterId)
-            val host = response.baseUrl.orEmpty()
-            val chapterObj = response.chapter
-            val hash = chapterObj?.hash.orEmpty()
-            val dataArray = chapterObj?.data.orEmpty()
-
-            if (host.isNotEmpty() && hash.isNotEmpty() && dataArray.isNotEmpty()) {
-                for (fileName in dataArray) {
-                    pages.add("$host/data/$hash/$fileName")
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+            com.example.data.network.MangaDexPages.registry.register(chapterId, response)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            throw java.io.IOException("Não foi possível carregar as páginas do capítulo. Verifique a conexão e tente novamente.", error)
         }
-
-        pages
     }
 
     // =========================================================================

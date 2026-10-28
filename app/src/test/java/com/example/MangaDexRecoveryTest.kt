@@ -20,7 +20,7 @@ import javax.net.ssl.HttpsURLConnection
 class MangaDexRecoveryTest {
     private val cert = HeldCertificate.Builder().commonName("Recovery")
         .addSubjectAlternativeName("api.mangadex.org").addSubjectAlternativeName("uploads.mangadex.org")
-        .addSubjectAlternativeName("localhost").build()
+        .addSubjectAlternativeName("localhost").addSubjectAlternativeName("node.mangadex.network").build()
     private val serverTls = HandshakeCertificates.Builder().heldCertificate(cert).build()
     private val trusted = HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
     private fun client() = OkHttpClient.Builder().dns(object : Dns {
@@ -28,7 +28,7 @@ class MangaDexRecoveryTest {
     }).sslSocketFactory(trusted.sslSocketFactory(), trusted.trustManager).retryOnConnectionFailure(false).build()
 
     @Test fun `reset recovers API and covers with native HTTPS preserving filters and identity`() {
-        for (host in listOf("api.mangadex.org", "uploads.mangadex.org")) {
+        for (host in listOf("api.mangadex.org", "uploads.mangadex.org", "node.mangadex.network")) {
             val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
             val base = client().newBuilder().addNetworkInterceptor { throw SocketException("Connection reset") }.build()
             val attempts = AtomicInteger()
@@ -39,7 +39,12 @@ class MangaDexRecoveryTest {
                     (server.url(url.file).toUrl().openConnection(Proxy.NO_PROXY) as HttpsURLConnection)
                         .apply { sslSocketFactory = trusted.sslSocketFactory() }
                 })
-                val request = Request.Builder().url("https://$host:${server.port}/manga?year=1935&availableTranslatedLanguage%5B%5D=pt-br")
+                val pageUrl = if (host == "node.mangadex.network") {
+                    com.example.data.network.MangaDexPages.registry.register("test-${server.port}",
+                        com.example.data.network.model.MangaDexAtHomeResponse("ok", "https://$host:${server.port}",
+                            com.example.data.network.model.MangaDexAtHomeChapterDto("hash", listOf("1.png", "2.png"), listOf("1.jpg", "2.jpg")))).first()
+                } else "https://$host:${server.port}/manga?year=1935&availableTranslatedLanguage%5B%5D=pt-br"
+                val request = Request.Builder().url(pageUrl)
                     .header("User-Agent", "MangaReaderApp/1.1.0").build()
                 factory.newCall(request).execute().use {
                     assertEquals(200, it.code); assertEquals("native content", it.body!!.string())
@@ -47,11 +52,18 @@ class MangaDexRecoveryTest {
                 }
                 assertEquals(1, attempts.get())
                 val received = server.takeRequest()
-                assertEquals(request.url.encodedPath + "?" + request.url.encodedQuery, received.path)
+                assertEquals(request.url.encodedPath + request.url.encodedQuery?.let { "?$it" }.orEmpty(), received.path)
                 assertEquals("MangaReaderApp/1.1.0", received.getHeader("User-Agent"))
-                // No second native recovery during the cooldown, even when the primary fails again.
-                assertThrows(IOException::class.java) { factory.newCall(request).execute().close() }
-                assertEquals(1, attempts.get())
+                if (host == "node.mangadex.network") {
+                    // A recovered page must not prevent the next distinct page from recovering.
+                    server.enqueue(MockResponse().setBody("second native page"))
+                    val next = request.newBuilder().url(pageUrl.replace("1.png", "2.png")).build()
+                    factory.newCall(next).execute().use { assertEquals("second native page", it.body!!.string()) }
+                    assertEquals(2, attempts.get())
+                } else {
+                    assertThrows(IOException::class.java) { factory.newCall(request).execute().close() }
+                    assertEquals(1, attempts.get())
+                }
             } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
         }
     }

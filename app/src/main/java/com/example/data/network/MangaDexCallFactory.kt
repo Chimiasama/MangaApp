@@ -31,18 +31,17 @@ class MangaDexCallFactory(
             override fun create(call: Call): okhttp3.EventListener =
                 call.request().tag(MangaDexConnectionTrace::class.java) ?: okhttp3.EventListener.NONE
         })
+        .apply { if (automaticRecovery) addInterceptor(MangaDexPageInterceptor()) }
         .apply { if (automaticRecovery) addInterceptor(MangaDexRecoveryInterceptor(nativeConnection)) }
         .addInterceptor(MangaDexTraceInterceptor)
         .build()
 
     override fun newCall(request: Request): Call {
-        return when (request.url.host) {
-            "api.mangadex.org", "uploads.mangadex.org" -> {
-                val traced = request.newBuilder()
-                    .tag(MangaDexConnectionTrace::class.java, MangaDexConnectionTrace(request.url.host)).build()
-                tracedClient.newCall(traced)
-            }
-            else -> defaultClient.newCall(request)
-        }
+        return if (request.url.host in setOf("api.mangadex.org", "uploads.mangadex.org") ||
+            MangaDexPages.registry.contains(request.url.toString())) {
+            val traced = request.newBuilder()
+                .tag(MangaDexConnectionTrace::class.java, MangaDexConnectionTrace(request.url.host)).build()
+            tracedClient.newCall(traced)
+        } else defaultClient.newCall(request)
     }
 }

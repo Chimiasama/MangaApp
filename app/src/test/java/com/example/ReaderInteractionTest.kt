@@ -46,6 +46,7 @@ class ReaderInteractionTest {
     private val navigations = mutableListOf<Boolean>()
     private var snapshot: ReaderViewport? = null
     private val attempts = AtomicInteger()
+    private val requests = java.util.Collections.synchronizedList(mutableListOf<coil.request.ImageRequest>())
     private var failFirst = false
     private val chapterList = listOf(chapter("one", 1f), chapter("two", 2f), chapter("three", 3f))
 
@@ -53,6 +54,7 @@ class ReaderInteractionTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         Coil.setImageLoader(ImageLoader.Builder(context).components {
             add(Interceptor { chain ->
+                requests += chain.request
                 val attempt = attempts.incrementAndGet()
                 if (failFirst && attempt == 1) ErrorResult(null, chain.request, IOException("offline"))
                 else {
@@ -215,6 +217,9 @@ class ReaderInteractionTest {
             }
         }
         assertEquals(2, attempts.get())
+        assertFalse(requests[1].memoryCachePolicy.readEnabled)
+        assertFalse(requests[1].diskCachePolicy.readEnabled)
+        assertEquals("no-cache", requests[1].headers["Cache-Control"])
     }
     @Test fun `controls remain visible during a held interaction and hide after release`() {
         show()

@@ -84,14 +84,18 @@ class ChapterDownloadWorker(
         return try {
             val pages = repository.getPages(chapterUrl, chapterId, sourceId)
             if (pages.isNotEmpty()) {
-                downloadManager.downloadChapter(manga, chapter, pages)
-                Result.success()
+                if (downloadManager.downloadChapter(manga, chapter, pages)) Result.success() else Result.failure()
             } else {
-                Result.retry()
+                if (runAttemptCount < 2) Result.retry() else Result.failure()
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
-            Result.retry()
+            val denied = generateSequence<Throwable>(e) { it.cause }.take(16).any {
+                it is retrofit2.HttpException && it.code() in listOf(403, 429)
+            }
+            if (!denied && runAttemptCount < 2) Result.retry() else Result.failure()
         }
     }
 }

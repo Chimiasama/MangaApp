@@ -585,10 +585,16 @@ private fun ReaderPageImage(
     modifier: Modifier, onLoaded: (Size) -> Unit
 ) {
     val context = LocalContext.current
+    val retryScope = rememberCoroutineScope()
+    var effectiveUrl by remember(url) { mutableStateOf(url) }
+    var retrying by remember(url) { mutableStateOf(false) }
     var retry by remember(url) { mutableIntStateOf(0) }
     var loaded by remember(url, retry) { mutableStateOf(false) }
-    val request = remember(url, retry) {
-        ImageRequest.Builder(context).data(url).memoryCacheKey(url).diskCacheKey(url).build()
+    val request = remember(url, effectiveUrl, retry) {
+        ImageRequest.Builder(context).data(effectiveUrl).memoryCacheKey(url).diskCacheKey(url)
+            .memoryCachePolicy(if (retry > 0) coil.request.CachePolicy.WRITE_ONLY else coil.request.CachePolicy.ENABLED)
+            .diskCachePolicy(if (retry > 0) coil.request.CachePolicy.WRITE_ONLY else coil.request.CachePolicy.ENABLED)
+            .apply { if (retry > 0) setHeader("Cache-Control", "no-cache") }.build()
     }
     key(url, retry) {
         SubcomposeAsyncImage(model = request, contentDescription = "Página ${index + 1}",
@@ -600,11 +606,31 @@ private fun ReaderPageImage(
                 if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
                     onLoaded(Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat()))
             }, loading = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } },
-            error = {
+            error = { errorState ->
                 Box(Modifier.fillMaxSize().background(Color(0xFF18181C)), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Erro ao carregar página ${index + 1}", color = Color.White)
-                        Button(onClick = { retry++ }, modifier = Modifier.testTag("retry_page_$index")) { Text("Tentar novamente") }
+                        Button(enabled = !retrying, onClick = {
+                            retryScope.launch {
+                                retrying = true
+                                try {
+                                    val error = errorState.result.throwable
+                                    val code = (error as? coil.network.HttpException)?.response?.code
+                                    val certificateFailure = generateSequence(error) { it.cause }.take(16).any {
+                                        it is java.security.cert.CertificateException || it is javax.net.ssl.SSLPeerUnverifiedException
+                                    }
+                                    val registry = com.example.data.network.MangaDexPages.registry
+                                    if (registry.contains(url) && code !in listOf(403, 429) && !certificateFailure) {
+                                        registry.invalidate(url)
+                                        val alternatives = try { registry.alternatives(url) }
+                                        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                        catch (_: Exception) { emptyList() }
+                                        effectiveUrl = alternatives.firstOrNull { it != effectiveUrl } ?: url
+                                    }
+                                    retry++
+                                } finally { retrying = false }
+                            }
+                        }, modifier = Modifier.testTag("retry_page_$index")) { Text(if (retrying) "Atualizando página…" else "Tentar novamente") }
                     }
                 }
             })

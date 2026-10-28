@@ -6,6 +6,7 @@ import com.example.data.local.DownloadEntity
 import com.example.source.ChapterModel
 import com.example.source.MangaModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -19,6 +20,8 @@ class ChapterDownloadManager(
         .addInterceptor(com.example.source.SourceHttp.imageHeaders).build()
 ) {
 
+    private val calls: okhttp3.Call.Factory = com.example.data.network.MangaDexCallFactory(okHttpClient)
+
     private val downloadsDir: File
         get() {
             val dir = File(context.filesDir, "manga_downloads")
@@ -31,7 +34,7 @@ class ChapterDownloadManager(
         chapter: ChapterModel,
         pageUrls: List<String>
     ) = withContext(Dispatchers.IO) {
-        if (pageUrls.isEmpty()) return@withContext
+        if (pageUrls.isEmpty()) return@withContext false
 
         val chapterDir = File(downloadsDir, "${manga.url.hashCode()}_${chapter.id}")
         if (!chapterDir.exists()) {
@@ -63,28 +66,23 @@ class ChapterDownloadManager(
                 val pageUrl = pageUrls[index]
                 val pageFile = File(chapterDir, "page_${index}.jpg")
 
-                if (!pageFile.exists() || pageFile.length() == 0L) {
-                    if (pageUrl.startsWith("file:")) {
-                        // MangaDash PDFs have already been converted into local reader images.
-                        val local = File(java.net.URI(pageUrl))
-                        if (!local.isFile || local.length() == 0L) throw java.io.IOException("Página local indisponível para download.")
-                        local.copyTo(pageFile, overwrite = true)
-                    } else {
-                        val request = Request.Builder()
-                            .url(pageUrl)
-                            .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
-                            .build()
-
-                        okHttpClient.newCall(request).execute().use { response ->
-                            if (response.isSuccessful && response.body != null) {
-                                response.body!!.byteStream().use { input ->
-                                    FileOutputStream(pageFile).use { output ->
-                                        input.copyTo(output)
-                                    }
-                                }
-                            }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (!validImage(pageFile)) {
+                    pageFile.delete()
+                    val pending = File(chapterDir, "page_${index}.part")
+                    pending.delete()
+                    try {
+                        if (pageUrl.startsWith("file:")) {
+                            val local = File(java.net.URI(pageUrl))
+                            if (!validImage(local)) throw java.io.IOException("Página local indisponível ou inválida.")
+                            local.copyTo(pending, overwrite = true)
+                        } else {
+                            downloadRemotePage(pageUrl, pending)
                         }
-                    }
+                        if (!validImage(pending)) throw java.io.IOException("Página ${index + 1} não contém uma imagem válida.")
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        if (!pending.renameTo(pageFile)) throw java.io.IOException("Não foi possível salvar a página ${index + 1}.")
+                    } finally { pending.delete() }
                 }
 
                 downloadedCount++
@@ -99,6 +97,7 @@ class ChapterDownloadManager(
                     localPath = chapterDir.absolutePath
                 )
             }
+            true
         } catch (e: Exception) {
             e.printStackTrace()
             downloadDao.updateDownloadStatus(
@@ -109,24 +108,74 @@ class ChapterDownloadManager(
                 totalPages = totalPages,
                 localPath = chapterDir.absolutePath
             )
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            false
         }
     }
 
     suspend fun getDownloadedPages(chapterId: String): List<String> = withContext(Dispatchers.IO) {
         val download = downloadDao.getDownloadSync(chapterId) ?: return@withContext emptyList()
-        if (download.downloadState != DownloadEntity.STATE_COMPLETED && download.downloadedPagesCount == 0) {
+        if (download.downloadState != DownloadEntity.STATE_COMPLETED || download.totalPages <= 0) return@withContext emptyList()
+        val chapterDir = File(download.localPath)
+        val files = (0 until download.totalPages).map { File(chapterDir, "page_${it}.jpg") }
+        if (files.any { !validImage(it) }) {
+            val count = files.count(::validImage)
+            downloadDao.updateDownloadStatus(chapterId, count, count.toFloat() / download.totalPages,
+                DownloadEntity.STATE_FAILED, download.totalPages, download.localPath)
             return@withContext emptyList()
         }
+        files.map { it.toURI().toString() }
+    }
 
-        val chapterDir = File(download.localPath)
-        if (!chapterDir.exists() || !chapterDir.isDirectory) return@withContext emptyList()
+    private class PageHttpFailure(val code: Int) : java.io.IOException("Servidor da página respondeu HTTP $code")
 
-        val files = chapterDir.listFiles()?.filter { it.extension == "jpg" }?.sortedBy { file ->
-            val numStr = file.nameWithoutExtension.removePrefix("page_")
-            numStr.toIntOrNull() ?: 0
-        } ?: emptyList()
+    private suspend fun downloadRemotePage(original: String, target: File) {
+        try { fetchImage(original, target); return }
+        catch (primary: java.io.IOException) {
+            val registry = com.example.data.network.MangaDexPages.registry
+            if (primary is PageHttpFailure || !registry.contains(original) || certificateFailure(primary)) throw primary
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val alternatives = registry.alternatives(original)
+            var last = primary
+            for (alternative in alternatives.take(2)) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                try { fetchImage(alternative, target); return }
+                catch (error: java.io.IOException) {
+                    if (certificateFailure(error) || (error is PageHttpFailure && error.code in listOf(403, 429))) throw error
+                    last = error
+                }
+            }
+            throw last
+        }
+    }
 
-        return@withContext files.map { "file://${it.absolutePath}" }
+    private fun certificateFailure(error: Throwable) = generateSequence(error) { it.cause }.take(16).any {
+        it is java.security.cert.CertificateException || it is javax.net.ssl.SSLPeerUnverifiedException
+    }
+
+    private fun fetchImage(url: String, target: File) {
+        calls.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) throw PageHttpFailure(response.code)
+            val body = response.body ?: throw java.io.IOException("Resposta de página vazia.")
+            val expected = body.contentLength()
+            val copied = body.byteStream().use { input -> FileOutputStream(target).use { input.copyTo(it) } }
+            if (expected >= 0 && copied != expected) throw java.io.IOException("Transferência de página incompleta.")
+        }
+        if (!validImage(target)) throw java.io.IOException("A resposta não contém uma imagem válida.")
+    }
+
+    private fun validImage(file: File): Boolean {
+        if (!file.isFile || file.length() == 0L) return false
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+        val options = android.graphics.BitmapFactory.Options().apply {
+            inSampleSize = Integer.highestOneBit((maxOf(bounds.outWidth, bounds.outHeight) / 1024).coerceAtLeast(1))
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
+        bitmap.recycle()
+        return true
     }
 
     suspend fun deleteDownload(chapterId: String) = withContext(Dispatchers.IO) {
