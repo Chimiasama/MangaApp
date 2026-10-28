@@ -230,7 +230,10 @@ class MangaRepository(
         val results = mutableListOf<MangaModel>()
         for (source in sources.filter { it.supportsLanguage(language) }) {
             try {
-                val list = source.getCatalogManga(query, language, yearRange).filter { !it.isNsfw }
+                val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
+                val list = source.getCatalogManga(query, language, yearRange).filter { manga ->
+                    !manga.isNsfw && manga.genres.none { adultTags.contains(it.trim().lowercase()) }
+                }
                 results += list
                 cacheMangaToDb(list)
                 completed++
