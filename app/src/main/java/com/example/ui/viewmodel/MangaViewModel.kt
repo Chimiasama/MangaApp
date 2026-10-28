@@ -44,6 +44,8 @@ enum class BrowseFailure { OFFLINE, TIMEOUT, SOURCE }
 
 data class ConnectionDiagnosticState(val isRunning: Boolean = false, val report: String? = null)
 
+data class FilterPreviewState(val request: BrowseFilterRequest? = null, val count: Int? = null)
+
 data class BrowseUiState(
     val selectedSourceId: String = "all",
     val selectedGenre: String = "all",
@@ -59,6 +61,7 @@ data class BrowseUiState(
     val catalogFilters: CatalogFilters = CatalogFilters(),
     val failure: BrowseFailure? = null,
     val connectionDiagnostic: ConnectionDiagnosticState = ConnectionDiagnosticState(),
+    val filterPreview: FilterPreviewState = FilterPreviewState(),
     val unclassifiedExcluded: Int = 0
 )
 
@@ -135,6 +138,8 @@ class MangaViewModel(
     }
 ) : ViewModel() {
 
+    private var filterPreviewJob: Job? = null
+    private val _filterPreview = MutableStateFlow(FilterPreviewState())
     private var diagnosticJob: Job? = null
     private var diagnosticRequestId = 0L
     private val _connectionDiagnostic = MutableStateFlow(ConnectionDiagnosticState())
@@ -247,6 +252,7 @@ class MangaViewModel(
             catalogFilters = effectiveFilters,
             unclassifiedExcluded = if (matchesSelection) mangaData.unclassified else 0
         )
+    }.combine(_filterPreview) { state, preview -> state.copy(filterPreview = preview)
     }.combine(_connectionDiagnostic) { state, diagnostic ->
         state.copy(connectionDiagnostic = diagnostic)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowseUiState())
@@ -379,7 +385,36 @@ class MangaViewModel(
         )
     }
 
+    fun previewBrowseFilters(request: BrowseFilterRequest) {
+        filterPreviewJob?.cancel()
+        val current = browseUiState.value
+        val currentRequest = BrowseFilterRequest(current.searchQuery, current.selectedSourceId, current.selectedLanguage,
+            current.selectedYearRange, current.catalogFilters)
+        if (request == currentRequest && !current.isLoading) {
+            _filterPreview.value = FilterPreviewState(request, current.mangaList.size)
+            return
+        }
+        _filterPreview.value = FilterPreviewState(request)
+        filterPreviewJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(600)
+            try {
+                if (!repository.isNetworkAvailable()) return@launch
+                val result = kotlinx.coroutines.withTimeout(120_000) {
+                    repository.loadCatalog(request.query, request.sourceId, request.language, request.yearRange, request.filters)
+                }
+                ensureActive()
+                _filterPreview.value = FilterPreviewState(request, result.items.count {
+                    request.filters.matches(it) && matchesYearRange(it.year, request.yearRange, it.description)
+                })
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _filterPreview.value = FilterPreviewState(request) }
+        }
+    }
+
+    fun dismissFilterPreview() { filterPreviewJob?.cancel(); _filterPreview.value = FilterPreviewState() }
+
     fun applyBrowseFilters(request: BrowseFilterRequest) {
+        dismissFilterPreview()
         val applyRequest = ++browseRequestId
         browseJob?.cancel()
         _isLoadingBrowse.value = true

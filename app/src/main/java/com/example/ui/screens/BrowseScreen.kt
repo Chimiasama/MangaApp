@@ -4,6 +4,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import com.example.source.activeFilterCount
+import com.example.ui.components.SearchFilterControls
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -110,6 +115,8 @@ fun BrowseScreen(
     onDiagnoseMangaDex: () -> Unit = {},
     onDismissConnectionDiagnostic: () -> Unit = {},
     diagnosticsEnabled: Boolean = false,
+    onPreviewFilters: (BrowseFilterRequest) -> Unit = {},
+    onDismissFilterPreview: () -> Unit = {},
     onBackFromSearch: (() -> Unit)? = null
 ) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -183,77 +190,39 @@ fun BrowseScreen(
         )
     }
 
+    val currentRequest = BrowseFilterRequest(queryInput, state.selectedSourceId, state.selectedLanguage,
+        state.selectedYearRange, state.catalogFilters.withLegacy(state.selectedGenre))
+    val activeCount = currentRequest.activeFilterCount
     if (showFilters) {
-        var draftSource by remember { mutableStateOf(state.selectedSourceId) }
-        var draftLanguage by remember { mutableStateOf(state.selectedLanguage) }
-        var draftYear by remember { mutableStateOf(state.selectedYearRange) }
-        var draftFilters by remember { mutableStateOf(state.catalogFilters.withLegacy(state.selectedGenre)) }
+        var draft by remember { mutableStateOf(currentRequest) }
+        LaunchedEffect(draft) { onPreviewFilters(draft) }
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onDismissFilterPreview() } }
+        val preview = if (state.filterPreview.request == draft) state.filterPreview.count
+            else if (draft == currentRequest && !state.isLoading) state.mangaList.size else null
         ModalBottomSheet(onDismissRequest = { showFilters = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-                Text("Filtros", style = MaterialTheme.typography.titleLarge)
-                Text(filterSummary(draftSource, draftLanguage, draftYear, draftFilters),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.testTag("sheet_filter_summary"))
-                Text("Idioma dos capítulos", modifier = Modifier.padding(top = 20.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("pt-br" to "Português", "en" to "Inglês", "es" to "Espanhol", "all" to "Todos").forEach { (code, label) ->
-                        FilterChip(selected = draftLanguage == code, onClick = { draftLanguage = code },
-                            label = { Text(label) }, modifier = Modifier.testTag("lang_chip_$code"))
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f).imePadding()) {
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    Text("Filtros", style = MaterialTheme.typography.titleLarge)
+                    Text(filterSummary(draft.sourceId, draft.language, draft.yearRange, draft.filters),
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("sheet_filter_summary"))
+                    SearchFilterControls(draft, state.availableSources) { draft = it }
+                }
+                Surface(shadowElevation = 4.dp) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { draft = BrowseFilterRequest(queryInput, "all", "pt-br", "all", CatalogFilters()) },
+                            modifier = Modifier.testTag("clear_all_filters_button")) { Text("Limpar tudo") }
+                        Button(onClick = {
+                            dismissSearchKeyboard(); filtersApplied = true; showFilters = false
+                            if (onApplyFilters != null) onApplyFilters(draft) else {
+                                onSourceSelected(draft.sourceId); onLanguageSelected(draft.language); onYearSelected(draft.yearRange)
+                                onCatalogFiltersChanged(draft.filters); onSearchSubmit(queryInput)
+                            }
+                        }, modifier = Modifier.weight(1f).testTag("close_filters_button")) {
+                            Text("Ver resultados (${preview ?: "…"})")
+                        }
                     }
                 }
-                Text("Fonte", modifier = Modifier.padding(top = 16.dp))
-                Text("Para fontes EN ou ES, selecione o idioma correspondente ou Todos.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = draftSource == "all", onClick = { draftSource = "all" }, label = { Text("Todas") })
-                    state.availableSources.forEach { source ->
-                        FilterChip(selected = draftSource == source.id, onClick = { draftSource = source.id },
-                            label = { Text(source.name + when (source.lang) { "en" -> " · EN"; "es" -> " · ES"; else -> "" }) }, modifier = Modifier.testTag("source_chip_${source.id}"))
-                    }
-                }
-                Text(state.availableSources.find { it.id == draftSource }?.filterSupportNote
-                    ?: "Cada fonte oferece classificações diferentes. Obras sem os dados necessários não confirmam uma inclusão.",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp).testTag("filter_source_support"))
-                CatalogFilterEditor(draftFilters, { draftFilters = it })
-                Text("Ano de lançamento", modifier = Modifier.padding(top = 16.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
-                    val effectiveCurrentYear = if (currentYear >= 2020) currentYear else 2026
-                    val yearRanges = remember(effectiveCurrentYear) {
-                        listOf(
-                            "all" to "Todas",
-                            "1900-1950" to "1900 - 1950",
-                            "1950-1960" to "1950 - 1960",
-                            "1960-1970" to "1960 - 1970",
-                            "1970-1980" to "1970 - 1980",
-                            "1980-1990" to "1980 - 1990",
-                            "1990-2000" to "1990 - 2000",
-                            "2000-2010" to "2000 - 2010",
-                            "2010-2020" to "2010 - 2020",
-                            "2020-$effectiveCurrentYear" to "2020 - $effectiveCurrentYear",
-                            "unknown" to "Sem data definida"
-                        )
-                    }
-                    yearRanges.forEach { (key, label) ->
-                        FilterChip(
-                            selected = draftYear == key,
-                            onClick = { draftYear = key },
-                            label = { Text(label) },
-                            modifier = Modifier.testTag("year_chip_$key")
-                        )
-                    }
-                }
-            }
-                Button(onClick = {
-                    filtersApplied = true
-                    showFilters = false
-                    val request = BrowseFilterRequest(queryInput, draftSource, draftLanguage, draftYear, draftFilters)
-                    if (onApplyFilters != null) onApplyFilters(request) else {
-                        onSourceSelected(draftSource); onLanguageSelected(draftLanguage); onYearSelected(draftYear)
-                        onCatalogFiltersChanged(draftFilters); onSearchSubmit(queryInput)
-                    }
-                }, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
             }
         }
     }
@@ -297,13 +266,16 @@ fun BrowseScreen(
                     shape = RoundedCornerShape(16.dp), singleLine = true
                 )
                 IconButton(onClick = { dismissSearchKeyboard(); showFilters = true }, modifier = Modifier.testTag("open_filters_button")) {
-                    Icon(Icons.Default.FilterList, contentDescription = "Filtros")
+                    BadgedBox(badge = { if (activeCount > 0) Badge { Text(activeCount.toString()) } }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Filtros: $activeCount ativos")
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.selectedLanguage != "all") {
+                if (state.selectedLanguage !in setOf("pt-br", "all")) {
                     val label = when (state.selectedLanguage) { "pt-br" -> "Português"; "en" -> "Inglês"; "es" -> "Espanhol"; else -> state.selectedLanguage }
-                    InputChip(selected = false, onClick = { showFilters = true }, label = { Text(label) })
+                    InputChip(selected = false, onClick = { onLanguageSelected("pt-br") }, label = { Text(label) },
+                        trailingIcon = { Icon(Icons.Default.Close, "Restaurar idioma padrão", Modifier.size(16.dp)) })
                 }
                 CatalogTaxonomy.options.filter { it.id in state.catalogFilters.included || it.id in state.catalogFilters.excluded }.forEach { option ->
                     val excluded = option.id in state.catalogFilters.excluded
@@ -330,8 +302,17 @@ fun BrowseScreen(
                     trailingIcon = { Icon(Icons.Default.Close, "Remover fonte", Modifier.size(16.dp)) })
             }
 
-            Text(activeSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (activeCount > 0) Text(activeSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp).testTag("active_filter_summary"))
+
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("genre:action", "genre:adventure", "genre:comedy", "genre:drama", "genre:romance").forEach { id ->
+                    val option = CatalogTaxonomy.byId.getValue(id)
+                    FilterChip(id in state.catalogFilters.included,
+                        { onCatalogFiltersChanged(state.catalogFilters.select(id, com.example.source.FilterSelection.INCLUDE)) },
+                        label = { Text(option.label) }, modifier = Modifier.testTag("quick_$id"))
+                }
+            }
 
             // Recent Search History Chips (if present)
             if (searchFocused && queryInput.isBlank() && state.searchHistory.isNotEmpty()) {

@@ -208,6 +208,8 @@ fun MangaApp(
                     },
                     diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     onApplyFilters = mangaViewModel::applyBrowseFilters,
+                    onPreviewFilters = mangaViewModel::previewBrowseFilters,
+                    onDismissFilterPreview = mangaViewModel::dismissFilterPreview,
                     onDiagnoseMangaDex = mangaViewModel::diagnoseMangaDexConnection,
                     onDismissConnectionDiagnostic = mangaViewModel::dismissConnectionDiagnostic,
                     onCatalogFiltersChanged = mangaViewModel::setCatalogFilters,

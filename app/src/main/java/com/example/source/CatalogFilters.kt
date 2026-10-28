@@ -99,6 +99,12 @@ data class CatalogFilters(
     val includeMode: IncludeMode = IncludeMode.ALL,
     val hideUnknownForExclusions: Boolean = true
 ) {
+    val activeCount get() = (included + excluded).size
+    fun cycle(id: String) = when (selection(id)) {
+        FilterSelection.NEUTRAL -> select(id, FilterSelection.INCLUDE)
+        FilterSelection.INCLUDE -> select(id, FilterSelection.EXCLUDE)
+        FilterSelection.EXCLUDE -> without(id)
+    }
     val isActive get() = included.isNotEmpty() || excluded.isNotEmpty()
     fun selection(id: String) = when (id) { in excluded -> FilterSelection.EXCLUDE; in included -> FilterSelection.INCLUDE; else -> FilterSelection.NEUTRAL }
     fun select(id: String, selection: FilterSelection): CatalogFilters {
@@ -127,3 +133,8 @@ data class CatalogFilters(
 
 data class BrowseFilterRequest(val query: String, val sourceId: String, val language: String,
     val yearRange: String, val filters: CatalogFilters)
+
+/** Counts changes from the default Portuguese / all sources / all years selection. */
+val BrowseFilterRequest.activeFilterCount: Int get() = filters.activeCount +
+    (if (sourceId != "all") 1 else 0) + (if (language !in setOf("pt-br", "all")) 1 else 0) +
+    (if (yearRange.isNotBlank() && yearRange != "all") 1 else 0)

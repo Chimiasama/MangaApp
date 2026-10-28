@@ -28,12 +28,13 @@ class CatalogFilterScreenTest {
                 onApplyFilters = { request = it; calls++ }, onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
         }
         compose.onNodeWithTag("open_filters_button").performClick()
-        compose.onNodeWithTag("source_chip_mangadex").performClick()
-        compose.onNodeWithTag("lang_chip_all").performClick()
+        compose.onNodeWithTag("filter_source_expand").performScrollTo().performClick()
+        compose.onNodeWithTag("source_chip_mangadex").performScrollTo().performClick()
+        compose.onNodeWithTag("lang_chip_all").performScrollTo().performClick()
         compose.onNodeWithTag("filter_classification_search").performScrollTo().performTextInput("ninja")
-        compose.onNodeWithTag("include_theme:ninja").performScrollTo().performClick().assertIsSelected()
-        compose.onNodeWithTag("exclude_theme:ninja").performClick().assertIsSelected()
-        compose.onNodeWithTag("include_theme:ninja").assertIsNotSelected()
+        compose.onNodeWithTag("filter_option_theme:ninja").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithTag("filter_option_theme:ninja").performClick().assertIsSelected()
+        compose.onNodeWithTag("filter_option_theme:ninja").assertContentDescriptionEquals("Ninja: excluído")
         compose.runOnIdle { assertNull(request); assertEquals(0, calls) }
         compose.onNodeWithTag("close_filters_button").performClick()
         compose.runOnIdle {

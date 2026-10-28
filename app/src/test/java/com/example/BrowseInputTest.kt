@@ -92,9 +92,9 @@ class BrowseInputTest {
         }
         compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
         compose.onNodeWithTag("open_filters_button").performClick()
-        compose.onNodeWithTag("lang_chip_en").performClick()
-        compose.onNodeWithTag("filter_classification_search").performScrollTo().performTextInput("shounen")
-        compose.onNodeWithTag("include_public:shounen").performScrollTo().performClick()
+        compose.onNodeWithTag("lang_chip_en").performScrollTo().performClick()
+        compose.onNodeWithTag("filter_group_PUBLIC").performScrollTo().performClick()
+        compose.onNodeWithTag("filter_option_public:shounen").performScrollTo().performClick()
         compose.runOnIdle { assertEquals("", language); assertTrue(advanced.included.isEmpty()) }
         compose.onNodeWithTag("close_filters_button").performClick()
         compose.runOnIdle { assertEquals("en", language); assertTrue("public:shounen" in advanced.included) }
@@ -109,8 +109,8 @@ class BrowseInputTest {
         }
         compose.onNodeWithTag("open_filters_button").performClick()
         compose.onNodeWithTag("lang_chip_pt-br").assertIsSelected()
-        compose.onNodeWithTag("year_chip_1900-1950").performScrollTo().performClick()
-        compose.onNodeWithTag("sheet_filter_summary")
+        compose.onNodeWithTag("year_end_input").performScrollTo().performTextReplacement("1950")
+        compose.onNodeWithTag("sheet_filter_summary").performScrollTo()
             .assertTextEquals("Data: 1900–1950 · Fonte: Todas · Idioma: Português · Origem: Todas · Classificação: Todas")
         compose.onNodeWithTag("close_filters_button").performClick()
         compose.runOnIdle {
@@ -126,7 +126,7 @@ class BrowseInputTest {
         compose.onNodeWithTag("active_filter_summary")
             .assertTextEquals("Data: 1900–1950 · Fonte: Todas · Idioma: Português · Origem: Todas · Classificação: Todas")
         compose.onNodeWithTag("open_filters_button").performClick()
-        compose.onNodeWithTag("sheet_filter_summary")
+        compose.onNodeWithTag("sheet_filter_summary").performScrollTo()
             .assertTextEquals("Data: 1900–1950 · Fonte: Todas · Idioma: Português · Origem: Todas · Classificação: Todas")
     }
 
@@ -236,6 +236,14 @@ class BrowseInputTest {
         }
         compose.onNodeWithTag("connection_diagnostics_switch").assertIsOff().performClick().assertIsOn()
         compose.onNodeWithTag("connection_diagnostics_switch").performClick().assertIsOff()
+    }
+
+    @Test fun `default search hides the implicit filter summary`() {
+        compose.setContent {
+            MaterialTheme { BrowseScreen(state = BrowseUiState(), onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("active_filter_summary").assertDoesNotExist()
+        compose.onNodeWithTag("quick_genre:action").assertExists()
     }
 
     @Test fun `new search tab closes keyboard before returning home and preserves query`() {
