@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -15,7 +16,9 @@ data class MangaEntity(
     val isFavorite: Boolean = true,
     val isNsfw: Boolean = false,
     val addedTimestamp: Long = System.currentTimeMillis(),
-    val year: Int? = null
+    val year: Int? = null,
+    @ColumnInfo(defaultValue = "''") val originalLanguage: String = "",
+    @ColumnInfo(defaultValue = "'Unknown'") val status: String = "Unknown"
 )
 
 /**

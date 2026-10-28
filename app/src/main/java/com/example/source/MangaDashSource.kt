@@ -32,6 +32,7 @@ class MangaDashSource(
     override val lang = "pt-br"
     override val isNsfw = false
     override val canAggregateChapters = false
+    override val filterSupportNote = "MangaDash fornece classificação nos detalhes. Público, origem e formato podem não estar disponíveis."
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val viewerAdapter = Moshi.Builder().build().adapter(Map::class.java)
 

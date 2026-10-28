@@ -22,7 +22,9 @@ import kotlinx.coroutines.withContext
  */
 class MangaDexSource(
     private val apiService: MangaDexApiService = RetrofitClient.mangaDexApiService,
-    private val mapper: MangaDexMapper = MangaDexMapper
+    private val mapper: MangaDexMapper = MangaDexMapper,
+    private val catalogApi: com.example.data.network.MangaDexCatalogFilterApi =
+        RetrofitClient.mangaDexRetrofit.create(com.example.data.network.MangaDexCatalogFilterApi::class.java)
 ) : MangaSource {
 
     override val id: String = "mangadex"
@@ -97,6 +99,36 @@ class MangaDexSource(
 
         // Tier 4: Fallback to curated starter offline catalog if network is down or blocked
         STARTER_FALLBACK_MANGAS
+    }
+
+    override val filterSupportNote = "MangaDex fornece gêneros, temas, formatos, público editorial, origem e publicação. A classificação depende das etiquetas de cada obra."
+
+    override suspend fun getFilteredCatalog(query: String, language: String, yearRange: String, filters: CatalogFilters): List<MangaModel> = withContext(Dispatchers.IO) {
+        if (!filters.isActive) return@withContext getCatalogManga(query, language, yearRange)
+        val wanted = (filters.included - filters.excluded).mapNotNull(CatalogTaxonomy.byId::get)
+        val excluded = filters.excluded.mapNotNull(CatalogTaxonomy.byId::get)
+        // AND across native API fields is safe for ALL. For ANY across different native fields,
+        // fetch a superset and apply the complete expression locally to avoid false negatives.
+        val family: (CatalogFilterOption) -> String = { if (it.mangaDexTagId != null) "tag" else it.group.name }
+        val pushIncludes = filters.includeMode == IncludeMode.ALL || wanted.map(family).distinct().size <= 1
+        val included = if (pushIncludes) wanted else emptyList()
+        fun groupValues(group: FilterGroup) = included.filter { it.group == group }.map { it.id.substringAfter(':') }.takeIf { it.isNotEmpty() }
+        val bounds = yearRange.split("-").mapNotNull { it.toIntOrNull() }
+        val years: List<Int?> = if (bounds.size == 2 && bounds[0] <= bounds[1]) (bounds[0]..bounds[1]).toList() else listOf(null)
+        val languages = when (language) { "all" -> null; "pt-br" -> listOf("pt-br", "pt"); "es" -> listOf("es", "es-la"); else -> listOf(language) }
+        val result = mutableListOf<MangaModel>()
+        for ((index, year) in years.withIndex()) {
+            kotlin.coroutines.coroutineContext.ensureActive()
+            if (index > 0) kotlinx.coroutines.delay(350)
+            result += catalogApi.getFilteredCatalog(title = query.trim().takeIf { it.isNotEmpty() }, year = year,
+                languages = languages, includedTags = included.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
+                includedMode = if (filters.includeMode == IncludeMode.ALL) "AND" else "OR",
+                excludedTags = excluded.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
+                demographics = groupValues(FilterGroup.PUBLIC), statuses = groupValues(FilterGroup.STATUS),
+                originalLanguages = groupValues(FilterGroup.ORIGIN)?.flatMap { if (it == "zh") listOf("zh", "zh-hk") else listOf(it) })
+                .data.orEmpty().map { it.toMangaModel(baseUrl, id) }
+        }
+        result.distinctBy { it.url }
     }
 
     override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> = withContext(Dispatchers.IO) {

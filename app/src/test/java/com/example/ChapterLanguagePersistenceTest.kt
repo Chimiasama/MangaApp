@@ -26,10 +26,12 @@ class ChapterLanguagePersistenceTest {
         val sqlite = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE)
         sqlite.execSQL("ALTER TABLE chapters DROP COLUMN language")
         sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN year")
+        sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN originalLanguage")
+        sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN status")
         sqlite.version = 7
         sqlite.close()
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name).allowMainThreadQueries()
-            .addMigrations(AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10).build()
+            .addMigrations(AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
         try {
             val old = migrated.chapterDao().getChapterByIdSync("saved")!!
             assertTrue(old.isRead)

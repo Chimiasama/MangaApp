@@ -41,17 +41,19 @@ class BrowseInputTest {
 
     @Test fun `filters are available in a sheet instead of squeezing the search field`() {
         var language = ""
-        var genre = ""
+        var advanced = com.example.source.CatalogFilters()
         compose.setContent {
-            MaterialTheme { BrowseScreen(state = BrowseUiState(), onLanguageSelected = { language = it }, onGenreSelected = { genre = it },
+            MaterialTheme { BrowseScreen(state = BrowseUiState(), onLanguageSelected = { language = it }, onCatalogFiltersChanged = { advanced = it },
                 onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
         }
         compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
         compose.onNodeWithTag("open_filters_button").performClick()
         compose.onNodeWithTag("lang_chip_en").performClick()
-        compose.onNodeWithTag("genre_chip_Shounen").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals("en", language); assertEquals("Shounen", genre) }
-        compose.onNodeWithTag("close_filters_button").performScrollTo().performClick()
+        compose.onNodeWithTag("filter_classification_search").performScrollTo().performTextInput("shounen")
+        compose.onNodeWithTag("include_public:shounen").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("", language); assertTrue(advanced.included.isEmpty()) }
+        compose.onNodeWithTag("close_filters_button").performClick()
+        compose.runOnIdle { assertEquals("en", language); assertTrue("public:shounen" in advanced.included) }
         compose.onNodeWithTag("lang_chip_en").assertDoesNotExist()
     }
 

@@ -199,6 +199,44 @@ class BrowseSearchTest {
         assertEquals(listOf(1985), state.mangaList.map { it.year })
     }
 
+    @Test fun `applying source and ninja exclusion without title filters results and reports unverifiable metadata`() = runBlocking {
+        val ninja = dragon.copy(id = "ninja", url = "ninja", genres = listOf("Ninja"))
+        val martial = dragon.copy(id = "martial", url = "martial", genres = listOf("Martial Arts"))
+        val unknown = dragon.copy(id = "unknown", url = "unknown")
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga() = listOf(ninja, martial, unknown)
+            override suspend fun searchManga(query: String) = error("No title search expected")
+        })
+        val vm = model()
+        vm.applyBrowseFilters(BrowseFilterRequest("", "test", "all", "all", CatalogFilters(excluded = setOf("theme:ninja"))))
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedSourceId == "test" && it.catalogFilters.excluded.isNotEmpty() } }
+        assertEquals(listOf("martial"), state.mangaList.map { it.id })
+        assertEquals(1, state.unclassifiedExcluded)
+        vm.clearFiltersAndReload()
+        val clear = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && !it.catalogFilters.isActive } }
+        assertEquals(3, clear.mangaList.size)
+    }
+
+    @Test fun `offline classification filters reuse cached publication and origin metadata`() = runBlocking {
+        var offline = false
+        val saved = dragon.copy(genres = listOf("Martial Arts"), originalLanguage = "ja", status = "completed")
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga(): List<MangaModel> {
+                if (offline) throw java.io.IOException("offline")
+                return listOf(saved)
+            }
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        val vm = model()
+        withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.mangaList.isNotEmpty() } }
+        offline = true
+        vm.applyBrowseFilters(BrowseFilterRequest("", "test", "all", "all", CatalogFilters(
+            included = setOf("origin:ja", "status:completed"), excluded = setOf("theme:ninja"))))
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedSourceId == "test" } }
+        assertEquals(listOf("ja"), state.mangaList.map { it.originalLanguage })
+        assertEquals(listOf("completed"), state.mangaList.map { it.status })
+    }
+
     @Test fun `matchesYearRange accurately validates manga publication years`() {
         // Range 1900 - 1950
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1920, "1900-1950"))

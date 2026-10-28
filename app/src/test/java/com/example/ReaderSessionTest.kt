@@ -17,6 +17,7 @@ import com.example.ui.reader.ReaderViewport
 import com.example.ui.viewmodel.MangaViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -136,6 +137,7 @@ class ReaderSessionTest {
     @Test fun `bookmark updates cannot discard a concurrently completed chapter prefetch`() = runBlocking {
         preferences.setPagePreloadEnabled(true)
         preferences.setBatterySaverEnabled(false)
+        val prefetchRequested = CompletableDeferred<Unit>()
         val mappingStarted = java.util.concurrent.CountDownLatch(1)
         val releaseMapping = java.util.concurrent.CountDownLatch(1)
         val bookmark = com.example.data.local.BookmarkEntity(mangaUrl = manga.url, mangaTitle = manga.title,
@@ -150,7 +152,12 @@ class ReaderSessionTest {
         }
         val bookmarks = object : com.example.data.local.BookmarkDao by database.bookmarkDao() {
             override fun getBookmarksForChapter(chapterId: String) =
-                flowOf<List<com.example.data.local.BookmarkEntity>>(delayedBookmarks).flowOn(Dispatchers.IO)
+                flow<List<com.example.data.local.BookmarkEntity>> {
+                    // Start the blocking mapping only after prefetch has actually been launched.
+                    // Otherwise Unconfined dispatch can block openReader before it reaches prefetch.
+                    prefetchRequested.await()
+                    emit(delayedBookmarks)
+                }.flowOn(Dispatchers.IO)
         }
         repository = MangaRepository(database.mangaDao(), database.progressDao(), database.downloadDao(), database.readingSessionDao(),
             ChapterDownloadManager(ApplicationProvider.getApplicationContext(), database.downloadDao()), preferences,
@@ -158,6 +165,7 @@ class ReaderSessionTest {
         try {
             val vm = model { chapter, _ ->
                 if (chapter.id == "2") withContext(Dispatchers.IO) {
+                    prefetchRequested.complete(Unit)
                     check(mappingStarted.await(10, java.util.concurrent.TimeUnit.SECONDS))
                 }
                 listOf("a:${chapter.id}", "b:${chapter.id}")

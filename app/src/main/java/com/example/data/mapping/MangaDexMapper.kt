@@ -139,6 +139,8 @@ object MangaDexMapper {
             coverUrl = extractCoverUrl(dto),
             description = extractDescription(dto),
             sourceId = sourceId,
+            status = dto.attributes?.status ?: "Unknown",
+            originalLanguage = dto.attributes?.originalLanguage.orEmpty(),
             year = dto.attributes?.year,
             genres = genres.joinToString(", "),
             isFavorite = isFavorite,
@@ -171,6 +173,7 @@ object MangaDexMapper {
             sourceId = sourceId,
             author = extractAuthor(dto),
             status = dto.attributes?.status ?: "Unknown",
+            originalLanguage = dto.attributes?.originalLanguage.orEmpty(),
             year = dto.attributes?.year
         )
     }
@@ -260,6 +263,8 @@ object MangaDexMapper {
             sourceId = sourceId,
             genres = genres.joinToString(", "),
             year = year,
+            originalLanguage = originalLanguage,
+            status = status,
             isFavorite = isFavorite,
             isNsfw = isNsfw,
             addedTimestamp = System.currentTimeMillis()
@@ -279,7 +284,8 @@ object MangaDexMapper {
             sourceId = sourceId,
             author = "",
             year = year,
-            status = "Unknown"
+            originalLanguage = originalLanguage,
+            status = status
         )
     }
 

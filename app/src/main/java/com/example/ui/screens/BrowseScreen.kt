@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.foundation.layout.FlowRow
@@ -68,6 +70,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.source.BrowseFilterRequest
+import com.example.source.CatalogFilters
+import com.example.source.CatalogTaxonomy
+import com.example.ui.components.CatalogFilterEditor
 import com.example.source.MangaModel
 import com.example.ui.components.MangaCard
 import com.example.ui.theme.AccentGold
@@ -91,7 +97,9 @@ fun BrowseScreen(
     onDeleteSearchHistoryItem: (Long) -> Unit = {},
     onClearSearchHistory: () -> Unit = {},
     onRefresh: () -> Unit = {},
-    onClearFilters: () -> Unit = {}
+    onClearFilters: () -> Unit = {},
+    onCatalogFiltersChanged: (CatalogFilters) -> Unit = {},
+    onApplyFilters: ((BrowseFilterRequest) -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -102,34 +110,35 @@ fun BrowseScreen(
     var showFilters by remember { mutableStateOf(false) }
 
     if (showFilters) {
-        ModalBottomSheet(onDismissRequest = { showFilters = false }) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+        var draftSource by remember { mutableStateOf(state.selectedSourceId) }
+        var draftLanguage by remember { mutableStateOf(state.selectedLanguage) }
+        var draftYear by remember { mutableStateOf(state.selectedYearRange) }
+        var draftFilters by remember { mutableStateOf(state.catalogFilters.withLegacy(state.selectedGenre)) }
+        ModalBottomSheet(onDismissRequest = { showFilters = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
                 Text("Filtros", style = MaterialTheme.typography.titleLarge)
                 Text("Idioma dos capítulos", modifier = Modifier.padding(top = 20.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("pt-br" to "Português", "en" to "Inglês", "es" to "Espanhol", "all" to "Todos").forEach { (code, label) ->
-                        FilterChip(selected = state.selectedLanguage == code, onClick = { onLanguageSelected(code) },
+                        FilterChip(selected = draftLanguage == code, onClick = { draftLanguage = code },
                             label = { Text(label) }, modifier = Modifier.testTag("lang_chip_$code"))
                     }
                 }
                 Text("Fonte", modifier = Modifier.padding(top = 16.dp))
                 Text("Para fontes EN ou ES, selecione o idioma correspondente ou Todos.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = state.selectedSourceId == "all", onClick = { onSourceSelected("all") }, label = { Text("Todas") })
+                    FilterChip(selected = draftSource == "all", onClick = { draftSource = "all" }, label = { Text("Todas") })
                     state.availableSources.forEach { source ->
-                        FilterChip(selected = state.selectedSourceId == source.id, onClick = { onSourceSelected(source.id) },
+                        FilterChip(selected = draftSource == source.id, onClick = { draftSource = source.id },
                             label = { Text(source.name + when (source.lang) { "en" -> " · EN"; "es" -> " · ES"; else -> "" }) }, modifier = Modifier.testTag("source_chip_${source.id}"))
                     }
                 }
-                Text("Gênero", modifier = Modifier.padding(top = 16.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("all" to "Todos", "Shounen" to "Shounen", "Sci-Fi" to "Sci-Fi", "Shoujo" to "Shoujo", "Yuri" to "Yuri",
-                        "Ninja" to "Ninja", "Ação" to "Ação", "Aventura" to "Aventura", "Fantasia" to "Fantasia", "Isekai" to "Isekai",
-                        "Romance" to "Romance", "Seinen" to "Seinen", "Comédia" to "Comédia", "Sobrenatural" to "Sobrenatural", "Escolar" to "Escolar").forEach { (key, label) ->
-                        FilterChip(selected = state.selectedGenre == key, onClick = { onGenreSelected(key) },
-                            label = { Text(label) }, modifier = Modifier.testTag("genre_chip_$key"))
-                    }
-                }
+                Text(state.availableSources.find { it.id == draftSource }?.filterSupportNote
+                    ?: "Cada fonte oferece classificações diferentes. Obras sem os dados necessários não confirmam uma inclusão.",
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp).testTag("filter_source_support"))
+                CatalogFilterEditor(draftFilters, { draftFilters = it })
                 Text("Ano de lançamento", modifier = Modifier.padding(top = 16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
@@ -151,14 +160,23 @@ fun BrowseScreen(
                     }
                     yearRanges.forEach { (key, label) ->
                         FilterChip(
-                            selected = state.selectedYearRange == key,
-                            onClick = { onYearSelected(key) },
+                            selected = draftYear == key,
+                            onClick = { draftYear = key },
                             label = { Text(label) },
                             modifier = Modifier.testTag("year_chip_$key")
                         )
                     }
                 }
-                Button(onClick = { filtersApplied = true; showFilters = false; onSearchSubmit(queryInput) }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
+            }
+                Button(onClick = {
+                    filtersApplied = true
+                    showFilters = false
+                    val request = BrowseFilterRequest(queryInput, draftSource, draftLanguage, draftYear, draftFilters)
+                    if (onApplyFilters != null) onApplyFilters(request) else {
+                        onSourceSelected(draftSource); onLanguageSelected(draftLanguage); onYearSelected(draftYear)
+                        onCatalogFiltersChanged(draftFilters); onSearchSubmit(queryInput)
+                    }
+                }, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
             }
         }
     }
@@ -203,8 +221,13 @@ fun BrowseScreen(
                     val label = when (state.selectedLanguage) { "pt-br" -> "Português"; "en" -> "Inglês"; "es" -> "Espanhol"; else -> state.selectedLanguage }
                     InputChip(selected = false, onClick = { showFilters = true }, label = { Text(label) })
                 }
-                if (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") InputChip(selected = false,
-                    onClick = { onGenreSelected("all") }, label = { Text(state.selectedGenre) }, trailingIcon = { Icon(Icons.Default.Close, "Remover gênero", Modifier.size(16.dp)) })
+                CatalogTaxonomy.options.filter { it.id in state.catalogFilters.included || it.id in state.catalogFilters.excluded }.forEach { option ->
+                    val excluded = option.id in state.catalogFilters.excluded
+                    InputChip(selected = false, onClick = { onCatalogFiltersChanged(state.catalogFilters.without(option.id)) },
+                        label = { Text((if (excluded) "− " else "+ ") + option.label) },
+                        trailingIcon = { Icon(Icons.Default.Close, "Remover filtro ${option.label}", Modifier.size(16.dp)) },
+                        modifier = Modifier.testTag("active_filter_${option.id}"))
+                }
                 if (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all") {
                     val activeYearLabel = when (state.selectedYearRange) {
                         "unknown" -> "Sem data definida"
@@ -291,7 +314,12 @@ fun BrowseScreen(
 
         }
 
-        val isFilterOrSearchActive = filtersApplied || state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all" || (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all")
+        val isFilterOrSearchActive = state.catalogFilters.isActive || filtersApplied || state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all" || (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all")
+
+        if (state.unclassifiedExcluded > 0) Text(
+            "${state.unclassifiedExcluded} obras ocultadas: faltam dados para verificar as exclusões.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("filter_unknown_notice"))
 
         // Intercept back button to return to full carousel view when filtering
         BackHandler(enabled = isFilterOrSearchActive && !showFilters) {
@@ -309,7 +337,7 @@ fun BrowseScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = CrimsonRed)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Buscando fontes de mangá...", fontSize = 14.sp)
+                    Text(if (state.catalogFilters.isActive) "Aplicando filtros de classificação..." else "Buscando fontes de mangá...", fontSize = 14.sp)
                 }
             }
         } else if (isFilterOrSearchActive && state.mangaList.isEmpty() && !state.isLoading) {

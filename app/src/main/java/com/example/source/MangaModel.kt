@@ -11,7 +11,8 @@ data class MangaModel(
     val sourceId: String,
     val author: String = "",
     val status: String = "Unknown",
-    val year: Int? = null
+    val year: Int? = null,
+    val originalLanguage: String = ""
 )
 
 /**

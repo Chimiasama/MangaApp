@@ -60,9 +60,11 @@ class CatalogYearTest {
         db.close()
         val sqlite = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE)
         sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN year")
+        sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN originalLanguage")
+        sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN status")
         sqlite.version = 9
         sqlite.close()
-        db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_9_10).build()
+        db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
         try {
             val manga = db.mangaDao().getMangaByUrlSync("work")!!
             assertNull(manga.year)

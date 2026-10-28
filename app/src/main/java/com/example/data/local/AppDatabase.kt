@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [ReadChapterEntity::class, MangaEntity::class, ChapterEntity::class, ProgressEntity::class, DownloadEntity::class, ReadingSessionEntity::class, BookmarkEntity::class, SearchHistoryEntity::class],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,6 +21,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun searchHistoryDao(): SearchHistoryDao
 
     companion object {
+        val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE manga_favorites ADD COLUMN originalLanguage TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE manga_favorites ADD COLUMN status TEXT NOT NULL DEFAULT 'Unknown'")
+            }
+        }
+
         val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE manga_favorites ADD COLUMN year INTEGER")
@@ -50,7 +57,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "manga_reader_db"
-                ).addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).fallbackToDestructiveMigration().build()
+                ).addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }

@@ -57,7 +57,7 @@ class BrowsePresentationTest {
                 onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) } }
         }
         compose.onNodeWithTag("open_filters_button").performClick()
-        compose.onNodeWithTag("close_filters_button").performScrollTo().performClick()
+        compose.onNodeWithTag("close_filters_button").performClick()
         compose.runOnIdle { assertEquals("", submitted) }
         compose.onNodeWithText("2 resultados").assertExists()
         compose.onNodeWithTag("manga_card_one").assertExists()
