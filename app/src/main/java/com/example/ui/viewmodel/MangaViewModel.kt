@@ -42,6 +42,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class BrowseFailure { OFFLINE, TIMEOUT, SOURCE }
 
+data class ConnectionDiagnosticState(val isRunning: Boolean = false, val report: String? = null)
+
 data class BrowseUiState(
     val selectedSourceId: String = "all",
     val selectedGenre: String = "all",
@@ -56,6 +58,7 @@ data class BrowseUiState(
     val errorMessage: String? = null,
     val catalogFilters: CatalogFilters = CatalogFilters(),
     val failure: BrowseFailure? = null,
+    val connectionDiagnostic: ConnectionDiagnosticState = ConnectionDiagnosticState(),
     val unclassifiedExcluded: Int = 0
 )
 
@@ -124,8 +127,15 @@ class MangaViewModel(
     private val loadBrowseOnInit: Boolean = true,
     private val readerPages: suspend (ChapterModel, String) -> List<String> = { chapter, source ->
         repository.getPages(chapter.chapterUrl, chapter.id, source)
+    },
+    private val connectionDiagnosticRunner: suspend () -> String = {
+        com.example.data.network.MangaDexConnectionDiagnostic().run()
     }
 ) : ViewModel() {
+
+    private var diagnosticJob: Job? = null
+    private var diagnosticRequestId = 0L
+    private val _connectionDiagnostic = MutableStateFlow(ConnectionDiagnosticState())
 
     private var applyFiltersJob: Job? = null
     private var browseJob: Job? = null
@@ -218,6 +228,8 @@ class MangaViewModel(
             catalogFilters = effectiveFilters,
             unclassifiedExcluded = if (matchesSelection) mangaData.unclassified else 0
         )
+    }.combine(_connectionDiagnostic) { state, diagnostic ->
+        state.copy(connectionDiagnostic = diagnostic)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowseUiState())
 
     // Manga Detail State
@@ -448,6 +460,28 @@ class MangaViewModel(
         android.util.Log.w("BrowseSearch", "failure=$failure source=${selection.source} year=${selection.year} language=${selection.language}", error)
         return MangaData(emptyList(), emptyList(), selection,
             error = "$message\n\nDetalhes:\n${com.example.source.catalogFailureDetails(error)}", failure = failure)
+    }
+
+    fun diagnoseMangaDexConnection() {
+        if (_connectionDiagnostic.value.isRunning) return
+        val request = ++diagnosticRequestId
+        _connectionDiagnostic.value = ConnectionDiagnosticState(isRunning = true)
+        diagnosticJob = viewModelScope.launch {
+            try {
+                val report = connectionDiagnosticRunner()
+                if (request == diagnosticRequestId) _connectionDiagnostic.value = ConnectionDiagnosticState(report = report)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (request == diagnosticRequestId) _connectionDiagnostic.value = ConnectionDiagnosticState(
+                    report = "Não foi possível concluir o diagnóstico.\n${com.example.source.catalogFailureDetails(error)}")
+            }
+        }
+    }
+
+    fun dismissConnectionDiagnostic() {
+        diagnosticRequestId++
+        diagnosticJob?.cancel()
+        _connectionDiagnostic.value = ConnectionDiagnosticState()
     }
 
     fun refresh() {

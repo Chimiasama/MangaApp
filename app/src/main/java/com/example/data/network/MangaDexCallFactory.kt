@@ -9,11 +9,18 @@ import okhttp3.Protocol
 import okhttp3.Request
 
 /** A scoped compatibility profile; HTTPS verification and the original request are preserved. */
-class MangaDexCallFactory(private val defaultClient: OkHttpClient) : Call.Factory {
+class MangaDexCallFactory(
+    private val defaultClient: OkHttpClient,
+    compatibilityProfile: Boolean = true
+) : Call.Factory {
     private val compatibleClient = defaultClient.newBuilder()
-        .protocols(listOf(Protocol.HTTP_1_1))
-        .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.RESTRICTED_TLS)
-            .tlsVersions(TlsVersion.TLS_1_2).build()))
+        .apply {
+            if (compatibilityProfile) {
+                protocols(listOf(Protocol.HTTP_1_1))
+                connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.RESTRICTED_TLS)
+                    .tlsVersions(TlsVersion.TLS_1_2).build()))
+            }
+        }
         // Do not reuse a connection negotiated by the default HTTP/2 client.
         .connectionPool(ConnectionPool())
         .eventListenerFactory(object : okhttp3.EventListener.Factory {

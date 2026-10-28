@@ -121,6 +121,25 @@ class BrowseInputTest {
         compose.onNodeWithTag("retry_browse_button").performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun `manual connection diagnostic opens a copyable report and can be closed`() {
+        val state = androidx.compose.runtime.mutableStateOf(BrowseUiState(selectedYearRange = "1900-1950", errorMessage = "Connection reset"))
+        val report = "Cliente atual: FALHA\nCliente padrão: FALHA\nHTTPS nativo: SUCESSO"
+        lateinit var clipboard: androidx.compose.ui.platform.ClipboardManager
+        compose.setContent {
+            clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+            MaterialTheme { BrowseScreen(state = state.value,
+                onDiagnoseMangaDex = { state.value = state.value.copy(connectionDiagnostic = com.example.ui.viewmodel.ConnectionDiagnosticState(report = report)) },
+                onDismissConnectionDiagnostic = { state.value = state.value.copy(connectionDiagnostic = com.example.ui.viewmodel.ConnectionDiagnosticState()) },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("diagnose_mangadex_button").performScrollTo().performClick()
+        compose.onNodeWithText("Diagnóstico da MangaDex").assertExists()
+        compose.onNodeWithTag("copy_mangadex_diagnostic").performClick()
+        compose.runOnIdle { assertEquals(report, clipboard.getText()?.text) }
+        compose.onNodeWithText("Fechar").performClick()
+        compose.onNodeWithText("Diagnóstico da MangaDex").assertDoesNotExist()
+    }
+
     @Test fun `recent searches only appear when the empty search field has focus`() {
         compose.setContent {
             MaterialTheme { BrowseScreen(state = BrowseUiState(searchHistory = listOf(com.example.data.local.SearchHistoryEntity(id = 1, query = "dragon ball"))),

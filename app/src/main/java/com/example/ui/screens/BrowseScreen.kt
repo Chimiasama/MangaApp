@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -100,7 +101,9 @@ fun BrowseScreen(
     onRefresh: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     onCatalogFiltersChanged: (CatalogFilters) -> Unit = {},
-    onApplyFilters: ((BrowseFilterRequest) -> Unit)? = null
+    onApplyFilters: ((BrowseFilterRequest) -> Unit)? = null,
+    onDiagnoseMangaDex: () -> Unit = {},
+    onDismissConnectionDiagnostic: () -> Unit = {}
 ) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val focusManager = LocalFocusManager.current
@@ -127,6 +130,33 @@ fun BrowseScreen(
     }
     val activeSummary = filterSummary(state.selectedSourceId, state.selectedLanguage, state.selectedYearRange,
         state.catalogFilters.withLegacy(state.selectedGenre))
+
+    val diagnostic = state.connectionDiagnostic
+    if (diagnostic.isRunning || diagnostic.report != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onDismissConnectionDiagnostic,
+            title = { Text("Diagnóstico da MangaDex") },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                    if (diagnostic.isRunning) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(12.dp))
+                        Text("Comparando três clientes com a mesma consulta. Isso pode levar alguns segundos.")
+                    } else SelectionContainer {
+                        Text(diagnostic.report.orEmpty(), modifier = Modifier.testTag("mangadex_diagnostic_report"))
+                    }
+                }
+            },
+            confirmButton = {
+                if (diagnostic.report != null) TextButton(onClick = {
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(diagnostic.report))
+                }, modifier = Modifier.testTag("copy_mangadex_diagnostic")) { Text("Copiar diagnóstico") }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissConnectionDiagnostic) { Text(if (diagnostic.isRunning) "Cancelar" else "Fechar") }
+            }
+        )
+    }
 
     if (showFilters) {
         var draftSource by remember { mutableStateOf(state.selectedSourceId) }
@@ -436,6 +466,10 @@ fun BrowseScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Tentar Novamente")
                         }
+                    }
+                    if (state.errorMessage != null && (state.selectedSourceId == "all" || state.selectedSourceId == "mangadex")) {
+                        TextButton(onClick = onDiagnoseMangaDex,
+                            modifier = Modifier.testTag("diagnose_mangadex_button")) { Text("Testar conexão com a MangaDex") }
                     }
                 }
             }

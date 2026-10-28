@@ -360,6 +360,34 @@ class BrowseSearchTest {
         assertNull(restored.errorMessage)
     }
 
+    @Test fun `closing a connection diagnostic cancels the task without reopening its dialog`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        val vm = ViewModelProvider(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                MangaViewModel(repository, loadBrowseOnInit = false, connectionDiagnosticRunner = {
+                    withContext(NonCancellable) {
+                        started.complete(Unit)
+                        release.await()
+                        finished.complete(Unit)
+                        "late report"
+                    }
+                }) as T
+        })[MangaViewModel::class.java]
+        vm.diagnoseMangaDexConnection()
+        withTimeout(10_000) { started.await() }
+        assertTrue(vm.browseUiState.first { it.connectionDiagnostic.isRunning }.connectionDiagnostic.isRunning)
+        vm.dismissConnectionDiagnostic()
+        release.complete(Unit)
+        withTimeout(10_000) { finished.await() }
+        delay(50)
+        val state = vm.browseUiState.first { !it.connectionDiagnostic.isRunning }
+        assertNull(state.connectionDiagnostic.report)
+        assertEquals("all", state.selectedYearRange)
+        assertEquals("pt-br", state.selectedLanguage)
+    }
+
     @Test fun `matchesYearRange accurately validates manga publication years`() {
         // Range 1900 - 1950
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1920, "1900-1950"))

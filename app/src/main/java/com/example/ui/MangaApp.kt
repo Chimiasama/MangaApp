@@ -166,6 +166,8 @@ fun MangaApp(
             composable(MangaDestinations.BROWSE) {
                 BrowseScreen(
                     onApplyFilters = mangaViewModel::applyBrowseFilters,
+                    onDiagnoseMangaDex = mangaViewModel::diagnoseMangaDexConnection,
+                    onDismissConnectionDiagnostic = mangaViewModel::dismissConnectionDiagnostic,
                     onCatalogFiltersChanged = mangaViewModel::setCatalogFilters,
                     state = browseState,
                     onQueryChange = { query -> mangaViewModel.searchManga(query, saveToHistory = false) },

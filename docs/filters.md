@@ -136,3 +136,25 @@ de compatibilidade com a negociação identificada no aparelho, não uma confirm
 de que TLS 1.3 seja a causa. As demais fontes preservam o TLS original. Os testes
 conferem TLS 1.2 efetivamente negociado na API e nas capas e TLS 1.3 na fonte externa,
 além dos filtros originais e da rejeição de certificados não confiáveis.
+
+## Diagnóstico comparativo manual
+
+Na tela de erro, “Testar conexão com a MangaDex” compara três clientes dentro do
+mesmo app e rede: o perfil atual de compatibilidade, o OkHttp sem as restrições
+experimentais e o `HttpsURLConnection` nativo. Todos fazem o mesmo GET público
+`/manga?year=1935&limit=1`, com a identificação real `MangaReaderApp/1.1.0`.
+Não há troca de DNS, proxy, navegador simulado ou certificados ignorados.
+
+O teste só roda por iniciativa do usuário, espaça as chamadas, usa tempos-limite
+e suspende os clientes seguintes ao receber HTTP 403 ou 429. O relatório pode
+ser cancelado ou copiado e registra HTTP, resultado válido da API e X-Request-ID
+quando disponível. Nenhum resultado desse teste muda automaticamente o cliente
+usado na busca normal nem os filtros selecionados.
+
+Um cliente que recebe dados dentro do app fornece evidência contra um bloqueio
+total do aplicativo. A comparação não prova intenção de bloqueio pelo servidor:
+reset no TLS também pode envolver filtros intermediários ou interoperabilidade.
+A confirmação pelo serviço exige análise dos logs da MangaDex. A documentação
+oficial informa API pública, requisitos e bloqueios por abuso/IP:
+https://api.mangadex.org/docs/2-limitations/ . Quando a negociação TLS falha antes
+de HTTP, ainda não há X-Request-ID para correlacionar a chamada do lado do serviço.
