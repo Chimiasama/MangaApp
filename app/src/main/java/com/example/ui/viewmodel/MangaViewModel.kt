@@ -446,7 +446,8 @@ class MangaViewModel(
             BrowseFailure.SOURCE -> "Não foi possível concluir a consulta às fontes. Tente novamente."
         }
         android.util.Log.w("BrowseSearch", "failure=$failure source=${selection.source} year=${selection.year} language=${selection.language}", error)
-        return MangaData(emptyList(), emptyList(), selection, error = message, failure = failure)
+        return MangaData(emptyList(), emptyList(), selection,
+            error = "$message\n\nDetalhes:\n${com.example.source.catalogFailureDetails(error)}", failure = failure)
     }
 
     fun refresh() {

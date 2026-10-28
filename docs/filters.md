@@ -97,3 +97,8 @@ em português, capturada em 28/10/2026, também é reproduzida em teste com o
 conversor de produção e retorna Tank Tankuro (1935) e Sazae-san (1946).
 Esses testes de resposta gravada não verificam disponibilidade atual da fonte,
 da rede do aparelho ou do servidor das capas.
+
+A tela também mostra a mensagem integral de cada exceção e de suas causas,
+incluindo detalhes como ECONNRESET e EACCES. Mensagens longas podem ser roladas
+e selecionadas; “Copiar erro completo” copia o texto original exibido, sem
+truncamento, para permitir compartilhar o diagnóstico diretamente do celular.

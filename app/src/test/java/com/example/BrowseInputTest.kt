@@ -107,6 +107,20 @@ class BrowseInputTest {
         compose.onNodeWithText("Nenhum mangá encontrado").assertDoesNotExist()
     }
 
+    @Test fun `long socket error is fully displayed scrollable and copied without truncation`() {
+        val message = "Consulta incompleta: MangaDex\nSocketException: Connection reset\n" + "Detalhe completo da conexão.\n".repeat(60)
+        lateinit var clipboard: androidx.compose.ui.platform.ClipboardManager
+        compose.setContent {
+            clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+            MaterialTheme { BrowseScreen(state = BrowseUiState(selectedYearRange = "1900-1950", errorMessage = message),
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("browse_error_details").assertTextEquals(message)
+        compose.onNodeWithTag("copy_browse_error_button").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(message, clipboard.getText()?.text) }
+        compose.onNodeWithTag("retry_browse_button").performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun `recent searches only appear when the empty search field has focus`() {
         compose.setContent {
             MaterialTheme { BrowseScreen(state = BrowseUiState(searchHistory = listOf(com.example.data.local.SearchHistoryEntity(id = 1, query = "dragon ball"))),

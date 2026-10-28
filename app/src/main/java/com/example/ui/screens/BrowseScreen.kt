@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -101,6 +102,7 @@ fun BrowseScreen(
     onCatalogFiltersChanged: (CatalogFilters) -> Unit = {},
     onApplyFilters: ((BrowseFilterRequest) -> Unit)? = null
 ) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var queryInput by remember(state.searchQuery) { mutableStateOf(state.searchQuery) }
@@ -373,7 +375,7 @@ fun BrowseScreen(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
                 ) {
                     Icon(
                         imageVector = if (state.errorMessage != null) Icons.Default.Warning else Icons.Default.FilterList,
@@ -393,12 +395,22 @@ fun BrowseScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = state.errorMessage ?: "Nenhum mangá corresponde aos filtros selecionados.",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = state.errorMessage ?: "Nenhum mangá corresponde aos filtros selecionados.",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.testTag("browse_error_details")
+                        )
+                    }
+                    if (state.errorMessage != null) {
+                        TextButton(onClick = {
+                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.errorMessage))
+                        }, modifier = Modifier.testTag("copy_browse_error_button")) {
+                            Text("Copiar erro completo")
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
