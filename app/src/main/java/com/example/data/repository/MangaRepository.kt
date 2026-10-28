@@ -293,7 +293,7 @@ class MangaRepository(
             prefix = "Consulta incompleta: ", separator = "; ", postfix = ". Toque para tentar novamente."
         ) { (source, response) ->
             "${source.name}: ${com.example.source.catalogFailureDescription(response.exceptionOrNull()!!)}" +
-                if (source.id == "mangadex") "\nTransporte: HTTPS / HTTP/1.1 (compatibilidade MangaDex)" else ""
+                if (source.id == "mangadex") "\nTransporte: HTTPS / TLS 1.2 / HTTP/1.1 (compatibilidade MangaDex)" else ""
         }
         return com.example.source.CatalogLoadResult(items, warning)
     }

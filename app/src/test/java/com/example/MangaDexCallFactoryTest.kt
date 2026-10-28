@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
+import okhttp3.TlsVersion
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -39,14 +40,18 @@ class MangaDexCallFactoryTest {
         .sslSocketFactory(clientTls.sslSocketFactory(), clientTls.trustManager)
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).build()
 
-    @Test fun `real HTTPS API returns the two Portuguese works over HTTP1 with original filters`() = runBlocking {
+    @Test fun `real HTTPS API returns the two Portuguese works over TLS12 with original filters`() = runBlocking {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)
         server.protocols = listOf(Protocol.HTTP_2, Protocol.HTTP_1_1)
         server.start()
         val observed = mutableListOf<Protocol>()
+        val tlsVersions = mutableListOf<TlsVersion>()
         val base = client().newBuilder().addNetworkInterceptor { chain ->
-            chain.proceed(chain.request()).also { observed += it.protocol }
+            chain.proceed(chain.request()).also {
+                observed += it.protocol
+                it.handshake?.tlsVersion?.let(tlsVersions::add)
+            }
         }.build()
         try {
             val raw = javaClass.getResourceAsStream("/mangadex-historic-ptbr.json")!!.bufferedReader().use { it.readText() }
@@ -58,6 +63,7 @@ class MangaDexCallFactoryTest {
             val result = MangaDexSource(catalogApi = api).getCatalogManga("", "pt-br", "1900-1950")
             assertEquals(listOf("Tank Tankuro", "Sazae-san"), result.map { it.title })
             assertEquals(listOf(Protocol.HTTP_1_1), observed)
+            assertEquals(listOf(TlsVersion.TLS_1_2), tlsVersions)
             val request = server.takeRequest(5, TimeUnit.SECONDS)!!
             assertEquals("MangaReaderApp/1.1.0", request.getHeader("User-Agent"))
             assertEquals(listOf("pt-br", "pt"), request.requestUrl!!.queryParameterValues("availableTranslatedLanguage[]"))
@@ -66,7 +72,7 @@ class MangaDexCallFactoryTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
-    @Test fun `cover downloads use HTTP1 while other hosts retain HTTP2`() {
+    @Test fun `covers use TLS12 while other hosts retain TLS13 and HTTP2`() {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)
         server.protocols = listOf(Protocol.HTTP_2, Protocol.HTTP_1_1)
@@ -74,12 +80,14 @@ class MangaDexCallFactoryTest {
         val base = client()
         try {
             val factory = MangaDexCallFactory(base)
-            for ((host, protocol) in listOf("uploads.mangadex.org" to Protocol.HTTP_1_1,
-                "api.mangadex.org.example.test" to Protocol.HTTP_2)) {
+            for ((host, protocol, tls) in listOf(
+                Triple("uploads.mangadex.org", Protocol.HTTP_1_1, TlsVersion.TLS_1_2),
+                Triple("api.mangadex.org.example.test", Protocol.HTTP_2, TlsVersion.TLS_1_3))) {
                 server.enqueue(MockResponse().setBody("original image bytes"))
                 val request = Request.Builder().url("https://$host:${server.port}/covers/test.jpg").build()
                 factory.newCall(request).execute().use { response ->
                     assertEquals(protocol, response.protocol)
+                    assertEquals(tls, response.handshake!!.tlsVersion)
                     assertEquals("original image bytes", response.body!!.string())
                 }
             }

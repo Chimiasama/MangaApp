@@ -2,6 +2,8 @@ package com.example.data.network
 
 import okhttp3.Call
 import okhttp3.ConnectionPool
+import okhttp3.ConnectionSpec
+import okhttp3.TlsVersion
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
@@ -10,6 +12,8 @@ import okhttp3.Request
 class MangaDexCallFactory(private val defaultClient: OkHttpClient) : Call.Factory {
     private val compatibleClient = defaultClient.newBuilder()
         .protocols(listOf(Protocol.HTTP_1_1))
+        .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.RESTRICTED_TLS)
+            .tlsVersions(TlsVersion.TLS_1_2).build()))
         // Do not reuse a connection negotiated by the default HTTP/2 client.
         .connectionPool(ConnectionPool())
         .eventListenerFactory(object : okhttp3.EventListener.Factory {

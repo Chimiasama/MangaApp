@@ -127,3 +127,12 @@ recebimento da resposta. Isso permite identificar em qual etapa a conexão caiu.
 O diagnóstico também captura falhas durante a leitura do corpo da resposta,
 após a chegada dos cabeçalhos. Não registra consultas, cabeçalhos, cookies ou
 conteúdo recebido; os detalhes continuam disponíveis em “Copiar erro completo”.
+
+O relatório do aparelho mostrou DNS e TCP concluídos para os dois IPv4 públicos da
+MangaDex, com encerramento imediato na negociação TLS antes de qualquer envio HTTP.
+O perfil específico da MangaDex passa a oferecer TLS 1.2 com as cifras modernas de
+`RESTRICTED_TLS`, preservando certificado, nome do servidor e SNI. Isso é uma tentativa
+de compatibilidade com a negociação identificada no aparelho, não uma confirmação
+de que TLS 1.3 seja a causa. As demais fontes preservam o TLS original. Os testes
+conferem TLS 1.2 efetivamente negociado na API e nas capas e TLS 1.3 na fonte externa,
+além dos filtros originais e da rejeição de certificados não confiáveis.
