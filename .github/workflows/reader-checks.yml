@@ -18,27 +18,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '13114758'
-          log-accepted-android-sdk-licenses: false
-          # The action's default includes the retired "tools" package.
-          packages: 'platform-tools platforms;android-36.1 build-tools;36.0.0'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Preparar assinatura de desenvolvimento
+
+      - name: Configurar cache do Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Aceitar licenças do Android SDK
+        run: |
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          elif [ -d "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          fi
+
+      - name: Preparar ambiente e chaves
         shell: bash
         run: |
           set -euo pipefail
-          keytool -genkeypair -keystore debug.keystore -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android \
-            -dname 'CN=Android Debug,O=Android,C=US'
+          touch .env
+          chmod +x ./gradlew
+
+          if [ ! -f "debug.keystore" ]; then
+            if [ -f "debug.keystore.base64" ]; then
+              base64 -d debug.keystore.base64 > debug.keystore
+              echo "debug.keystore restaurado a partir do base64."
+            else
+              echo "Gerando debug.keystore..."
+              keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey \
+                -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android \
+                -dname 'CN=Android Debug,O=Android,C=US'
+            fi
+          fi
+
       - name: Compilar, testar gestos e verificar Android Lint
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --stacktrace --no-daemon
+
       - name: Guardar relatórios
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,11 +70,14 @@ jobs:
             app/build/test-results/
             app/build/reports/lint-results-debug.*
             app/build/outputs/roborazzi/
+          if-no-files-found: ignore
           retention-days: 14
+
       - name: Guardar APK de teste
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: reader-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14

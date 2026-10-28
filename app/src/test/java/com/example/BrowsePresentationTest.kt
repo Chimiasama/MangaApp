@@ -64,7 +64,7 @@ class BrowsePresentationTest {
         compose.onNodeWithTag("favorite_button_one").performClick()
         compose.runOnIdle { assertEquals("one", favorite); assertFalse(opened) }
         val output = java.io.File("build/outputs/roborazzi/browse-clean.png")
-        output.parentFile.mkdirs()
+        output.parentFile?.mkdirs()
         compose.onRoot().captureRoboImage(filePath = output.path)
         compose.onNodeWithTag("manga_card_one").performClick()
         compose.runOnIdle { assertTrue(opened) }

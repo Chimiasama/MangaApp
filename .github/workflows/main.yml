@@ -21,12 +21,12 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      # 1. Configurar JDK 17 (Requisito mínimo do AGP 9.1.1 e Gradle 9.3.1)
-      - name: Configurar JDK 17
+      # 1. Configurar JDK 21 (Requisito mínimo do AGP 9.1.1 e Gradle 9.3.1)
+      - name: Configurar JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       # 2. Configurar cache do Gradle para builds rápidos
       - name: Configurar Gradle
