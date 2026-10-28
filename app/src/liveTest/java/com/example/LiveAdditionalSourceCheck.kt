@@ -22,7 +22,7 @@ class LiveAdditionalSourceCheck {
         for (site in HtmlMangaSource.Site.entries) {
             val source = HtmlMangaSource(site)
             for (title in listOf("GTO", "Slam Dunk")) {
-                val results = source.searchManga(title, site.language)
+                val results = source.searchManga(title, site.languages.first())
                 assertTrue("$title should be discoverable on ${site.key}", results.any { it.title.contains(title, true) })
                 println("LIVE CLASSICS ${site.key}: $title; matches=${results.size}")
             }
@@ -30,13 +30,13 @@ class LiveAdditionalSourceCheck {
     }
     private fun check(site: HtmlMangaSource.Site, title: String) = runBlocking {
         val source = HtmlMangaSource(site)
-        val results = source.searchManga(title, site.language)
+        val results = source.searchManga(title, site.languages.first())
         val book = results.first { it.title.equals(title, true) }
         val details = source.getMangaDetails(book.url)
         assertTrue(details.title.isNotBlank())
-        val chapters = source.getChapters(book.url, site.language)
+        val chapters = source.getChapters(book.url, site.languages.first())
         assertTrue("Need an archive, not only the latest release", chapters.size > 100)
-        assertTrue(chapters.all { it.language == site.language })
+        assertTrue(chapters.all { it.language == site.languages.first() })
         image(book.coverUrl)
         for (chapter in listOf(chapters.minBy { it.chapterNumber }, chapters.maxBy { it.chapterNumber })) {
             val pages = source.getPages(chapter.chapterUrl)

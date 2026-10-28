@@ -9,19 +9,19 @@ import java.io.IOException
 /** Site-specific selectors; never invent chapters or fall back to a different work. */
 class HtmlMangaSource(
     val site: Site,
+    override val supportedLanguages: Set<String> = site.languages,
     private val fetch: suspend (String) -> String = SourceHttp::get
 ) : MangaSource {
-    enum class Site(val key: String, val label: String, val origin: String, val language: String) {
-        WEEBCENTRAL("weebcentral", "WeebCentral", "https://weebcentral.com", "en"),
-        LEERCAPITULO("leercapitulo", "LeerCapítulo", "https://www.leercapitulo.co", "es")
+    enum class Site(val key: String, val label: String, val origin: String, val languages: Set<String>) {
+        WEEBCENTRAL("weebcentral", "WeebCentral", "https://weebcentral.com", setOf("en")),
+        LEERCAPITULO("leercapitulo", "LeerCapítulo", "https://www.leercapitulo.co", setOf("es"))
     }
     override val id = site.key
     override val name = site.label
     override val baseUrl = site.origin
-    override val lang = site.language
+    override val lang = site.languages.firstOrNull() ?: "all"
     override val isNsfw = false
     override val canAggregateChapters = false
-    override fun supportsLanguage(language: String) = ChapterLanguage.matches(lang, language)
 
     private suspend fun document(url: String): Document {
         val doc = Jsoup.parse(fetch(url), url)
@@ -39,10 +39,10 @@ class HtmlMangaSource(
 
     override suspend fun getPopularManga() = getPopularManga(lang)
     override suspend fun getPopularManga(language: String): List<MangaModel> =
-        if (!ChapterLanguage.matches(lang, language)) emptyList() else searchManga("", language)
+        if (!supportsLanguage(language)) emptyList() else searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)
     override suspend fun searchManga(query: String, language: String): List<MangaModel> {
-        if (!ChapterLanguage.matches(lang, language)) return emptyList()
+        if (!supportsLanguage(language)) return emptyList()
         val url = when (site) {
             Site.WEEBCENTRAL -> "$baseUrl/search/data".toHttpUrl().newBuilder()
                 .addQueryParameter("text", query).addQueryParameter("limit", "50")
@@ -82,7 +82,7 @@ class HtmlMangaSource(
     }
     override suspend fun getChapters(mangaUrl: String) = getChapters(mangaUrl, lang)
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> {
-        if (!ChapterLanguage.matches(lang, language)) return emptyList()
+        if (!supportsLanguage(language)) return emptyList()
         val url = when (site) {
             Site.WEEBCENTRAL -> "$baseUrl/series/${mangaUrl.toHttpUrl().pathSegments[1]}/full-chapter-list"
             Site.LEERCAPITULO -> mangaUrl
@@ -101,8 +101,9 @@ class HtmlMangaSource(
             // Source order preserves sagas/seasons whose displayed chapter numbers restart.
             ChapterModel("$id:${link.toHttpUrl().encodedPath}", title, link,
                 (links.size - index).toFloat(),
-                a.selectFirst("time")?.attr("datetime")?.take(10) ?: a.selectFirst(".d")?.text().orEmpty(), lang)
-        }
+                a.selectFirst("time")?.attr("datetime")?.take(10) ?: a.selectFirst(".d")?.text().orEmpty(),
+                a.attr("data-language").ifBlank { lang })
+        }.filter { ChapterLanguage.matches(it.language, language) }
     }
     override suspend fun getPages(chapterUrl: String): List<String> {
         val url = when (site) {

@@ -5,7 +5,11 @@ interface MangaSource {
     val name: String
     val baseUrl: String
     val isNsfw: Boolean
-    fun supportsLanguage(language: String): Boolean = true
+    /** Provider capability metadata; "all" means the provider resolves languages dynamically. */
+    val supportedLanguages: Set<String> get() = setOf(lang)
+    fun supportsLanguage(language: String): Boolean = language == "all" || supportedLanguages.any {
+        it == "all" || ChapterLanguage.matches(it, language)
+    }
     val canAggregateChapters: Boolean get() = true
     val lang: String
 

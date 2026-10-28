@@ -29,14 +29,14 @@ class MangaDashSource(
     override val id = "mangadash"
     override val name = "MangaDash"
     override val baseUrl = "https://mangadash.net"
-    override val lang = "pt-br"
+    override val supportedLanguages = setOf("pt-br")
+    override val lang get() = supportedLanguages.first()
     override val isNsfw = false
     override val canAggregateChapters = false
     override val filterSupportNote = "MangaDash fornece classificação nos detalhes. Público, origem e formato podem não estar disponíveis."
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val viewerAdapter = Moshi.Builder().build().adapter(Map::class.java)
 
-    override fun supportsLanguage(language: String) = ChapterLanguage.matches(lang, language)
     override suspend fun getPopularManga() = getPopularManga(lang)
     override suspend fun getPopularManga(language: String) = searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)

@@ -432,7 +432,12 @@ fun BrowseScreen(
                         text = when (state.failure) {
                             com.example.ui.viewmodel.BrowseFailure.OFFLINE -> "Sem conexão com a internet"
                             com.example.ui.viewmodel.BrowseFailure.TIMEOUT -> "A pesquisa demorou demais"
-                            else -> if (state.errorMessage != null) "Não foi possível concluir a busca" else "Nenhum mangá encontrado"
+                            else -> when {
+                                state.errorMessage != null -> "Não foi possível concluir a busca"
+                                state.selectedSourceId != "all" && state.selectedLanguage != "all" ->
+                                    "Nenhum resultado em ${com.example.ui.components.languageLabel(state.selectedLanguage)} nesta fonte."
+                                else -> "Nenhum mangá encontrado"
+                            }
                         },
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
@@ -453,6 +458,12 @@ fun BrowseScreen(
                             clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.errorMessage))
                         }, modifier = Modifier.testTag("copy_browse_error_button")) {
                             Text("Copiar erro completo")
+                        }
+                    }
+
+                    if (state.errorMessage == null && state.selectedLanguage != "all") {
+                        TextButton(onClick = { onLanguageSelected("all") }, modifier = Modifier.testTag("try_all_languages")) {
+                            Text("Tentar com todos os idiomas")
                         }
                     }
 

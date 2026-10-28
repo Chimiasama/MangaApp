@@ -32,6 +32,7 @@ class MangaDexSource(
     override val baseUrl: String = "https://api.mangadex.org"
     override val isNsfw: Boolean = false
     override val lang: String = "pt-BR"
+    override val supportedLanguages = setOf("all")
 
     // =========================================================================
     // MangaSource Contract Implementations

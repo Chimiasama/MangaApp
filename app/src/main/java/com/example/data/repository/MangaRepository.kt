@@ -256,7 +256,7 @@ class MangaRepository(
             return com.example.source.CatalogLoadResult(items)
         }
         val sources = (if (sourceId.isNullOrBlank() || sourceId == "all") getAvailableSources()
-            else listOfNotNull(sourceRegistry[sourceId])).filter { it.supportsLanguage(language) }
+            else listOfNotNull(sourceRegistry[sourceId]))
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
         fun allowed(manga: MangaModel) = !manga.isNsfw && manga.genres.none { adultTags.contains(it.trim().lowercase()) }
         val responses = kotlinx.coroutines.coroutineScope {
@@ -311,7 +311,7 @@ class MangaRepository(
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
         val responses = kotlinx.coroutines.coroutineScope {
-            sourcesToFetch.filter { it.supportsLanguage(language) }.map { src ->
+            sourcesToFetch.map { src ->
                 async {
                     try {
                         Result.success(src.getPopularManga(language).filter { manga ->
@@ -375,7 +375,7 @@ class MangaRepository(
         var lastFailure: Exception? = null
         var completedSources = 0
         val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
+        for (src in sourcesToFetch) {
             try {
                 val list = src.searchManga(query, language)
                 val filtered = list.filter { manga ->

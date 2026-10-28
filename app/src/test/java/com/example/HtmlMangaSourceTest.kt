@@ -81,4 +81,12 @@ class HtmlMangaSourceTest {
         client.newCall(okhttp3.Request.Builder().url("https://pages.test/1.webp").build()).execute().close()
         assertEquals(SourceHttp.USER_AGENT, agent)
     }
+    @Test fun `declared languages can evolve without source specific UI or repository rules`() = runBlocking {
+        val source = HtmlMangaSource(HtmlMangaSource.Site.WEEBCENTRAL, supportedLanguages = setOf("en", "pt-br")) {
+            """<article><section><a href="/series/test/book"><img src="https://covers.test/book.jpg" alt="Livro cover"></a></section></article>"""
+        }
+        assertTrue(source.supportsLanguage("pt-br"))
+        assertEquals("Livro", source.searchManga("Livro", "pt-br").single().title)
+    }
+
 }
