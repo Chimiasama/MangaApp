@@ -165,6 +165,7 @@ fun MangaApp(
         ) {
             composable(MangaDestinations.BROWSE) {
                 BrowseScreen(
+                    diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     onApplyFilters = mangaViewModel::applyBrowseFilters,
                     onDiagnoseMangaDex = mangaViewModel::diagnoseMangaDexConnection,
                     onDismissConnectionDiagnostic = mangaViewModel::dismissConnectionDiagnostic,
@@ -231,6 +232,7 @@ fun MangaApp(
             composable(MangaDestinations.SETTINGS) {
                 val context = LocalContext.current
                 SettingsScreen(
+                    onConnectionDiagnosticsToggled = settingsViewModel::setConnectionDiagnosticsEnabled,
                     state = settingsState,
                     syncState = cloudSyncState,
                     onSaveRulesJson = { json -> settingsViewModel.importScraperRulesJson(json) },

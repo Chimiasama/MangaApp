@@ -58,6 +58,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,7 +104,8 @@ fun BrowseScreen(
     onCatalogFiltersChanged: (CatalogFilters) -> Unit = {},
     onApplyFilters: ((BrowseFilterRequest) -> Unit)? = null,
     onDiagnoseMangaDex: () -> Unit = {},
-    onDismissConnectionDiagnostic: () -> Unit = {}
+    onDismissConnectionDiagnostic: () -> Unit = {},
+    diagnosticsEnabled: Boolean = false
 ) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val focusManager = LocalFocusManager.current
@@ -131,8 +133,21 @@ fun BrowseScreen(
     val activeSummary = filterSummary(state.selectedSourceId, state.selectedLanguage, state.selectedYearRange,
         state.catalogFilters.withLegacy(state.selectedGenre))
 
+    val visibleError = if (diagnosticsEnabled) state.errorMessage else when {
+        state.errorMessage == null -> null
+        state.failure == com.example.ui.viewmodel.BrowseFailure.OFFLINE ->
+            "Aguardando conexão para pesquisar novamente."
+        state.failure == com.example.ui.viewmodel.BrowseFailure.TIMEOUT ->
+            "A fonte demorou para responder. Tente novamente em instantes."
+        state.mangaList.isNotEmpty() || state.carouselSections.isNotEmpty() ->
+            "Algumas fontes não responderam. Exibindo os mangás disponíveis."
+        else -> "Não foi possível acessar a fonte. Tente novamente em instantes."
+    }
+    LaunchedEffect(diagnosticsEnabled) {
+        if (!diagnosticsEnabled) onDismissConnectionDiagnostic()
+    }
     val diagnostic = state.connectionDiagnostic
-    if (diagnostic.isRunning || diagnostic.report != null) {
+    if (diagnosticsEnabled && (diagnostic.isRunning || diagnostic.report != null)) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onDismissConnectionDiagnostic,
             title = { Text("Diagnóstico da MangaDex") },
@@ -427,14 +442,14 @@ fun BrowseScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     SelectionContainer {
                         Text(
-                            text = state.errorMessage ?: "Nenhum mangá corresponde aos filtros selecionados.",
+                            text = visibleError ?: "Nenhum mangá corresponde aos filtros selecionados.",
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             modifier = Modifier.testTag("browse_error_details")
                         )
                     }
-                    if (state.errorMessage != null) {
+                    if (diagnosticsEnabled && state.errorMessage != null) {
                         TextButton(onClick = {
                             clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.errorMessage))
                         }, modifier = Modifier.testTag("copy_browse_error_button")) {
@@ -467,7 +482,7 @@ fun BrowseScreen(
                             Text("Tentar Novamente")
                         }
                     }
-                    if (state.errorMessage != null && (state.selectedSourceId == "all" || state.selectedSourceId == "mangadex")) {
+                    if (diagnosticsEnabled && state.errorMessage != null && (state.selectedSourceId == "all" || state.selectedSourceId == "mangadex")) {
                         TextButton(onClick = onDiagnoseMangaDex,
                             modifier = Modifier.testTag("diagnose_mangadex_button")) { Text("Testar conexão com a MangaDex") }
                     }
@@ -496,7 +511,7 @@ fun BrowseScreen(
                         Icon(Icons.Default.Warning, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = state.errorMessage.orEmpty(),
+                            text = visibleError.orEmpty(),
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 12.sp,
                             modifier = Modifier.weight(1f)
@@ -546,7 +561,7 @@ fun BrowseScreen(
                             Icon(Icons.Default.Warning, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = state.errorMessage.orEmpty(),
+                                text = visibleError.orEmpty(),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f)

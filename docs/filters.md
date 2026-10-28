@@ -146,3 +146,36 @@ A confirmação pelo serviço exige análise dos logs da MangaDex. A documentaç
 oficial informa API pública, requisitos e bloqueios por abuso/IP:
 https://api.mangadex.org/docs/2-limitations/ . Quando a negociação TLS falha antes
 de HTTP, ainda não há X-Request-ID para correlacionar a chamada do lado do serviço.
+
+## Recuperação automática de transporte
+
+A busca e as capas tentam primeiro o OkHttp padrão. Somente em GET HTTPS para os
+hosts oficiais da API e das capas, se a chamada falhar por reset, timeout ou erro
+de protocolo TLS antes de entregar uma resposta, há uma tentativa com
+`HttpsURLConnection` nativo. A URL, os filtros e a identificação real são preservados;
+a validação de certificado permanece obrigatória. Não se força TLS 1.2.
+
+Há no máximo uma recuperação a cada 30 segundos por cliente compartilhado,
+conexão/leitura de até 6 segundos e um prazo total de 20 segundos na recuperação.
+Cancelar a chamada também desconecta o transporte nativo. Fechar o corpo libera
+os recursos. Se ambos falham, o erro mantém os detalhes das duas tentativas.
+Respostas HTTP, inclusive 403, 429 e 5xx, não acionam troca de cliente; falhas de
+certificado, cancelamentos, DNS e interrupções após entregar a resposta também
+não acionam essa recuperação. Não há repetição em ciclo nem consulta automática
+a sites de status: o resultado HTTP/TLS da própria chamada determina a ação,
+conforme as limitações oficiais https://api.mangadex.org/docs/2-limitations/ .
+
+O diagnóstico comparativo manual desativa a recuperação automática para medir
+cada cliente separadamente. Essa recuperação reduz falhas de transporte específicas
+do cliente, mas não garante acesso durante indisponibilidade da fonte ou da rede.
+
+## Modo de diagnóstico nas configurações
+
+Em Ajustes, “Modo de diagnóstico de conexão (debug)” fica desligado por padrão e
+sua escolha é salva no DataStore. Desligado, a busca distingue ausência de resultados,
+falta de internet, demora e falha da fonte com mensagens curtas, inclusive nos avisos
+de resultados parciais, sem expor exceções ou os botões técnicos. Ligado, recupera
+os detalhes completos, “Copiar erro completo” e “Testar conexão com a MangaDex”,
+com relatório copiável. Desligar também fecha e cancela um diagnóstico em andamento.
+Os erros técnicos continuam preservados internamente e a recuperação automática
+funciona independentemente dessa opção de exibição.

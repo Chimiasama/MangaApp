@@ -112,7 +112,8 @@ fun SettingsScreen(
     onClearAniListError: () -> Unit = {},
     onBatterySaverToggled: (Boolean) -> Unit = {},
     onBatterySaverDimPercentChanged: (Int) -> Unit = {},
-    onSyncOnWifiOnlyToggled: (Boolean) -> Unit = {}
+    onSyncOnWifiOnlyToggled: (Boolean) -> Unit = {},
+    onConnectionDiagnosticsToggled: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     var showRulesModal by remember { mutableStateOf(false) }
@@ -140,6 +141,20 @@ fun SettingsScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Modo de diagnóstico de conexão (debug)", fontWeight = FontWeight.Bold)
+                    Text("Mostra erros técnicos completos, botões de copiar e o teste de conexão na tela de busca.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = state.connectionDiagnosticsEnabled,
+                    onCheckedChange = onConnectionDiagnosticsToggled,
+                    modifier = Modifier.testTag("connection_diagnostics_switch"))
+            }
+        }
+        Spacer(Modifier.height(16.dp))
 
         // Section: Theme & Appearance Preferences (Persisted via DataStore)
         Card(

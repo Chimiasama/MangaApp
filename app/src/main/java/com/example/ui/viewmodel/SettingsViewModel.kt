@@ -34,7 +34,8 @@ data class SettingsUiState(
     val aniListErrorMessage: String? = null,
     val batterySaverEnabled: Boolean = false,
     val batterySaverDimPercent: Int = 0,
-    val syncOnWifiOnly: Boolean = false
+    val syncOnWifiOnly: Boolean = false,
+    val connectionDiagnosticsEnabled: Boolean = false
 )
 
 private data class ReaderPrefs(
@@ -153,11 +154,17 @@ class SettingsViewModel(
             batterySaverDimPercent = reader.batterySaverDimPercent,
             syncOnWifiOnly = flags.syncOnWifiOnly
         )
+    }.combine(preferencesRepository.connectionDiagnosticsEnabled) { state, enabled ->
+        state.copy(connectionDiagnosticsEnabled = enabled)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SettingsUiState()
     )
+
+    fun setConnectionDiagnosticsEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setConnectionDiagnosticsEnabled(enabled) }
+    }
 
     fun setThemeMode(mode: String) {
         viewModelScope.launch {

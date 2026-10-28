@@ -64,6 +64,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     companion object {
+        val CONNECTION_DIAGNOSTICS = booleanPreferencesKey("connection_diagnostics")
         const val DEFAULT_LANGUAGE = "pt-br"
         val CUSTOM_RULES_JSON = stringPreferencesKey("custom_rules_json")
         val THEME_MODE = stringPreferencesKey("theme_mode")
@@ -82,6 +83,14 @@ class UserPreferencesRepository(private val context: Context) {
         val BATTERY_SAVER_ENABLED = booleanPreferencesKey("battery_saver_enabled")
         val BATTERY_SAVER_DIM_PERCENT = intPreferencesKey("battery_saver_dim_percent")
         val SYNC_ON_WIFI_ONLY = booleanPreferencesKey("sync_on_wifi_only")
+    }
+
+    val connectionDiagnosticsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[CONNECTION_DIAGNOSTICS] ?: false
+    }
+
+    suspend fun setConnectionDiagnosticsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[CONNECTION_DIAGNOSTICS] = enabled }
     }
 
     val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->

@@ -57,7 +57,7 @@ class MangaDexCallFactoryTest {
             val raw = javaClass.getResourceAsStream("/mangadex-historic-ptbr.json")!!.bufferedReader().use { it.readText() }
             server.enqueue(MockResponse().setBody(raw).setHeader("Content-Type", "application/json"))
             val api = Retrofit.Builder().baseUrl("https://api.mangadex.org:${server.port}/")
-                .callFactory(MangaDexCallFactory(base))
+                .callFactory(MangaDexCallFactory(base, automaticRecovery = false))
                 .addConverterFactory(MoshiConverterFactory.create(RetrofitClient.moshi))
                 .build().create(MangaDexCatalogFilterApi::class.java)
             val result = MangaDexSource(catalogApi = api).getCatalogManga("", "pt-br", "1900-1950")
@@ -79,7 +79,7 @@ class MangaDexCallFactoryTest {
         server.start()
         val base = client()
         try {
-            val factory = MangaDexCallFactory(base)
+            val factory = MangaDexCallFactory(base, automaticRecovery = false)
             for ((host, protocol, tls) in listOf(
                 Triple("uploads.mangadex.org", Protocol.HTTP_2, TlsVersion.TLS_1_3),
                 Triple("api.mangadex.org.example.test", Protocol.HTTP_2, TlsVersion.TLS_1_3))) {
@@ -102,7 +102,7 @@ class MangaDexCallFactoryTest {
         val base = client().newBuilder().retryOnConnectionFailure(false).build()
         try {
             val request = Request.Builder().url("https://api.mangadex.org:${server.port}/manga?title=private-query").build()
-            val error = assertThrows(IOException::class.java) { MangaDexCallFactory(base).newCall(request).execute().close() }
+            val error = assertThrows(IOException::class.java) { MangaDexCallFactory(base, automaticRecovery = false).newCall(request).execute().close() }
             val report = error.message!!
             assertTrue(report, report.contains("Etapa da falha: TLS"))
             assertTrue(report, report.contains("DNS: 127.0.0.1"))
@@ -122,7 +122,7 @@ class MangaDexCallFactoryTest {
         try {
             val request = Request.Builder().url("https://uploads.mangadex.org:${server.port}/covers/test.jpg").build()
             val error = assertThrows(IOException::class.java) {
-                MangaDexCallFactory(base).newCall(request).execute().use { it.body!!.string() }
+                MangaDexCallFactory(base, automaticRecovery = false).newCall(request).execute().use { it.body!!.string() }
             }
             assertTrue(error.message, error.message!!.contains("Etapa da falha: HTTP (dados)"))
             assertTrue(error.message!!.contains("Resposta HTTP 200"))
@@ -137,7 +137,7 @@ class MangaDexCallFactoryTest {
         val base = OkHttpClient.Builder().dns(localDns).connectTimeout(5, TimeUnit.SECONDS).build()
         try {
             val request = Request.Builder().url("https://api.mangadex.org:${server.port}/manga").build()
-            val error = assertThrows(IOException::class.java) { MangaDexCallFactory(base).newCall(request).execute().close() }
+            val error = assertThrows(IOException::class.java) { MangaDexCallFactory(base, automaticRecovery = false).newCall(request).execute().close() }
             assertTrue(generateSequence<Throwable>(error) { it.cause }.any { it is SSLException })
             assertTrue(error.message!!.contains("Etapa da falha: TLS"))
             assertEquals(0, server.requestCount)

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.example.ui.screens.BrowseScreen
 import com.example.ui.viewmodel.BrowseUiState
 import org.junit.Assert.*
+import kotlinx.coroutines.flow.first
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -112,7 +113,7 @@ class BrowseInputTest {
         lateinit var clipboard: androidx.compose.ui.platform.ClipboardManager
         compose.setContent {
             clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-            MaterialTheme { BrowseScreen(state = BrowseUiState(selectedYearRange = "1900-1950", errorMessage = message),
+            MaterialTheme { BrowseScreen(diagnosticsEnabled = true, state = BrowseUiState(selectedYearRange = "1900-1950", errorMessage = message),
                 onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
         }
         compose.onNodeWithTag("browse_error_details").assertTextEquals(message)
@@ -127,7 +128,7 @@ class BrowseInputTest {
         lateinit var clipboard: androidx.compose.ui.platform.ClipboardManager
         compose.setContent {
             clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-            MaterialTheme { BrowseScreen(state = state.value,
+            MaterialTheme { BrowseScreen(diagnosticsEnabled = true, state = state.value,
                 onDiagnoseMangaDex = { state.value = state.value.copy(connectionDiagnostic = com.example.ui.viewmodel.ConnectionDiagnosticState(report = report)) },
                 onDismissConnectionDiagnostic = { state.value = state.value.copy(connectionDiagnostic = com.example.ui.viewmodel.ConnectionDiagnosticState()) },
                 onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
@@ -150,6 +151,48 @@ class BrowseInputTest {
         compose.onNodeWithTag("search_history_chip_1").assertExists()
         compose.onNodeWithTag("search_input").performTextInput("dragon")
         compose.onNodeWithTag("search_history_chip_1").assertDoesNotExist()
+    }
+
+    @Test fun `normal mode hides technical errors and controls and enabling debug restores them`() {
+        val enabled = androidx.compose.runtime.mutableStateOf(false)
+        val message = "SocketException: Connection reset TLS technical details"
+        compose.setContent {
+            MaterialTheme { BrowseScreen(diagnosticsEnabled = enabled.value,
+                state = BrowseUiState(selectedYearRange = "1900-1950", errorMessage = message),
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithText(message).assertDoesNotExist()
+        compose.onNodeWithText("Não foi possível acessar a fonte. Tente novamente em instantes.").assertExists()
+        compose.onNodeWithTag("copy_browse_error_button").assertDoesNotExist()
+        compose.onNodeWithTag("diagnose_mangadex_button").assertDoesNotExist()
+        compose.runOnIdle { enabled.value = true }
+        compose.onNodeWithText(message).assertExists()
+        compose.onNodeWithTag("copy_browse_error_button").assertExists()
+        compose.onNodeWithTag("diagnose_mangadex_button").assertExists()
+        compose.runOnIdle { enabled.value = false }
+        compose.onNodeWithText(message).assertDoesNotExist()
+        compose.onNodeWithTag("diagnose_mangadex_button").assertDoesNotExist()
+    }
+
+    @Test fun `connection debug preference is off by default and persists across repository instances`() = kotlinx.coroutines.runBlocking {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val prefs = com.example.data.preferences.UserPreferencesRepository(context)
+        try {
+            assertFalse(prefs.connectionDiagnosticsEnabled.first())
+            prefs.setConnectionDiagnosticsEnabled(true)
+            val reopened = com.example.data.preferences.UserPreferencesRepository(context)
+            assertTrue(reopened.connectionDiagnosticsEnabled.first())
+        } finally { prefs.setConnectionDiagnosticsEnabled(false) }
+    }
+
+    @Test fun `settings exposes the connection debug switch`() {
+        val state = androidx.compose.runtime.mutableStateOf(com.example.ui.viewmodel.SettingsUiState())
+        compose.setContent {
+            MaterialTheme { com.example.ui.screens.SettingsScreen(state = state.value, onSaveRulesJson = {},
+                onConnectionDiagnosticsToggled = { state.value = state.value.copy(connectionDiagnosticsEnabled = it) }) }
+        }
+        compose.onNodeWithTag("connection_diagnostics_switch").assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithTag("connection_diagnostics_switch").performClick().assertIsOff()
     }
 
 }

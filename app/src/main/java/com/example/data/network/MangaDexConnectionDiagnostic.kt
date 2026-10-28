@@ -72,7 +72,7 @@ class MangaDexConnectionDiagnostic(
     }
 
     private suspend fun okhttp(name: String, compatibility: Boolean): Result = suspendCancellableCoroutine { continuation ->
-        val call = MangaDexCallFactory(probeClient, compatibilityProfile = compatibility).newCall(request)
+        val call = MangaDexCallFactory(probeClient, compatibilityProfile = compatibility, automaticRecovery = false).newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

@@ -11,7 +11,11 @@ import okhttp3.Request
 /** Scoped connection tracing; normal requests preserve the original TLS and HTTP negotiation. */
 class MangaDexCallFactory(
     private val defaultClient: OkHttpClient,
-    compatibilityProfile: Boolean = false
+    compatibilityProfile: Boolean = false,
+    automaticRecovery: Boolean = !compatibilityProfile,
+    nativeConnection: (java.net.URL) -> javax.net.ssl.HttpsURLConnection = {
+        it.openConnection() as javax.net.ssl.HttpsURLConnection
+    }
 ) : Call.Factory {
     private val tracedClient = defaultClient.newBuilder()
         .apply {
@@ -27,6 +31,7 @@ class MangaDexCallFactory(
             override fun create(call: Call): okhttp3.EventListener =
                 call.request().tag(MangaDexConnectionTrace::class.java) ?: okhttp3.EventListener.NONE
         })
+        .apply { if (automaticRecovery) addInterceptor(MangaDexRecoveryInterceptor(nativeConnection)) }
         .addInterceptor(MangaDexTraceInterceptor)
         .build()
 
