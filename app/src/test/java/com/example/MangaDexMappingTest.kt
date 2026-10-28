@@ -160,7 +160,7 @@ class MangaDexMappingTest {
             override suspend fun getMangaList(
                 limit: Int,
                 offset: Int,
-                title: String?,
+                title: String?, year: Int?,
                 translatedLanguages: List<String>?,
                 orderFollowedCount: String?,
                 orderRelevance: String?,
@@ -283,7 +283,7 @@ class MangaDexMappingTest {
     fun `sparse Portuguese chapters never include English fallback chapters`() = runBlocking {
         val fakeApiService = object : MangaDexApiService {
             override suspend fun getMangaList(
-                limit: Int, offset: Int, title: String?, translatedLanguages: List<String>?,
+                limit: Int, offset: Int, title: String?, year: Int?, translatedLanguages: List<String>?,
                 orderFollowedCount: String?, orderRelevance: String?, includes: List<String>,
                 contentRatings: List<String>, userAgent: String
             ): MangaDexMangaListResponse = throw NotImplementedError()

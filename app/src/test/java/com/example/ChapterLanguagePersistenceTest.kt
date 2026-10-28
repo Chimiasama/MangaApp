@@ -25,10 +25,11 @@ class ChapterLanguagePersistenceTest {
         // Recreate the version 7 chapter table while retaining the rest of the real Room schema.
         val sqlite = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE)
         sqlite.execSQL("ALTER TABLE chapters DROP COLUMN language")
+        sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN year")
         sqlite.version = 7
         sqlite.close()
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name).allowMainThreadQueries()
-            .addMigrations(AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9).build()
+            .addMigrations(AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10).build()
         try {
             val old = migrated.chapterDao().getChapterByIdSync("saved")!!
             assertTrue(old.isRead)

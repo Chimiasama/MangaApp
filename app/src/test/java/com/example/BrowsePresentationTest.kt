@@ -49,6 +49,21 @@ class BrowsePresentationTest {
         }.build())
     }
 
+    @Test fun `applying all filters without a title displays the result grid and refreshes catalog`() {
+        var submitted: String? = null
+        compose.setContent {
+            MangaReaderTheme { Surface { BrowseScreen(
+                state = BrowseUiState(mangaList = titles, selectedLanguage = "all"), onSearchSubmit = { submitted = it },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) } }
+        }
+        compose.onNodeWithTag("open_filters_button").performClick()
+        compose.onNodeWithTag("close_filters_button").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("", submitted) }
+        compose.onNodeWithText("2 resultados").assertExists()
+        compose.onNodeWithTag("manga_card_one").assertExists()
+        compose.onNodeWithTag("manga_card_two").assertExists()
+    }
+
     @Test fun `cards align and favoriting does not open manga details`() {
         var opened = false
         var favorite = ""

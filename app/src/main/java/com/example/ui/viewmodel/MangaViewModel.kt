@@ -96,7 +96,7 @@ private data class BrowseParams(
 
 fun matchesYearRange(year: Int?, rangeKey: String, description: String = ""): Boolean {
     if (rangeKey.isBlank() || rangeKey == "all") return true
-    val actualYear = year ?: Regex("""\b(19\d\d|20\d\d)\b""").find(description)?.value?.toIntOrNull()
+    val actualYear = year ?: Regex("""(?i)(?:lançado|publicado|lançamento|publicação|published|released)\s*(?:no ano de|em|in|:)?\s*((?:19|20)\d{2})\b""").find(description)?.groupValues?.get(1)?.toIntOrNull()
     if (rangeKey == "unknown" || rangeKey == "none") {
         return actualYear == null
     }
@@ -325,6 +325,30 @@ class MangaViewModel(
         )
     }
 
+    private fun filterGenre(mangas: List<MangaModel>, genre: String): List<MangaModel> {
+        if (genre.isBlank() || genre == "all") return mangas
+        val genreLower = genre.lowercase(java.util.Locale.getDefault())
+        val tagEquivalents = when (genreLower) {
+            "ação" -> listOf("action", "ação", "combate", "luta", "batalha")
+            "aventura" -> listOf("adventure", "aventura", "jornada")
+            "fantasia" -> listOf("fantasy", "magic", "fantasia", "magia")
+            "comédia" -> listOf("comedy", "comédia", "engraçado")
+            "romance" -> listOf("romance", "amor")
+            "sci-fi" -> listOf("sci-fi", "science fiction", "ficção", "futuro")
+            "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural", "demônio", "espírito")
+            "escolar" -> listOf("school life", "school", "escolar", "escola")
+            "ninja" -> listOf("ninja", "martial arts", "shinobi")
+            "shounen" -> listOf("shounen", "shonen")
+            "seinen" -> listOf("seinen")
+            "shoujo" -> listOf("shoujo", "shojo")
+            "isekai" -> listOf("isekai", "reencarnação", "outro mundo")
+            else -> listOf(genreLower)
+        }
+        return mangas.filter { manga -> manga.genres.any { g ->
+            tagEquivalents.any { equivalent -> g.lowercase(java.util.Locale.ROOT).contains(equivalent) }
+        } }
+    }
+
     fun loadBrowseManga(debounceMillis: Long = 0) {
         val request = ++browseRequestId
         browseJob?.cancel()
@@ -340,41 +364,11 @@ class MangaViewModel(
                 val currentLanguage = repository.preferencesRepository.selectedLanguage.first()
                 val popular = query.isBlank() && (currentGenre.isBlank() || currentGenre == "all")
                 val baseResults = when {
+                    currentYearRange != "all" && currentYearRange.isNotBlank() ->
+                        repository.getCatalogManga(query, currentSource, currentLanguage, currentYearRange)
                     popular -> repository.getPopularManga(currentSource, currentLanguage)
                     query.isNotBlank() -> repository.searchManga(query, currentSource, currentLanguage)
-                    else -> {
-                        val genreResults = repository.searchManga(currentGenre, currentSource, currentLanguage)
-                        val baseList = if (genreResults.isNotEmpty()) genreResults
-                            else repository.getPopularManga(currentSource, currentLanguage)
-                        val genreLower = currentGenre.lowercase(java.util.Locale.getDefault())
-                        val tagEquivalents = when (genreLower) {
-                            "ação" -> listOf("action", "ação", "combate", "luta", "batalha")
-                            "aventura" -> listOf("adventure", "aventura", "jornada")
-                            "fantasia" -> listOf("fantasy", "magic", "fantasia", "magia")
-                            "comédia" -> listOf("comedy", "comédia", "engraçado")
-                            "romance" -> listOf("romance", "amor")
-                            "sci-fi" -> listOf("sci-fi", "science fiction", "ficção", "futuro")
-                            "sobrenatural" -> listOf("supernatural", "ghosts", "demons", "sobrenatural", "demônio", "espírito")
-                            "escolar" -> listOf("school life", "school", "escolar", "escola")
-                            "ninja" -> listOf("ninja", "martial arts", "shinobi")
-                            "shounen" -> listOf("shounen", "shonen")
-                            "seinen" -> listOf("seinen")
-                            "shoujo" -> listOf("shoujo", "shojo")
-                            "isekai" -> listOf("isekai", "reencarnação", "outro mundo")
-                            else -> listOf(genreLower)
-                        }
-
-                        val filtered = baseList.filter { manga ->
-                            manga.genres.any { g ->
-                                val gLower = g.lowercase(java.util.Locale.getDefault())
-                                tagEquivalents.any { eq -> gLower.contains(eq) } || gLower.contains(genreLower)
-                            } ||
-                            manga.title.lowercase(java.util.Locale.getDefault()).contains(genreLower) ||
-                            manga.description.lowercase(java.util.Locale.getDefault()).contains(genreLower)
-                        }
-
-                        if (filtered.isNotEmpty()) filtered else baseList
-                    }
+                    else -> repository.getPopularManga(currentSource, currentLanguage)
                 }
 
                 val results = if (currentYearRange != "all" && currentYearRange.isNotBlank()) {
@@ -387,7 +381,8 @@ class MangaViewModel(
 
                 ensureActive()
                 if (request != browseRequestId) return@launch
-                _mangaList.value = results
+                _mangaList.value = filterGenre(results, currentGenre)
+                _carouselSections.value = emptyList()
                 if (popular && currentYearRange == "all" && results.isNotEmpty()) _carouselSections.value = buildCarouselSections(results)
             } catch (cancelled: CancellationException) {
                 throw cancelled

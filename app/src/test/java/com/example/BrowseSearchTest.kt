@@ -132,6 +132,73 @@ class BrowseSearchTest {
         assertEquals(listOf("dragon ball"), queries)
     }
 
+    @Test fun `blank title lists catalog and clearing title restores it`() = runBlocking {
+        val other = dragon.copy(id = "other", url = "other", title = "Other")
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga() = listOf(dragon, other)
+            override suspend fun searchManga(query: String): List<MangaModel> {
+                check(query.isNotBlank()) { "Blank titles must browse, never search by name" }
+                return listOf(dragon)
+            }
+        })
+        val vm = model()
+        vm.submitSearch("dragon")
+        withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.searchQuery == "dragon" } }
+        vm.submitSearch("   ")
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.searchQuery.isBlank() } }
+        assertEquals(2, state.mangaList.size)
+        assertNull(state.errorMessage)
+    }
+
+    @Test fun `year only search consults dated catalog beyond popular titles`() = runBlocking {
+        val old = dragon.copy(year = 1985, genres = listOf("Action"))
+        val wrongGenre = old.copy(id = "romance", url = "romance", genres = listOf("Romance"))
+        var requested = ""
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga() = listOf(dragon.copy(year = 2024))
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+            override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> {
+                assertTrue(query.isBlank()); requested = yearRange
+                return listOf(old, wrongGenre)
+            }
+        })
+        val vm = model()
+        vm.selectYearRange("1980-1990")
+        vm.selectGenre("Ação")
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "1980-1990" && it.selectedGenre == "Ação" } }
+        assertEquals("1980-1990", requested)
+        assertEquals(listOf(old), state.mangaList)
+    }
+
+    @Test fun `title and genre filters are both enforced instead of returning unrelated titles`() = runBlocking {
+        repository.registerSource(object : Source() {
+            override suspend fun searchManga(query: String) = listOf(dragon.copy(genres = listOf("Romance")))
+        })
+        val vm = model()
+        vm.selectGenre("Ação")
+        vm.submitSearch("dragon")
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.searchQuery == "dragon" } }
+        assertTrue(state.mangaList.isEmpty())
+    }
+
+    @Test fun `year filters keep working from cache when the source becomes unavailable`() = runBlocking {
+        var offline = false
+        val dated = dragon.copy(year = 1985)
+        repository.registerSource(object : Source() {
+            override suspend fun getPopularManga(): List<MangaModel> {
+                if (offline) throw java.io.IOException("offline")
+                return listOf(dated)
+            }
+            override suspend fun searchManga(query: String) = emptyList<MangaModel>()
+        })
+        val vm = model()
+        withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.mangaList.isNotEmpty() } }
+        offline = true
+        vm.selectYearRange("1980-1990")
+        val state = withTimeout(10_000) { vm.browseUiState.first { !it.isLoading && it.selectedYearRange == "1980-1990" } }
+        assertEquals(listOf(1985), state.mangaList.map { it.year })
+    }
+
     @Test fun `matchesYearRange accurately validates manga publication years`() {
         // Range 1900 - 1950
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1920, "1900-1950"))
@@ -168,6 +235,8 @@ class BrowseSearchTest {
         // 'all' range
         assertTrue(com.example.ui.viewmodel.matchesYearRange(1940, "all"))
         assertTrue(com.example.ui.viewmodel.matchesYearRange(2022, "all"))
+
+        assertFalse(com.example.ui.viewmodel.matchesYearRange(null, "1980-1990", "A história se passa em 1985."))
 
         // 'unknown' range
         assertTrue(com.example.ui.viewmodel.matchesYearRange(null, "unknown", "Uma obra qualquer."))

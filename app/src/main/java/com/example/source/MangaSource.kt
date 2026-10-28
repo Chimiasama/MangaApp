@@ -15,6 +15,10 @@ interface MangaSource {
     suspend fun searchManga(query: String): List<MangaModel>
     suspend fun searchManga(query: String, language: String): List<MangaModel> = searchManga(query)
 
+    /** A blank title browses the catalog; publication filters must not depend on popular titles. */
+    suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> =
+        if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
+
     suspend fun getMangaDetails(mangaUrl: String): MangaModel
 
     suspend fun getChapters(mangaUrl: String): List<ChapterModel>

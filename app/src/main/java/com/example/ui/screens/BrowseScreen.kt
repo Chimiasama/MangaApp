@@ -98,6 +98,7 @@ fun BrowseScreen(
     var queryInput by remember(state.searchQuery) { mutableStateOf(state.searchQuery) }
 
     var searchFocused by remember { mutableStateOf(false) }
+    var filtersApplied by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
 
     if (showFilters) {
@@ -157,7 +158,7 @@ fun BrowseScreen(
                         )
                     }
                 }
-                Button(onClick = { showFilters = false }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
+                Button(onClick = { filtersApplied = true; showFilters = false; onSearchSubmit(queryInput) }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).testTag("close_filters_button")) { Text("Ver resultados") }
             }
         }
     }
@@ -290,10 +291,11 @@ fun BrowseScreen(
 
         }
 
-        val isFilterOrSearchActive = state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all" || (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all")
+        val isFilterOrSearchActive = filtersApplied || state.searchQuery.isNotBlank() || (state.selectedGenre.isNotBlank() && state.selectedGenre != "all") || state.selectedSourceId != "all" || (state.selectedYearRange.isNotBlank() && state.selectedYearRange != "all")
 
         // Intercept back button to return to full carousel view when filtering
         BackHandler(enabled = isFilterOrSearchActive && !showFilters) {
+            filtersApplied = false
             onClearFilters()
         }
 
@@ -349,7 +351,7 @@ fun BrowseScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
-                            onClick = onClearFilters,
+                            onClick = { filtersApplied = false; onClearFilters() },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.testTag("clear_filter_empty_button")
                         ) {
@@ -374,7 +376,7 @@ fun BrowseScreen(
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("${state.mangaList.size} resultados", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { if (state.searchQuery.isNotBlank()) onSearchSubmit("") else onClearFilters() }, modifier = Modifier.testTag("clear_filter_header_button")) {
+                    TextButton(onClick = { if (state.searchQuery.isNotBlank()) onSearchSubmit("") else { filtersApplied = false; onClearFilters() } }, modifier = Modifier.testTag("clear_filter_header_button")) {
                         Text(if (state.searchQuery.isNotBlank()) "Limpar busca" else "Limpar filtros")
                     }
                 }

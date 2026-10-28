@@ -11,6 +11,7 @@ import com.example.data.mapping.toManga
 import com.example.data.mapping.toMangaModel
 import com.example.data.network.MangaDexApiService
 import com.example.data.network.RetrofitClient
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -96,6 +97,39 @@ class MangaDexSource(
 
         // Tier 4: Fallback to curated starter offline catalog if network is down or blocked
         STARTER_FALLBACK_MANGAS
+    }
+
+    override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> = withContext(Dispatchers.IO) {
+        val bounds = yearRange.split("-").mapNotNull { it.toIntOrNull() }
+        if (bounds.size != 2 || bounds[0] > bounds[1]) {
+            return@withContext if (query.isBlank()) getPopularManga(language) else searchManga(query, language)
+        }
+        val languages = when (language) {
+            "pt-br" -> listOf("pt-br", "pt")
+            "es" -> listOf("es-la", "es")
+            "all" -> null
+            else -> listOf(language)
+        }
+        val results = mutableListOf<MangaModel>()
+        for (year in bounds[0]..bounds[1]) {
+            kotlin.coroutines.coroutineContext.ensureActive()
+            // MangaDex accepts an exact year, so query every year in the requested interval.
+            // Keep requests below its per-second rate limit.
+            if (year != bounds[0]) kotlinx.coroutines.delay(350)
+            var offset = 0
+            do {
+                val response = apiService.getMangaList(limit = 100, offset = offset,
+                    title = query.trim().takeIf { it.isNotEmpty() }, year = year,
+                    translatedLanguages = languages, orderFollowedCount = "desc")
+                val page = response.data.orEmpty()
+                results += page.map { it.toMangaModel(baseUrl, id) }
+                offset += page.size
+                val hasMore = page.size == 100 && offset < (response.total ?: 0).coerceAtMost(10_000)
+                if (!hasMore) break
+                kotlinx.coroutines.delay(350)
+            } while (true)
+        }
+        results.distinctBy { it.url }
     }
 
     override suspend fun searchManga(query: String): List<MangaModel> = searchManga(query, "pt-br")

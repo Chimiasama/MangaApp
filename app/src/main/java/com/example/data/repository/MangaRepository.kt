@@ -33,6 +33,7 @@ import com.example.source.SourceRuleConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
@@ -211,10 +212,37 @@ class MangaRepository(
                 genres = if (manga.genres.isNotEmpty()) manga.genres.joinToString(",") else (existing?.genres ?: ""),
                 isFavorite = existing?.isFavorite ?: false,
                 isNsfw = false,
-                addedTimestamp = existing?.addedTimestamp ?: System.currentTimeMillis()
+                addedTimestamp = existing?.addedTimestamp ?: System.currentTimeMillis(),
+                year = manga.year ?: existing?.year
             )
             mangaDao.insertManga(entity)
         }
+    }
+
+    suspend fun getCatalogManga(query: String, sourceId: String?, language: String, yearRange: String): List<MangaModel> {
+        if (yearRange.isBlank() || yearRange == "all") {
+            return if (query.isBlank()) getPopularManga(sourceId, language) else searchManga(query, sourceId, language)
+        }
+        val sources = if (sourceId.isNullOrBlank() || sourceId == "all") getAvailableSources()
+            else listOfNotNull(sourceRegistry[sourceId])
+        var failure: Exception? = null
+        var completed = 0
+        val results = mutableListOf<MangaModel>()
+        for (source in sources.filter { it.supportsLanguage(language) }) {
+            try {
+                val list = source.getCatalogManga(query, language, yearRange).filter { !it.isNsfw }
+                results += list
+                cacheMangaToDb(list)
+                completed++
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { failure = error }
+        }
+        if (completed == 0 && failure != null) {
+            val cached = if (query.isBlank()) getPopularManga(sourceId, language) else searchManga(query, sourceId, language)
+            if (cached.isEmpty()) throw java.io.IOException("Não foi possível consultar o catálogo por ano.", failure)
+            return cached
+        }
+        return results.distinctBy { it.sourceId to it.url }
     }
 
     suspend fun getPopularManga(
@@ -229,22 +257,19 @@ class MangaRepository(
 
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
-        val results = mutableListOf<MangaModel>()
-        for (src in sourcesToFetch.filter { it.supportsLanguage(language) }) {
-            try {
-                val list = src.getPopularManga(language)
-                val filtered = list.filter { manga ->
-                    if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
-                    true
+        val results = kotlinx.coroutines.coroutineScope {
+            sourcesToFetch.filter { it.supportsLanguage(language) }.map { src ->
+                async {
+                    try {
+                        src.getPopularManga(language).filter { manga ->
+                            !manga.isNsfw && manga.genres.none { g -> adultTags.contains(g.trim().lowercase()) }
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { emptyList() }
                 }
-                cacheMangaToDb(filtered)
-                results.addAll(filtered)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            }.awaitAll().flatten()
         }
+        cacheMangaToDb(results)
 
         if (results.isEmpty()) {
             val cachedEntities = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
@@ -264,6 +289,7 @@ class MangaRepository(
                     coverUrl = entity.coverUrl,
                     description = entity.description,
                     sourceId = entity.sourceId,
+                    year = entity.year,
                     genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
                     isNsfw = false
                 )
@@ -330,6 +356,7 @@ class MangaRepository(
                     coverUrl = entity.coverUrl,
                     description = entity.description,
                     sourceId = entity.sourceId,
+                    year = entity.year,
                     genres = if (entity.genres.isBlank()) emptyList() else entity.genres.split(","),
                     isNsfw = false
                 )
@@ -355,6 +382,7 @@ class MangaRepository(
                     coverUrl = cached.coverUrl,
                     description = cached.description,
                     sourceId = cached.sourceId,
+                    year = cached.year,
                     genres = if (cached.genres.isBlank()) emptyList() else cached.genres.split(","),
                     isNsfw = cached.isNsfw
                 )
@@ -570,6 +598,7 @@ class MangaRepository(
             sourceId = manga.sourceId,
             genres = manga.genres.joinToString(","),
             isFavorite = true,
+            year = manga.year ?: mangaDao.getMangaByUrlSync(manga.url)?.year,
             isNsfw = manga.isNsfw
         )
         mangaDao.insertManga(entity)

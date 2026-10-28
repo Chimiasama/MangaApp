@@ -139,6 +139,7 @@ object MangaDexMapper {
             coverUrl = extractCoverUrl(dto),
             description = extractDescription(dto),
             sourceId = sourceId,
+            year = dto.attributes?.year,
             genres = genres.joinToString(", "),
             isFavorite = isFavorite,
             isNsfw = isNsfw(dto),
@@ -258,6 +259,7 @@ object MangaDexMapper {
             description = description,
             sourceId = sourceId,
             genres = genres.joinToString(", "),
+            year = year,
             isFavorite = isFavorite,
             isNsfw = isNsfw,
             addedTimestamp = System.currentTimeMillis()
@@ -276,6 +278,7 @@ object MangaDexMapper {
             isNsfw = isNsfw,
             sourceId = sourceId,
             author = "",
+            year = year,
             status = "Unknown"
         )
     }

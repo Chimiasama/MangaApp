@@ -49,10 +49,11 @@ class ReadChapterPersistenceTest {
         db.close()
         val sqlite = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE)
         sqlite.execSQL("DROP TABLE read_chapters")
+        sqlite.execSQL("ALTER TABLE manga_favorites DROP COLUMN year")
         sqlite.version = 8
         sqlite.close()
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_8_9).build()
+            .addMigrations(AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10).build()
         try {
             assertEquals(listOf("done"), upgraded.progressDao().getReadChapterIds("work", "source").first())
             assertNotNull(upgraded.chapterDao().getChapterByIdSync("partial"))

@@ -19,6 +19,7 @@ interface MangaDexApiService {
         @Query("limit") limit: Int = 25,
         @Query("offset") offset: Int = 0,
         @Query("title") title: String? = null,
+        @Query("year") year: Int? = null,
         @Query("availableTranslatedLanguage[]") translatedLanguages: List<String>? = null,
         @Query("order[followedCount]") orderFollowedCount: String? = null,
         @Query("order[relevance]") orderRelevance: String? = null,
