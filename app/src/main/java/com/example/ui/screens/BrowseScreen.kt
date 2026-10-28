@@ -109,7 +109,8 @@ fun BrowseScreen(
     onApplyFilters: ((BrowseFilterRequest) -> Unit)? = null,
     onDiagnoseMangaDex: () -> Unit = {},
     onDismissConnectionDiagnostic: () -> Unit = {},
-    diagnosticsEnabled: Boolean = false
+    diagnosticsEnabled: Boolean = false,
+    onBackFromSearch: (() -> Unit)? = null
 ) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val focusManager = LocalFocusManager.current
@@ -407,8 +408,8 @@ fun BrowseScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("filter_unknown_notice"))
 
         // Intercept back button to return to full carousel view when filtering
-        BackHandler(enabled = !showFilters && (searchFocused || keyboardVisible || isFilterOrSearchActive)) {
-            if (searchFocused || keyboardVisible) dismissSearchKeyboard() else {
+        BackHandler(enabled = !showFilters && (searchFocused || keyboardVisible || isFilterOrSearchActive || onBackFromSearch != null)) {
+            if (searchFocused || keyboardVisible) dismissSearchKeyboard() else if (onBackFromSearch != null) onBackFromSearch() else {
                 filtersApplied = false
                 onClearFilters()
             }
@@ -416,7 +417,7 @@ fun BrowseScreen(
 
         PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
         // Main Content Area
-        if (state.isLoading && (isFilterOrSearchActive || (state.mangaList.isEmpty() && state.carouselSections.isEmpty()))) {
+        if (state.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize().testTag("browse_loading"),
                 contentAlignment = Alignment.Center
@@ -428,7 +429,7 @@ fun BrowseScreen(
                     if (state.selectedYearRange != "all") Text("A consulta por data pode levar mais tempo.", fontSize = 12.sp)
                 }
             }
-        } else if ((isFilterOrSearchActive || state.errorMessage != null) && state.mangaList.isEmpty() && !state.isLoading) {
+        } else if (state.mangaList.isEmpty() && !state.isLoading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -505,7 +506,7 @@ fun BrowseScreen(
                     }
                 }
             }
-        } else if (isFilterOrSearchActive) {
+        } else {
             // Filtered / Search Results in Grid
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -553,135 +554,6 @@ fun BrowseScreen(
                             onFavoriteToggle = { onFavoriteToggle(manga) },
                             showSource = state.mangaList.map { it.sourceId }.distinct().size > 1
                         )
-                    }
-                }
-            }
-        } else {
-            // Home Carousels View
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag("home_carousels_list"),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                if (state.errorMessage != null) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                                .background(AccentGold.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                .clickable { onRefresh() }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = visibleError.orEmpty(),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 12.sp,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Icon(Icons.Default.Refresh, contentDescription = "Recarregar", tint = PrimaryPurple, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-
-                val sectionsToRender = if (state.carouselSections.isNotEmpty()) {
-                    state.carouselSections
-                } else if (state.mangaList.isNotEmpty()) {
-                    listOf(
-                        com.example.source.GenreCarouselSection(
-                            id = "popular",
-                            title = "🔥 Mangás em Destaque",
-                            genreKey = "all",
-                            items = state.mangaList
-                        )
-                    )
-                } else {
-                    emptyList()
-                }
-
-                items(sectionsToRender, key = { it.id }) { section ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 10.dp)
-                            .testTag("carousel_section_${section.id}")
-                    ) {
-                        // Section Header
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = section.title,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 17.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "(${section.items.size})",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            TextButton(
-                                onClick = {
-                                    if (section.genreKey != "all") {
-                                        onGenreSelected(section.genreKey)
-                                    } else {
-                                        onGenreSelected("Shounen")
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                modifier = Modifier.testTag("show_more_button_${section.id}")
-                            ) {
-                                Text(
-                                    text = "Mostrar mais",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = CrimsonRed
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "Mostrar mais de ${section.title}",
-                                    tint = CrimsonRed,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Horizontal carousel row
-                        LazyRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("carousel_row_${section.id}"),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(section.items, key = { "${section.id}_${it.id}" }) { manga ->
-                                val isFav = favoriteUrls.contains(manga.url)
-                                MangaCard(
-                                    manga = manga,
-                                    onClick = { dismissSearchKeyboard(); onMangaClick(manga) },
-                                    isFavorite = isFav,
-                                    onFavoriteToggle = { onFavoriteToggle(manga) },
-                                    showSource = section.items.map { it.sourceId }.distinct().size > 1,
-                                    modifier = Modifier.width(135.dp)
-                                )
-                            }
-                        }
                     }
                 }
             }

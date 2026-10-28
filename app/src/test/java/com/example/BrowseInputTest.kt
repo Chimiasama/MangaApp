@@ -238,4 +238,21 @@ class BrowseInputTest {
         compose.onNodeWithTag("connection_diagnostics_switch").performClick().assertIsOff()
     }
 
+    @Test fun `new search tab closes keyboard before returning home and preserves query`() {
+        var returned = 0
+        var cleared = 0
+        lateinit var back: androidx.activity.OnBackPressedDispatcher
+        compose.setContent {
+            back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
+            MaterialTheme { BrowseScreen(state = BrowseUiState(searchQuery = "spy"),
+                onBackFromSearch = { returned++ }, onClearFilters = { cleared++ },
+                onMangaClick = {}, onFavoriteToggle = {}, favoriteUrls = emptySet()) }
+        }
+        compose.onNodeWithTag("search_input").performClick()
+        compose.runOnIdle { back.onBackPressed() }
+        compose.onNodeWithTag("search_input").assertIsNotFocused().assertTextContains("spy")
+        compose.runOnIdle { assertEquals(0, returned); back.onBackPressed() }
+        compose.runOnIdle { assertEquals(1, returned); assertEquals(0, cleared) }
+    }
+
 }

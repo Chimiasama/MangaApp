@@ -62,6 +62,8 @@ data class BrowseUiState(
     val unclassifiedExcluded: Int = 0
 )
 
+data class HomeUiState(val sections: List<GenreCarouselSection> = emptyList(), val isLoading: Boolean = true, val error: String? = null)
+
 data class MangaDetailUiState(
     val manga: MangaModel? = null,
     val chapters: List<ChapterModel> = emptyList(),
@@ -150,6 +152,23 @@ class MangaViewModel(
     private val _browseData = MutableStateFlow(MangaData(
         emptyList(), buildCarouselSections(MangaDexSource.STARTER_FALLBACK_MANGAS)
     ))
+
+    private val _homeUiState = MutableStateFlow(HomeUiState())
+    val homeUiState: StateFlow<HomeUiState> = _homeUiState
+    private var homeJob: Job? = null
+
+    fun refreshHome() {
+        homeJob?.cancel()
+        _homeUiState.update { it.copy(isLoading = true) }
+        homeJob = viewModelScope.launch {
+            try {
+                val language = repository.preferencesRepository.selectedLanguage.first()
+                val items = repository.getPopularManga("all", language)
+                _homeUiState.value = HomeUiState(buildCarouselSections(items), false)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _homeUiState.update { it.copy(isLoading = false, error = "Fonte indisponível") } }
+        }
+    }
 
     // Room Flows
     val favorites: StateFlow<List<MangaEntity>> = repository.favorites
@@ -426,6 +445,9 @@ class MangaViewModel(
 
                 ensureActive()
                 if (request != browseRequestId) return@launch
+                if (_homeUiState.value.isLoading && _homeUiState.value.sections.isEmpty() && popular && currentSource == "all" && currentYearRange == "all") {
+                    _homeUiState.value = HomeUiState(buildCarouselSections(results), false)
+                }
                 _browseData.value = MangaData(
                     list = results.filter(catalogFilters::matches),
                     carousels = if (popular && currentYearRange == "all" && results.isNotEmpty()) buildCarouselSections(results) else emptyList(),
@@ -440,6 +462,7 @@ class MangaViewModel(
             } catch (error: Exception) {
                 if (request == browseRequestId) _browseData.value = browseError(selection(), error)
             } finally {
+                if (_homeUiState.value.sections.isEmpty()) _homeUiState.update { it.copy(isLoading = false, error = _browseData.value.error) }
                 if (request == browseRequestId) _isLoadingBrowse.value = false
             }
         }

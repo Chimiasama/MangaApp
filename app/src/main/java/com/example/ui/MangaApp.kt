@@ -39,6 +39,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.source.MangaModel
+import com.example.ui.screens.HomeScreen
+import androidx.compose.material.icons.filled.Search
 import com.example.ui.screens.BrowseScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.MangaDetailScreen
@@ -53,6 +55,7 @@ import com.example.ui.reader.ReaderOptions
 
 object MangaDestinations {
     const val BROWSE = "browse"
+    const val SEARCH = "search"
     const val LIBRARY = "library"
     const val SETTINGS = "settings"
     const val DETAIL = "detail"
@@ -67,6 +70,7 @@ fun MangaApp(
 ) {
     val navController = rememberNavController()
 
+    val homeState by mangaViewModel.homeUiState.collectAsStateWithLifecycle()
     val browseState by mangaViewModel.browseUiState.collectAsStateWithLifecycle()
     val detailState by mangaViewModel.detailUiState.collectAsStateWithLifecycle()
     val readerState by mangaViewModel.readerUiState.collectAsStateWithLifecycle()
@@ -86,11 +90,12 @@ fun MangaApp(
 
     val bottomNavRoutes = listOf(
         MangaDestinations.BROWSE,
+        MangaDestinations.SEARCH,
         MangaDestinations.LIBRARY,
         MangaDestinations.SETTINGS
     )
 
-    val browsingWithKeyboard = currentRoute == MangaDestinations.BROWSE && WindowInsets.isImeVisible
+    val browsingWithKeyboard = currentRoute == MangaDestinations.SEARCH && WindowInsets.isImeVisible
     Scaffold(
         bottomBar = {
             if (currentRoute in bottomNavRoutes && !browsingWithKeyboard) {
@@ -121,6 +126,20 @@ fun MangaApp(
                         label = { Text("Explorar", fontWeight = FontWeight.Normal) },
                         modifier = Modifier.testTag("nav_item_browse"),
                         colors = navItemColors
+                    )
+
+                    NavigationBarItem(
+                        selected = currentRoute == MangaDestinations.SEARCH,
+                        onClick = {
+                            navController.navigate(MangaDestinations.SEARCH) {
+                                popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(Icons.Default.Search, "Pesquisar", Modifier.size(22.dp)) },
+                        label = { Text("Pesquisar") }, colors = navItemColors,
+                        modifier = Modifier.testTag("nav_item_search")
                     )
 
                     NavigationBarItem(
@@ -170,7 +189,23 @@ fun MangaApp(
             popExitTransition = { fadeOut(animationSpec = tween(250)) }
         ) {
             composable(MangaDestinations.BROWSE) {
+                HomeScreen(homeState, favorites.map { it.url }.toSet(),
+                    onSearch = { navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true } },
+                    onMangaClick = { manga -> mangaViewModel.openMangaDetails(manga); navController.navigate(MangaDestinations.DETAIL) },
+                    onFavoriteToggle = mangaViewModel::toggleFavorite,
+                    onMore = { genre ->
+                        mangaViewModel.selectGenre(genre)
+                        navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true }
+                    }, onRefresh = mangaViewModel::refreshHome)
+            }
+            composable(MangaDestinations.SEARCH) {
                 BrowseScreen(
+                    onBackFromSearch = {
+                        navController.navigate(MangaDestinations.BROWSE) {
+                            popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                            launchSingleTop = true; restoreState = true
+                        }
+                    },
                     diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     onApplyFilters = mangaViewModel::applyBrowseFilters,
                     onDiagnoseMangaDex = mangaViewModel::diagnoseMangaDexConnection,
@@ -309,7 +344,7 @@ fun MangaApp(
                     },
                     onSearchRecommendation = { title ->
                         mangaViewModel.searchManga(title, saveToHistory = true)
-                        navController.navigate(MangaDestinations.BROWSE) {
+                        navController.navigate(MangaDestinations.SEARCH) {
                             popUpTo(MangaDestinations.BROWSE) { inclusive = false }
                         }
                     }
