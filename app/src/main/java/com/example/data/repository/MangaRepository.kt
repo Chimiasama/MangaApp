@@ -161,8 +161,9 @@ class MangaRepository(
     private val sourceRegistry = mutableMapOf<String, MangaSource>()
 
     init {
-        // Register default source (MangaDex as requested)
+        // Register default sources (MangaDex, HTML sources, MangaDash)
         registerSource(MangaDexSource())
+        registerSource(com.example.source.MangaDashSource(cacheDir = appContext?.cacheDir))
         com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
     }
 
@@ -530,6 +531,7 @@ class MangaRepository(
             url.contains("comick", ignoreCase = true) -> "comick"
             url.contains("consumet", ignoreCase = true) -> "consumet"
             url.contains("mangadex", ignoreCase = true) -> "mangadex"
+            url.contains("mangadash", ignoreCase = true) -> "mangadash"
             else -> null
         }
     }
