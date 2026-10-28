@@ -1,157 +1,187 @@
 package com.example.source
 
 import com.example.util.PdfRendererHelper
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
+/** Verified against the public .net catalog, chapter rows and chapterViewerData payload. */
 class MangaDashSource(
     private val fetch: suspend (String) -> String = SourceHttp::get,
-    private val cacheDir: File? = null
+    private val cacheDir: File? = null,
+    private val downloadPdf: suspend (String, String, File) -> Unit = ::downloadMangaDashPdf,
+    private val renderPdf: suspend (File, File) -> List<String> = PdfRendererHelper::renderPdfPagesToImages
 ) : MangaSource {
+    override val id = "mangadash"
+    override val name = "MangaDash"
+    override val baseUrl = "https://mangadash.net"
+    override val lang = "pt-br"
+    override val isNsfw = false
+    override val canAggregateChapters = false
+    private val locks = ConcurrentHashMap<String, Mutex>()
+    private val viewerAdapter = Moshi.Builder().build().adapter(Map::class.java)
 
-    override val id: String = "mangadash"
-    override val name: String = "MangaDash"
-    override val baseUrl: String = "https://mangadash.org"
-    override val lang: String = "pt-BR"
-    override val isNsfw: Boolean = false
-    override val canAggregateChapters: Boolean = false
+    override fun supportsLanguage(language: String) = ChapterLanguage.matches(lang, language)
+    override suspend fun getPopularManga() = getPopularManga(lang)
+    override suspend fun getPopularManga(language: String) = searchManga("", language)
+    override suspend fun searchManga(query: String) = searchManga(query, lang)
 
-    override fun supportsLanguage(language: String): Boolean = ChapterLanguage.matches(lang, language)
+    private fun catalogUrl(query: String, year: Int? = null): String = "$baseUrl/mangas".toHttpUrl().newBuilder().apply {
+        if (query.isNotBlank()) addQueryParameter("q", query.trim())
+        if (year != null) addQueryParameter("ano", year.toString())
+    }.build().toString()
 
-    override suspend fun getPopularManga(): List<MangaModel> = getPopularManga(lang)
-
-    override suspend fun getPopularManga(language: String): List<MangaModel> {
-        if (!supportsLanguage(language)) return emptyList()
-        return searchManga("", language)
-    }
-
-    override suspend fun searchManga(query: String): List<MangaModel> = searchManga(query, lang)
+    private fun parseCatalog(doc: Document): List<MangaModel> =
+        doc.select(".card-new, article.manga-card, div.manga-item").mapNotNull { card ->
+            val link = card.selectFirst("a[href*=/manga/]") ?: return@mapNotNull null
+            val url = link.absUrl("href")
+            val image = card.selectFirst("img")
+            val title = card.selectFirst(".card-title, .title, h3, h4")?.text()?.trim()
+                ?: image?.attr("title")?.takeIf { it.isNotBlank() }
+                ?: image?.attr("alt")?.removePrefix("Capa do mangá ")?.substringBefore(" - Acompanhe online")
+            if (url.isBlank() || title.isNullOrBlank()) return@mapNotNull null
+            MangaModel(url = url, id = "$id:${url.toHttpUrl().encodedPath}", title = title,
+                coverUrl = image?.absUrl("data-src")?.ifBlank { image.absUrl("src") }.orEmpty(), sourceId = id,
+                isNsfw = card.hasClass("is-plus18") || card.selectFirst(".badge-18, .adult-badge") != null,
+                year = card.selectFirst(".netflix-meta-custom .fa-calendar")?.parent()?.text()?.trim()?.toIntOrNull())
+        }.distinctBy { it.url }
 
     override suspend fun searchManga(query: String, language: String): List<MangaModel> = withContext(Dispatchers.IO) {
         if (!supportsLanguage(language)) return@withContext emptyList()
-        val url = if (query.isBlank()) {
-            "$baseUrl/mangas"
-        } else {
-            "$baseUrl/mangas".toHttpUrl().newBuilder().addQueryParameter("q", query).build().toString()
-        }
+        val url = catalogUrl(query)
+        val doc = Jsoup.parse(fetch(url), url)
+        val results = parseCatalog(doc)
+        if (results.isEmpty() && (query.isBlank() || doc.selectFirst("#mangasGrid") == null)) throw IOException("MangaDash não retornou seu catálogo. Tente novamente mais tarde.")
+        results
+    }
 
-        try {
-            val html = fetch(url)
-            val doc = Jsoup.parse(html, url)
-            doc.select("article.manga-card, div.manga-item, a[href*=/manga/]").mapNotNull { card ->
-                val href = card.absUrl("href").ifBlank { card.selectFirst("a")?.absUrl("href").orEmpty() }
-                val title = card.selectFirst(".title, h3, h4, img")?.let { el ->
-                    if (el.tagName() == "img") el.attr("alt") else el.text()
-                }?.trim().orEmpty()
-                val cover = card.selectFirst("img")?.let { it.absUrl("data-src").ifBlank { it.absUrl("src") } }.orEmpty()
+    override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> = withContext(Dispatchers.IO) {
+        if (!supportsLanguage(language)) return@withContext emptyList()
+        val bounds = yearRange.split("-").mapNotNull { it.toIntOrNull() }
+        if (bounds.size != 2) return@withContext searchManga(query, language)
+        val url = catalogUrl(query)
+        val doc = Jsoup.parse(fetch(url), url)
+        val years = doc.select("#filterAno option").mapNotNull { it.attr("value").toIntOrNull() }
+            .filter { it in bounds[0]..bounds[1] }.distinct()
+        years.flatMap { year ->
+            coroutineContext.ensureActive()
+            val filteredUrl = catalogUrl(query, year)
+            parseCatalog(Jsoup.parse(fetch(filteredUrl), filteredUrl))
+        }.distinctBy { it.url }
+    }
 
-                if (href.isBlank() || title.isBlank()) null
-                else MangaModel(
-                    url = href,
-                    id = "$id:${href.toHttpUrl().encodedPath}",
-                    title = title,
-                    coverUrl = cover,
-                    sourceId = id,
-                    isNsfw = false
-                )
-            }.distinctBy { it.url }
-        } catch (e: Exception) {
-            emptyList()
-        }
+    private fun currentUrl(url: String): String {
+        val parsed = url.toHttpUrl()
+        return if (parsed.host == "mangadash.org" || parsed.host == "www.mangadash.org")
+            parsed.newBuilder().scheme("https").host("mangadash.net").build().toString() else url
     }
 
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel = withContext(Dispatchers.IO) {
-        val html = fetch(mangaUrl)
-        val doc = Jsoup.parse(html, mangaUrl)
-        val title = doc.selectFirst("h1, .manga-title")?.text()?.trim() ?: "MangaDash Comic"
-        val cover = doc.selectFirst(".cover img, img.manga-cover")?.let { it.absUrl("data-src").ifBlank { it.absUrl("src") } }.orEmpty()
-        val description = doc.selectFirst(".description, .synopsis, #sinopsis")?.text()?.trim().orEmpty()
-        val genres = doc.select(".genre, .tag, a[href*=genre]").map { it.text().trim() }
-
-        MangaModel(
-            url = mangaUrl,
-            id = "$id:${mangaUrl.toHttpUrl().encodedPath}",
-            title = title,
-            coverUrl = cover,
-            description = description,
-            genres = genres,
-            sourceId = id,
-            isNsfw = false
-        )
+        val url = currentUrl(mangaUrl)
+        val doc = Jsoup.parse(fetch(url), url)
+        val title = doc.selectFirst("h1, .manga-title")?.text()?.trim()?.takeIf { it.isNotBlank() }
+            ?: throw IOException("MangaDash não disponibilizou os detalhes desta obra.")
+        MangaModel(url = url, id = "$id:${url.toHttpUrl().encodedPath}", title = title, sourceId = id,
+            coverUrl = doc.selectFirst(".cover-3d img, .cover img, img.manga-cover")?.absUrl("src")
+                ?: doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty(),
+            description = doc.selectFirst(".manga-description, .description, .synopsis, #sinopsis")?.text().orEmpty(),
+            genres = doc.select(".manga-tags a[href*='categoria='], a[href*='genre=']").map { it.text().trim() },
+            author = doc.selectFirst(".tag-author")?.text().orEmpty(),
+            status = doc.selectFirst(".stat-item[title=Status] span")?.text() ?: "Unknown",
+            year = doc.selectFirst(".stat-item[title='Ano de Lançamento'] span")?.text()?.toIntOrNull(),
+            isNsfw = doc.selectFirst(".cover-3d.is-plus18") != null)
     }
 
-    override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, lang)
-
+    override suspend fun getChapters(mangaUrl: String) = getChapters(mangaUrl, lang)
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> = withContext(Dispatchers.IO) {
         if (!supportsLanguage(language)) return@withContext emptyList()
-        val html = fetch(mangaUrl)
-        val doc = Jsoup.parse(html, mangaUrl)
-        val links = doc.select("a[href*=/capitulo/], a[href*=/chapter/], a.chapter-link").distinctBy { it.absUrl("href") }
-
-        links.mapIndexed { index, a ->
-            val href = a.absUrl("href")
-            val title = a.text().trim().ifBlank { "Capítulo ${links.size - index}" }
-            val chapterNum = title.filter { it.isDigit() || it == '.' }.toFloatOrNull() ?: (links.size - index).toFloat()
-
-            ChapterModel(
-                id = "$id:${href.toHttpUrl().encodedPath}",
-                title = title,
-                chapterUrl = href,
-                chapterNumber = chapterNum,
-                dateUpload = "",
-                language = lang
-            )
-        }
+        val url = currentUrl(mangaUrl)
+        val doc = Jsoup.parse(fetch(url), url)
+        val rows = doc.select("a.chapter-row, a.chapter-link").distinctBy { it.absUrl("href") }
+        rows.mapNotNull { row ->
+            val href = row.absUrl("href").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title = row.selectFirst(".chapter-title-group h4")?.text() ?: row.text()
+            val number = row.attr("data-chapter-number").toFloatOrNull()
+                ?: Regex("""(?i)cap[ií]tulo\s*(\d+(?:[.,]\d+)?)""").find(title)?.groupValues?.get(1)?.replace(',', '.')?.toFloatOrNull()
+                ?: return@mapNotNull null
+            ChapterModel(id = "$id:${href.toHttpUrl().encodedPath}", title = title, chapterUrl = href,
+                chapterNumber = number, language = lang,
+                dateUpload = row.selectFirst(".chapter-meta-info .fa-calendar")?.parent()?.text().orEmpty())
+        }.sortedByDescending { it.chapterNumber }
     }
 
     override suspend fun getPages(chapterUrl: String): List<String> = withContext(Dispatchers.IO) {
-        val html = fetch(chapterUrl)
-        val doc = Jsoup.parse(html, chapterUrl)
-
-        // Check if direct images exist
-        val directImages = doc.select("img.page-img, .reader-images img").map { it.absUrl("src") }.filter { it.isNotBlank() }
-        if (directImages.isNotEmpty()) {
-            return@withContext directImages
-        }
-
-        // Search for PDF link (e.g. <a href="...file.pdf"> or iframe/embed src)
-        val pdfUrl = doc.selectFirst("a[href$=.pdf], iframe[src$=.pdf], embed[src$=.pdf]")?.let {
-            it.absUrl("href").ifBlank { it.absUrl("src") }
-        } ?: throw IOException("MangaDash não disponibilizou imagens ou arquivo PDF para este capítulo.")
-
-        if (cacheDir == null) {
-            // If running in environment without File cache dir available, return PDF URL directly
-            return@withContext listOf(pdfUrl)
-        }
-
-        // Download PDF to temporary cache and render pages via PdfRendererHelper
-        val chapterHash = chapterUrl.hashCode().toString()
-        val pdfFile = File(cacheDir, "mangadash_$chapterHash.pdf")
-        val outputDir = File(cacheDir, "mangadash_pages_$chapterHash")
-
-        if (!pdfFile.exists() || pdfFile.length() == 0L) {
-            val client = OkHttpClient()
-            val request = Request.Builder().url(pdfUrl).header("User-Agent", SourceHttp.USER_AGENT).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw IOException("Falha ao baixar PDF do capítulo em MangaDash: ${response.code}")
-                response.body?.byteStream()?.use { input ->
-                    FileOutputStream(pdfFile).use { output -> input.copyTo(output) }
+        val url = currentUrl(chapterUrl)
+        val doc = Jsoup.parse(fetch(url), url)
+        val direct = doc.select("img.page-img, .reader-images img").map {
+            it.absUrl("data-src").ifBlank { it.absUrl("src") }
+        }.filter { it.isNotBlank() }
+        if (direct.isNotEmpty()) return@withContext direct
+        val viewerJson = doc.selectFirst("script#chapterViewerData")?.data()
+        val payload = viewerJson?.let { viewerAdapter.fromJson(it) }
+        val pdfUrl = (payload?.get("pdfUrl") as? String)?.takeIf { it.isNotBlank() }
+            ?: doc.selectFirst("a[href$=.pdf], iframe[src$=.pdf], embed[src$=.pdf]")?.let {
+                it.absUrl("href").ifBlank { it.absUrl("src") }
+            }?.takeIf { it.isNotBlank() }
+            ?: throw IOException("MangaDash não disponibilizou páginas públicas ou PDF para este capítulo.")
+        val cache = cacheDir ?: throw IOException("O cache local é necessário para abrir o PDF deste capítulo.")
+        val key = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
+        locks.getOrPut(key) { Mutex() }.withLock {
+            val pdfFile = File(cache, "mangadash_$key.pdf")
+            val pageDir = File(cache, "mangadash_pages_$key")
+            if (!pdfFile.exists() || pdfFile.length() == 0L) downloadPdf(pdfUrl, url, pdfFile)
+            try {
+                renderPdf(pdfFile, pageDir).also {
+                    if (it.isEmpty()) throw IOException("Não foi possível converter o PDF do MangaDash em páginas.")
                 }
-            }
-        }
-
-        val renderedPages = PdfRendererHelper.renderPdfPagesToImages(pdfFile, outputDir)
-        if (renderedPages.isEmpty()) {
-            listOf(pdfUrl)
-        } else {
-            renderedPages
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { pdfFile.delete(); throw error }
         }
     }
+}
+
+private suspend fun downloadMangaDashPdf(url: String, referer: String, target: File): Unit = suspendCancellableCoroutine { continuation ->
+    val call = SourceHttp.client.newCall(Request.Builder().url(url).header("Referer", referer)
+        .header("Accept", "application/pdf").build())
+    continuation.invokeOnCancellation { call.cancel() }
+    call.enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) { if (continuation.isActive) continuation.resumeWithException(e) }
+        override fun onResponse(call: Call, response: Response) {
+            val partial = File(target.parentFile, target.name + ".part")
+            try {
+                target.parentFile?.mkdirs()
+                response.use {
+                    if (!it.isSuccessful) throw IOException("MangaDash: falha ao baixar PDF (HTTP ${it.code}).")
+                    val body = it.body ?: throw IOException("MangaDash retornou um PDF vazio.")
+                    body.byteStream().buffered().use { input ->
+                        input.mark(5)
+                        val signature = ByteArray(5)
+                        java.io.DataInputStream(input).readFully(signature)
+                        if (String(signature, Charsets.US_ASCII) != "%PDF-")
+                            throw IOException("MangaDash retornou um conteúdo que não é PDF.")
+                        input.reset()
+                        partial.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+                if (!continuation.isActive) return
+                if (!partial.renameTo(target)) throw IOException("Não foi possível salvar o PDF no cache.")
+                continuation.resume(Unit)
+            } catch (error: Exception) { if (continuation.isActive) continuation.resumeWithException(error) }
+            finally { partial.delete() }
+        }
+    })
 }

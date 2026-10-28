@@ -1,77 +1,81 @@
 package com.example
 
 import com.example.source.MangaDashSource
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
+import java.io.IOException
 
 class MangaDashSourceTest {
+    private fun fixture(name: String) = javaClass.getResource("/mangadash/$name.html")!!.readText()
 
-    @Test
-    fun testMangaDashSearchAndDetails() = runTest {
-        val sampleSearchHtml = """
-            <html>
-                <body>
-                    <article class="manga-card">
-                        <a href="https://mangadash.org/manga/dragon-ball">
-                            <img src="https://mangadash.org/covers/db.jpg" alt="Dragon Ball Super" />
-                            <h3 class="title">Dragon Ball Super</h3>
-                        </a>
-                    </article>
-                </body>
-            </html>
-        """.trimIndent()
-
-        val sampleChapterHtml = """
-            <html>
-                <body>
-                    <h1 class="manga-title">Dragon Ball Super</h1>
-                    <div class="synopsis">Aventura de Goku e seus amigos.</div>
-                    <a href="https://mangadash.org/capitulo/1" class="chapter-link">Capítulo 1</a>
-                    <a href="https://mangadash.org/capitulo/2" class="chapter-link">Capítulo 2</a>
-                </body>
-            </html>
-        """.trimIndent()
-
-        val source = MangaDashSource(
-            fetch = { url ->
-                if (url.contains("/capitulo")) ""
-                else if (url.contains("/manga/")) sampleChapterHtml
-                else sampleSearchHtml
-            }
-        )
-
-        val searchResult = source.searchManga("Dragon Ball")
-        assertEquals(1, searchResult.size)
-        assertEquals("Dragon Ball Super", searchResult[0].title)
-        assertEquals("mangadash", searchResult[0].sourceId)
-
-        val details = source.getMangaDetails("https://mangadash.org/manga/dragon-ball")
-        assertEquals("Dragon Ball Super", details.title)
-        assertEquals("Aventura de Goku e seus amigos.", details.description)
-
-        val chapters = source.getChapters("https://mangadash.org/manga/dragon-ball")
-        assertEquals(2, chapters.size)
-        assertEquals("Capítulo 1", chapters[0].title)
+    @Test fun `all languages with blank title reads actual catalog cards from the net domain`() = runBlocking {
+        val calls = mutableListOf<String>()
+        val source = MangaDashSource(fetch = { calls += it; fixture("catalog") })
+        val mangas = source.getPopularManga("all")
+        assertEquals(listOf("https://mangadash.net/mangas"), calls)
+        assertEquals("Dragon Ball", mangas.single().title)
+        assertEquals(1984, mangas.single().year)
+        assertTrue(mangas.single().coverUrl.endsWith("dragon_ball_capa.webp"))
+        assertEquals("mangadash", mangas.single().sourceId)
+        assertTrue(source.searchManga("dragon ball", "en").isEmpty())
+        source.searchManga("dragon ball", "all")
+        assertTrue(calls.last().contains("q=dragon%20ball"))
     }
 
-    @Test
-    fun testPdfExtractionFallback() = runTest {
-        val chapterHtmlWithPdf = """
-            <html>
-                <body>
-                    <a href="https://mangadash.org/files/chapter_1.pdf">Baixar PDF</a>
-                </body>
-            </html>
-        """.trimIndent()
+    @Test fun `details chapters and publication metadata use live site selectors`() = runBlocking {
+        val source = MangaDashSource(fetch = { fixture("detail") })
+        val manga = source.getMangaDetails("https://mangadash.net/manga/367-dragon-ball")
+        assertEquals("Dragon Ball", manga.title)
+        assertEquals(1984, manga.year)
+        assertEquals(listOf("Ação", "Aventura"), manga.genres)
+        assertEquals("Akira Toriyama", manga.author)
+        assertTrue(manga.coverUrl.startsWith("https://mangadash.net/"))
+        val chapters = source.getChapters(manga.url, "all")
+        assertEquals(2, chapters.size)
+        assertTrue(chapters.all { it.language == "pt-br" && it.chapterNumber in 1f..1000f })
+        assertEquals(chapters.sortedByDescending { it.chapterNumber }, chapters)
+        assertTrue(chapters.all { it.title.startsWith("Capítulo") && !it.title.contains("/2026") })
+    }
 
-        val source = MangaDashSource(
-            fetch = { chapterHtmlWithPdf }
-        )
+    @Test fun `year only filter uses the catalog year parameter without requiring a title`() = runBlocking {
+        val calls = mutableListOf<String>()
+        val source = MangaDashSource(fetch = { calls += it; fixture("catalog") })
+        assertEquals(listOf(1984), source.getCatalogManga("", "all", "1980-1990").map { it.year })
+        assertEquals(listOf("https://mangadash.net/mangas", "https://mangadash.net/mangas?ano=1984"), calls)
+    }
 
-        val pages = source.getPages("https://mangadash.org/capitulo/1")
-        assertEquals(1, pages.size)
-        assertEquals("https://mangadash.org/files/chapter_1.pdf", pages[0])
+    @Test fun `network failure is not silently converted into an empty search result`() = runBlocking {
+        val source = MangaDashSource(fetch = { throw IOException("offline") })
+        try { source.getPopularManga("all"); fail("Must report source failure") }
+        catch (expected: IOException) { assertEquals("offline", expected.message) }
+    }
+
+    @Test fun `viewer JSON downloads and renders a PDF into reader image paths and reuses cached download`() = runBlocking {
+        val cache = java.nio.file.Files.createTempDirectory("mangadash-test").toFile()
+        var downloads = 0
+        try {
+            val source = MangaDashSource(fetch = { fixture("chapter") }, cacheDir = cache,
+                downloadPdf = { url, referer, target ->
+                    assertTrue(url.startsWith("https://leitor.mangadash.net/"))
+                    assertTrue(url.endsWith("Capitulo 1.pdf"))
+                    assertEquals("https://mangadash.net/capitulo/421-beware-the-villainess/1", referer)
+                    target.writeText("%PDF-test"); downloads++
+                }, renderPdf = { file, dir ->
+                    assertTrue(file.length() > 0); dir.mkdirs()
+                    listOf(File(dir, "page_1.png").apply { writeText("image") }.toURI().toString())
+                })
+            val chapter = "https://mangadash.net/capitulo/421-beware-the-villainess/1"
+            assertTrue(source.getPages(chapter).single().startsWith("file:"))
+            source.getPages(chapter)
+            assertEquals(1, downloads)
+        } finally { cache.deleteRecursively() }
+    }
+
+    @Test fun `source does not pass an unrendered PDF URL to the image reader`() = runBlocking {
+        val source = MangaDashSource(fetch = { fixture("chapter") })
+        try { source.getPages("https://mangadash.net/capitulo/1"); fail("PDF must require local rendering") }
+        catch (expected: IOException) { assertTrue(expected.message!!.contains("cache")) }
     }
 }

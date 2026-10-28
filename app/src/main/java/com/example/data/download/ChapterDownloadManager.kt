@@ -64,16 +64,23 @@ class ChapterDownloadManager(
                 val pageFile = File(chapterDir, "page_${index}.jpg")
 
                 if (!pageFile.exists() || pageFile.length() == 0L) {
-                    val request = Request.Builder()
-                        .url(pageUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
-                        .build()
+                    if (pageUrl.startsWith("file:")) {
+                        // MangaDash PDFs have already been converted into local reader images.
+                        val local = File(java.net.URI(pageUrl))
+                        if (!local.isFile || local.length() == 0L) throw java.io.IOException("Página local indisponível para download.")
+                        local.copyTo(pageFile, overwrite = true)
+                    } else {
+                        val request = Request.Builder()
+                            .url(pageUrl)
+                            .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                            .build()
 
-                    okHttpClient.newCall(request).execute().use { response ->
-                        if (response.isSuccessful && response.body != null) {
-                            response.body!!.byteStream().use { input ->
-                                FileOutputStream(pageFile).use { output ->
-                                    input.copyTo(output)
+                        okHttpClient.newCall(request).execute().use { response ->
+                            if (response.isSuccessful && response.body != null) {
+                                response.body!!.byteStream().use { input ->
+                                    FileOutputStream(pageFile).use { output ->
+                                        input.copyTo(output)
+                                    }
                                 }
                             }
                         }

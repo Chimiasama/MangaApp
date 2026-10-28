@@ -162,7 +162,7 @@ class MangaRepository(
     private val sourceRegistry = mutableMapOf<String, MangaSource>()
 
     init {
-        // Register default sources (MangaDex, HTML sources, MangaDash)
+        // MangaDash uses its verified public .net catalog and native PDF pages.
         registerSource(MangaDexSource())
         registerSource(com.example.source.MangaDashSource(cacheDir = appContext?.cacheDir))
         com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
@@ -260,18 +260,19 @@ class MangaRepository(
 
         val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
 
-        val results = kotlinx.coroutines.coroutineScope {
+        val responses = kotlinx.coroutines.coroutineScope {
             sourcesToFetch.filter { it.supportsLanguage(language) }.map { src ->
                 async {
                     try {
-                        src.getPopularManga(language).filter { manga ->
+                        Result.success(src.getPopularManga(language).filter { manga ->
                             !manga.isNsfw && manga.genres.none { g -> adultTags.contains(g.trim().lowercase()) }
-                        }
+                        })
                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (_: Exception) { emptyList() }
+                    catch (error: Exception) { Result.failure<List<MangaModel>>(error) }
                 }
-            }.awaitAll().flatten()
+            }.awaitAll()
         }
+        val results = responses.mapNotNull { it.getOrNull() }.flatten()
         cacheMangaToDb(results)
 
         if (results.isEmpty()) {
@@ -283,6 +284,10 @@ class MangaRepository(
             val filteredCached = cachedEntities.filter { entity ->
                 if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 true
+            }
+            if (filteredCached.isEmpty() && responses.isNotEmpty() && responses.all { it.isFailure }) {
+                throw java.io.IOException("Não foi possível consultar o catálogo da fonte. Verifique a conexão e tente novamente.",
+                    responses.first().exceptionOrNull())
             }
             return filteredCached.map { entity ->
                 MangaModel(
