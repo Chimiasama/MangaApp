@@ -53,6 +53,11 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.ui.components.DownloadSummary
+import com.example.ui.components.statusText
+import com.example.ui.components.displayPriority
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -99,9 +104,20 @@ fun LibraryScreen(
     onDeleteBookmark: (Long) -> Unit = {},
     onDeleteHistory: (String) -> Unit = {},
     onDeleteFavorite: (String) -> Unit = {},
-    onSyncClicked: () -> Unit = {}
+    onSyncClicked: () -> Unit = {},
+    requestedTab: Int? = null,
+    onRequestedTabConsumed: () -> Unit = {},
+    isEnqueueingDownloads: Boolean = false,
+    downloadQueueError: String? = null,
+    onRetryDownload: (MangaModel, ChapterModel) -> Unit = { _, _ -> }
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(requestedTab) {
+        if (requestedTab != null) {
+            selectedTab = requestedTab.coerceIn(0, 4)
+            onRequestedTabConsumed()
+        }
+    }
     val tabs = listOf(
         "Favoritos (${favorites.size})",
         "Marcadores (${bookmarks.size})",
@@ -185,6 +201,9 @@ fun LibraryScreen(
                 )
                 3 -> DownloadsList(
                     downloads = downloads,
+                    isEnqueueing = isEnqueueingDownloads,
+                    queueError = downloadQueueError,
+                    onRetryDownload = onRetryDownload,
                     onReadDownloadedChapter = onReadDownloadedChapter,
                     onDeleteDownload = onDeleteDownload
                 )
@@ -544,10 +563,13 @@ private fun HistoryList(
 @Composable
 private fun DownloadsList(
     downloads: List<DownloadEntity>,
+    isEnqueueing: Boolean,
+    queueError: String?,
+    onRetryDownload: (MangaModel, ChapterModel) -> Unit,
     onReadDownloadedChapter: (MangaModel, ChapterModel) -> Unit,
     onDeleteDownload: (String) -> Unit
 ) {
-    if (downloads.isEmpty()) {
+    if (downloads.isEmpty() && !isEnqueueing && queueError == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -581,7 +603,9 @@ private fun DownloadsList(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(downloads) { download ->
+                item { DownloadSummary(downloads, isEnqueueing = isEnqueueing, error = queueError) }
+                items(downloads.sortedWith(compareBy<DownloadEntity> { it.displayPriority() }.thenByDescending { it.timestamp }),
+                    key = { it.chapterId }) { download ->
                     val mangaModel = MangaModel(
                         url = download.mangaUrl,
                         id = download.mangaUrl.hashCode().toString(),
@@ -597,16 +621,23 @@ private fun DownloadsList(
 
                     SwipeableLibraryItem(
                         onDelete = { onDeleteDownload(download.chapterId) },
-                        onRefresh = { onReadDownloadedChapter(mangaModel, chapterModel) },
+                        onRefresh = {
+                            if (download.downloadState == DownloadEntity.STATE_COMPLETED) onReadDownloadedChapter(mangaModel, chapterModel)
+                            else if (download.downloadState == DownloadEntity.STATE_FAILED) onRetryDownload(mangaModel, chapterModel)
+                        },
                         deleteLabel = "Excluir Download",
-                        refreshLabel = "Ler Offline",
+                        refreshLabel = when (download.downloadState) {
+                            DownloadEntity.STATE_COMPLETED -> "Ler Offline"
+                            DownloadEntity.STATE_FAILED -> "Tentar novamente"
+                            else -> "Aguardando conclusão"
+                        },
                         testTag = "download_swipe_item_${download.chapterId}"
                     ) {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onReadDownloadedChapter(mangaModel, chapterModel) }
+                                .clickable(enabled = download.downloadState == DownloadEntity.STATE_COMPLETED) { onReadDownloadedChapter(mangaModel, chapterModel) }
                                 .testTag("download_item_${download.chapterId}"),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
@@ -662,15 +693,18 @@ private fun DownloadsList(
                                             )
                                         }
                                     } else {
-                                        val percent = (download.downloadProgress * 100).toInt()
-                                        Text(
-                                            text = "Baixando... $percent% (${download.downloadedPagesCount}/${download.totalPages})",
-                                            fontSize = 11.sp,
-                                            color = PrimaryPurple
-                                        )
+                                        Text(text = download.statusText(), fontSize = 11.sp,
+                                            color = if (download.downloadState == DownloadEntity.STATE_FAILED) MaterialTheme.colorScheme.error else PrimaryPurple,
+                                            modifier = Modifier.testTag("download_status_${download.chapterId}"))
                                     }
                                 }
 
+                                if (download.downloadState == DownloadEntity.STATE_FAILED) {
+                                    IconButton(onClick = { onRetryDownload(mangaModel, chapterModel) },
+                                        modifier = Modifier.testTag("retry_download_${download.chapterId}")) {
+                                        Icon(Icons.Default.Download, contentDescription = "Tentar download novamente")
+                                    }
+                                }
                                 IconButton(onClick = { onDeleteDownload(download.chapterId) }) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,

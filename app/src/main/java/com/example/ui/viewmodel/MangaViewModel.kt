@@ -43,9 +43,11 @@ import com.example.data.sync.AniListSyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.drop
 
 enum class BrowseFailure { OFFLINE, TIMEOUT, SOURCE }
+data class DownloadQueueUiState(val mangaUrl: String = "", val isEnqueueing: Boolean = false, val error: String? = null)
 
 data class ConnectionDiagnosticState(val isRunning: Boolean = false, val report: String? = null)
 
@@ -752,12 +754,31 @@ class MangaViewModel(
     }
 
     fun downloadMultipleChaptersWorkManager(context: android.content.Context, manga: MangaModel, chapters: List<ChapterModel>) {
-        com.example.data.download.DownloadWorkHelper.enqueueMultipleChapterDownloads(context, manga, chapters)
+        viewModelScope.launch {
+            downloadEnqueueLock.withLock {
+                _downloadQueueState.value = DownloadQueueUiState(manga.url, true)
+                try {
+                    com.example.data.download.DownloadWorkHelper.enqueueMultipleChapterDownloads(context.applicationContext, manga, chapters)
+                    _downloadQueueState.value = DownloadQueueUiState(manga.url)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    android.util.Log.w("ChapterDownloads", "Falha ao enfileirar capítulos", error)
+                    _downloadQueueState.value = DownloadQueueUiState(manga.url, error = "Não foi possível adicionar todos os capítulos. Tente novamente.")
+                }
+            }
+        }
     }
 
-    fun deleteDownload(chapterId: String) {
+    private val downloadEnqueueLock = kotlinx.coroutines.sync.Mutex()
+    private val _downloadQueueState = MutableStateFlow(DownloadQueueUiState())
+    val downloadQueueState: StateFlow<DownloadQueueUiState> = _downloadQueueState
+
+    fun deleteDownload(chapterId: String, context: android.content.Context? = null) {
         viewModelScope.launch {
-            repository.deleteDownload(chapterId)
+            downloadEnqueueLock.withLock {
+                if (context != null) com.example.data.download.DownloadWorkHelper.cancel(context.applicationContext, chapterId)
+                repository.deleteDownload(chapterId)
+            }
         }
     }
 

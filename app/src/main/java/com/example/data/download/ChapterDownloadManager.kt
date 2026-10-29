@@ -181,9 +181,9 @@ class ChapterDownloadManager(
     suspend fun deleteDownload(chapterId: String) = withContext(Dispatchers.IO) {
         val download = downloadDao.getDownloadSync(chapterId)
         if (download != null) {
-            val chapterDir = File(download.localPath)
-            if (chapterDir.exists()) {
-                chapterDir.deleteRecursively()
+            if (download.localPath.isNotBlank()) {
+                val chapterDir = File(download.localPath)
+                if (chapterDir.exists()) chapterDir.deleteRecursively()
             }
             downloadDao.deleteDownload(chapterId)
         }

@@ -9,6 +9,10 @@ import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.MangaRepository
 import com.example.source.ChapterModel
 import com.example.source.MangaModel
+import com.example.data.local.DownloadEntity
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withPermit
 
 class ChapterDownloadWorker(
     appContext: Context,
@@ -64,7 +68,8 @@ class ChapterDownloadWorker(
             preferencesRepository = preferencesRepository,
             chapterDao = db.chapterDao(),
             bookmarkDao = db.bookmarkDao(),
-            searchHistoryDao = db.searchHistoryDao()
+            searchHistoryDao = db.searchHistoryDao(),
+            appContext = applicationContext
         )
 
         val manga = MangaModel(
@@ -81,21 +86,36 @@ class ChapterDownloadWorker(
             chapterUrl = chapterUrl
         )
 
-        return try {
+        val dao = db.downloadDao()
+        dao.markEnqueued(DownloadWorkHelper.record(manga, chapter))
+        return DownloadWorkHelper.activeDownloads.withPermit { try {
+            if (downloadManager.getDownloadedPages(chapterId).isNotEmpty()) return@withPermit Result.success()
+            dao.markPreparing(DownloadWorkHelper.record(manga, chapter))
             val pages = repository.getPages(chapterUrl, chapterId, sourceId)
             if (pages.isNotEmpty()) {
                 if (downloadManager.downloadChapter(manga, chapter, pages)) Result.success() else Result.failure()
             } else {
-                if (runAttemptCount < 2) Result.retry() else Result.failure()
+                val retry = runAttemptCount < 2
+                dao.markStateIfPresent(chapterId, if (retry) DownloadEntity.STATE_RETRYING else DownloadEntity.STATE_FAILED)
+                if (retry) Result.retry() else Result.failure()
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            withContext(NonCancellable) { dao.markStateIfPresent(chapterId, DownloadEntity.STATE_QUEUED) }
             throw e
         } catch (e: Exception) {
             e.printStackTrace()
             val denied = generateSequence<Throwable>(e) { it.cause }.take(16).any {
                 it is retrofit2.HttpException && it.code() in listOf(403, 429)
             }
-            if (!denied && runAttemptCount < 2) Result.retry() else Result.failure()
-        }
+            val retry = !denied && runAttemptCount < 2
+            dao.markStateIfPresent(chapterId, if (retry) DownloadEntity.STATE_RETRYING else DownloadEntity.STATE_FAILED)
+            if (retry) Result.retry() else Result.failure()
+        } finally {
+            withContext(NonCancellable) {
+                val unfinished = dao.getDownloadSync(chapterId)
+                if (unfinished?.downloadState in setOf(DownloadEntity.STATE_PREPARING, DownloadEntity.STATE_DOWNLOADING))
+                    dao.markStateIfPresent(chapterId, DownloadEntity.STATE_FAILED)
+            }
+        } }
     }
 }

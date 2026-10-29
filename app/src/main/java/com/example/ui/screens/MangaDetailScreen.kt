@@ -83,6 +83,7 @@ import com.example.source.MangaModel
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.PrimaryPurple
+import com.example.ui.components.DownloadSummary
 import com.example.ui.viewmodel.MangaDetailUiState
 
 @Composable
@@ -100,7 +101,10 @@ fun MangaDetailScreen(
     onSearchRecommendation: (String) -> Unit = {},
     onChapterReadChanged: (ChapterModel, Boolean) -> Unit = { _, _ -> },
     onRetryChapters: () -> Unit = {},
-    diagnosticsEnabled: Boolean = false
+    diagnosticsEnabled: Boolean = false,
+    onOpenDownloads: () -> Unit = {},
+    isEnqueueingDownloads: Boolean = false,
+    downloadQueueError: String? = null
 ) {
     val manga = state.manga ?: return
     val effectiveLanguage = when (val l = selectedLanguage.lowercase(java.util.Locale.ROOT)) {
@@ -386,6 +390,10 @@ fun MangaDetailScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
+                    DownloadSummary(downloads.filter { it.mangaUrl == manga.url },
+                        isEnqueueing = isEnqueueingDownloads, error = downloadQueueError, onOpenDownloads = onOpenDownloads)
+                    Spacer(Modifier.height(8.dp))
+
                     // Recomendações MyAnimeList via Jikan API (Fase 3.2)
                     if (state.malRecommendations.isNotEmpty()) {
                         Row(
@@ -522,13 +530,14 @@ fun MangaDetailScreen(
                                     }
 
                                     Button(
+                                        enabled = !isEnqueueingDownloads,
                                         onClick = {
                                             val selectedList = visibleChapters.filter { it.id in selectedChapterIds }
                                             if (selectedList.isNotEmpty()) {
                                                 onDownloadMultipleChapters(selectedList)
                                                 Toast.makeText(
                                                     context,
-                                                    "${selectedList.size} capítulos enfileirados em segundo plano!",
+                                                    "Adicionando capítulos. Acompanhe em Biblioteca → Downloads.",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                                 isSelectionMode = false
@@ -661,6 +670,7 @@ fun MangaDetailScreen(
                                     }
 
                                     Button(
+                                        enabled = !isEnqueueingDownloads,
                                         onClick = {
                                             val unDownloaded = visibleChapters.filter { ch ->
                                                 downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
@@ -669,7 +679,7 @@ fun MangaDetailScreen(
                                                 onDownloadMultipleChapters(unDownloaded)
                                                 Toast.makeText(
                                                     context,
-                                                    "${unDownloaded.size} capítulos enfileirados para download em segundo plano!",
+                                                    "Adicionando capítulos. Acompanhe em Biblioteca → Downloads.",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             } else {
@@ -1255,6 +1265,20 @@ private fun ChapterRowItem(
                         }
                     }
 
+                    DownloadEntity.STATE_FAILED -> {
+                        Text("Falha", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                        IconButton(onClick = onDownloadChapter, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Download, contentDescription = "Tentar download novamente", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    DownloadEntity.STATE_QUEUED, DownloadEntity.STATE_PREPARING, DownloadEntity.STATE_RETRYING -> {
+                        Text(when (downloadRecord.downloadState) {
+                            DownloadEntity.STATE_PREPARING -> "Preparando…"
+                            DownloadEntity.STATE_RETRYING -> "Aguardando…"
+                            else -> "Na fila"
+                        }, color = PrimaryPurple, fontSize = 11.sp,
+                            modifier = Modifier.testTag("chapter_download_pending_${chapter.id}"))
+                    }
                     DownloadEntity.STATE_DOWNLOADING -> {
                         val percent = (downloadRecord.downloadProgress * 100).toInt()
                         Row(verticalAlignment = Alignment.CenterVertically) {

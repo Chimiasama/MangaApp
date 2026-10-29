@@ -36,6 +36,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import com.example.ui.components.downloadCounts
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -89,6 +93,9 @@ fun MangaApp(
     val favorites by mangaViewModel.favorites.collectAsStateWithLifecycle()
     val history by mangaViewModel.readingHistory.collectAsStateWithLifecycle()
     val downloads by mangaViewModel.downloads.collectAsStateWithLifecycle()
+    val downloadQueue by mangaViewModel.downloadQueueState.collectAsStateWithLifecycle()
+    val downloadTotals = downloadCounts(downloads)
+    var requestedLibraryTab by rememberSaveable { mutableStateOf<Int?>(null) }
     val bookmarks by mangaViewModel.bookmarks.collectAsStateWithLifecycle()
     val stats by mangaViewModel.readingStats.collectAsStateWithLifecycle()
     val cloudSyncState by mangaViewModel.cloudSyncState.collectAsStateWithLifecycle()
@@ -203,7 +210,11 @@ fun MangaApp(
                                 }
                             }
                         },
-                        icon = { Icon(Icons.Default.Bookmark, contentDescription = "Biblioteca", modifier = Modifier.size(22.dp)) },
+                        icon = { BadgedBox(badge = {
+                            if (downloadTotals.pending > 0 || downloadTotals.failed > 0) Badge {
+                                Text(if (downloadTotals.pending > 0) downloadTotals.pending.toString() else "!")
+                            }
+                        }) { Icon(Icons.Default.Bookmark, contentDescription = "Biblioteca", modifier = Modifier.size(22.dp)) } },
                         label = { Text("Biblioteca", fontWeight = FontWeight.Normal) },
                         modifier = Modifier.testTag("nav_item_library"),
                         colors = navItemColors
@@ -305,7 +316,13 @@ fun MangaApp(
             }
 
             composable(MangaDestinations.LIBRARY) {
+                val context = LocalContext.current
                 LibraryScreen(
+                    requestedTab = requestedLibraryTab,
+                    onRequestedTabConsumed = { requestedLibraryTab = null },
+                    isEnqueueingDownloads = downloadQueue.isEnqueueing,
+                    downloadQueueError = downloadQueue.error,
+                    onRetryDownload = { manga, chapter -> mangaViewModel.downloadMultipleChaptersWorkManager(context, manga, listOf(chapter)) },
                     favorites = favorites,
                     history = history,
                     downloads = downloads,
@@ -324,7 +341,7 @@ fun MangaApp(
                         navController.navigate(MangaDestinations.READER)
                     },
                     onDeleteDownload = { chapterId ->
-                        mangaViewModel.deleteDownload(chapterId)
+                        mangaViewModel.deleteDownload(chapterId, context)
                     },
                     onOpenBookmark = { bookmark ->
                         mangaViewModel.openBookmark(bookmark)
@@ -399,6 +416,12 @@ fun MangaApp(
                     onRetryChapters = mangaViewModel::retryDetailChapters,
                     diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     state = detailState,
+                    isEnqueueingDownloads = downloadQueue.isEnqueueing && downloadQueue.mangaUrl == detailState.manga?.url,
+                    downloadQueueError = downloadQueue.error.takeIf { downloadQueue.mangaUrl == detailState.manga?.url },
+                    onOpenDownloads = {
+                        requestedLibraryTab = 3
+                        navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true; restoreState = true }
+                    },
                     downloads = downloads,
                     selectedLanguage = detailState.chapterLanguage,
                     onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
@@ -411,14 +434,14 @@ fun MangaApp(
                     },
                     onDownloadChapter = { chapter ->
                         val manga = detailState.manga ?: return@MangaDetailScreen
-                        mangaViewModel.downloadChapter(manga, chapter)
+                        mangaViewModel.downloadMultipleChaptersWorkManager(context, manga, listOf(chapter))
                     },
                     onDownloadMultipleChapters = { chapters ->
                         val manga = detailState.manga ?: return@MangaDetailScreen
                         mangaViewModel.downloadMultipleChaptersWorkManager(context, manga, chapters)
                     },
                     onDeleteDownload = { chapterId ->
-                        mangaViewModel.deleteDownload(chapterId)
+                        mangaViewModel.deleteDownload(chapterId, context)
                     },
                     onSearchRecommendation = { title ->
                         mangaViewModel.searchManga(title, saveToHistory = true)
