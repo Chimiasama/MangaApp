@@ -36,7 +36,7 @@ fun HomeSectionsEditor(sections: List<HomeSection>, sources: List<MangaSource>, 
     Card(Modifier.fillMaxWidth().testTag("home_sections_settings")) {
         Column(Modifier.padding(12.dp)) {
             Text("Tela inicial", style = MaterialTheme.typography.titleMedium)
-            Text("Ative, edite ou arraste as seções pela alça.", style = MaterialTheme.typography.bodySmall)
+            Text("Segure a alça para ordenar.", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             local.sortedBy { it.position }.forEach { section -> key(section.id) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).semantics {
                     customActions = listOf(

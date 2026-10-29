@@ -149,8 +149,8 @@ fun SettingsScreen(
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Modo de diagnóstico de conexão (debug)", fontWeight = FontWeight.Bold)
-                    Text("Mostra erros técnicos completos, botões de copiar e o teste de conexão na tela de busca.",
-                        style = MaterialTheme.typography.bodySmall)
+                    Text("Erros completos e testes de conexão.",
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Switch(checked = state.connectionDiagnosticsEnabled,
                     onCheckedChange = onConnectionDiagnosticsToggled,
@@ -349,8 +349,9 @@ fun SettingsScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Fixa a orientação da tela durante as sessões de leitura de mangá.",
+                            text = "Escolha a orientação da tela.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -415,8 +416,9 @@ fun SettingsScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Oculta automaticamente as barras de status e navegação ao abrir o leitor.",
+                            text = "Oculta as barras do sistema ao ler.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -442,6 +444,7 @@ fun SettingsScreen(
                         Text(
                             text = "Sincroniza o progresso automaticamente ao abrir o app.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -474,6 +477,7 @@ fun SettingsScreen(
                         Text(
                             text = "Adapte a leitura para o seu conforto visual.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -535,8 +539,9 @@ fun SettingsScreen(
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "Inverte as cores das páginas (preto vira branco) para leitura no escuro.",
+                            text = "Inverte as cores das páginas.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -572,6 +577,7 @@ fun SettingsScreen(
                         Text(
                             text = "Prepara as próximas páginas para a leitura.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -612,8 +618,9 @@ fun SettingsScreen(
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "Otimize consumo de tela OLED, memória e rádio móvel para leituras longas.",
+                            text = "Reduza o consumo durante a leitura.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -635,6 +642,7 @@ fun SettingsScreen(
                         Text(
                             text = if (state.connectionDiagnosticsEnabled) "OLED, RGB_565 e menos pré-downloads." else "Reduz brilho e pré-carregamento.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -721,6 +729,7 @@ fun SettingsScreen(
                         Text(
                             text = "Sincroniza somente quando houver Wi-Fi.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -865,6 +874,7 @@ fun SettingsScreen(
                         Text(
                             text = "Mantenha favoritos e histórico em tempo real.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -920,7 +930,7 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Última sincronização às $timeStr • User: ${syncState.cloudUserId.take(10)}...",
+                                    text = if (state.connectionDiagnosticsEnabled) "Última sincronização às $timeStr • User: ${syncState.cloudUserId.take(10)}..." else "Última sincronização às $timeStr",
                                     fontSize = 10.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1004,6 +1014,7 @@ fun SettingsScreen(
                         Text(
                             text = "Digite uma chave personalizada para sincronizar o mesmo histórico e favoritos entre múltiplos aparelhos:",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -1121,6 +1132,7 @@ fun SettingsScreen(
                         Text(
                             text = "Rastreie seu progresso de leitura automaticamente.",
                             fontSize = 11.sp,
+                            maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -1160,7 +1172,7 @@ fun SettingsScreen(
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = "Conta conectada via GraphQL",
+                                text = if (state.connectionDiagnosticsEnabled) "Conta conectada via GraphQL" else "Conta conectada",
                                 fontSize = 11.sp,
                                 color = Color(0xFF4CAF50)
                             )
@@ -1190,6 +1202,7 @@ fun SettingsScreen(
                             Text(
                                 text = "Atualiza o capítulo lido no AniList ao concluir a página.",
                                 fontSize = 11.sp,
+                                maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -1264,6 +1277,7 @@ fun SettingsScreen(
                 Text(
                     text = "Atualize os seletores HTML de raspagem via JSON dinâmico sem precisar atualizar o APK na Play Store.",
                     fontSize = 13.sp,
+                    maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
                 )
@@ -1312,6 +1326,7 @@ fun SettingsScreen(
                 Text(
                     text = "Seus favoritos e histórico de leitura são mantidos de forma resiliente em tabelas SQLite gerenciadas via Room.",
                     fontSize = 13.sp,
+                    maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -1337,6 +1352,7 @@ fun SettingsScreen(
             Text(
                 text = "Versão 1.1.0 (Build 2) • Pronto para Google Play",
                 fontSize = 11.sp,
+                maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         }
