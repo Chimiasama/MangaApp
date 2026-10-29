@@ -391,6 +391,8 @@ fun MangaApp(
                 val context = LocalContext.current
                 MangaDetailScreen(
                     onChapterReadChanged = mangaViewModel::setChapterRead,
+                    onRetryChapters = mangaViewModel::retryDetailChapters,
+                    diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     state = detailState,
                     downloads = downloads,
                     selectedLanguage = if (selectedLanguage.isBlank() || selectedLanguage == "all") "pt-br" else selectedLanguage,

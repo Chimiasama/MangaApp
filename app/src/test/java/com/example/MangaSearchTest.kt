@@ -55,6 +55,25 @@ class MangaSearchTest {
         val source = MangaDexSource(service { 200 to "{\"result\":\"ok\",\"data\":[]}" })
         assertTrue(source.searchManga("nonexistent-title-987654321", "pt-br").isEmpty())
     }
+    @Test fun `popular API failure does not fabricate the 24 starter records`() = runBlocking {
+        val source = MangaDexSource(service { 503 to "{}" })
+        try { source.getPopularManga("pt-br"); fail("Must expose API failure") }
+        catch (expected: retrofit2.HttpException) { assertEquals(503, expected.code()) }
+    }
+    @Test fun `successful empty popular catalog remains empty`() = runBlocking {
+        assertTrue(MangaDexSource(service { 200 to "{\"result\":\"ok\",\"data\":[]}" }).getPopularManga("pt-br").isEmpty())
+    }
+    @Test fun `chapter API failure is not a successful zero chapter response`() = runBlocking {
+        val source = MangaDexSource(service { 503 to "{}" })
+        try { source.getChapters("https://api.mangadex.org/manga/id", "pt-br"); fail("Must expose chapter failure") }
+        catch (expected: retrofit2.HttpException) { assertEquals(503, expected.code()) }
+    }
+    @Test fun `legacy demo cover is recognized without rejecting all MangaDex covers`() {
+        assertTrue(MangaDexSource.isLegacyStarterRecord("mangadex", "https://uploads.mangadex.org/covers/ade0306c-f4b6-4890-9edb-1ddf04df2039/fe76445d-387f-4ff6-8340-f06403c20dbe.jpg.256.jpg", "", "Unknown"))
+        assertFalse(MangaDexSource.isLegacyStarterRecord("mangadex", "https://uploads.mangadex.org/covers/real/current.jpg.256.jpg", "ja", "ongoing"))
+        assertFalse(MangaDexSource.isLegacyStarterRecord("mangadex", "https://uploads.mangadex.org/covers/ade0306c-f4b6-4890-9edb-1ddf04df2039/fe76445d-387f-4ff6-8340-f06403c20dbe.jpg.256.jpg", "ko", "completed"))
+        assertFalse(MangaDexSource.isLegacyStarterRecord("other", "https://uploads.mangadex.org/covers/ade0306c-f4b6-4890-9edb-1ddf04df2039/fe76445d-387f-4ff6-8340-f06403c20dbe.jpg.256.jpg", "", "Unknown"))
+    }
     private fun fixture() = javaClass.getResource("/mangadex-dragon-ball.json")!!.readText()
     private fun service(response: () -> Pair<Int, String>): MangaDexApiService {
         val client = OkHttpClient.Builder().addInterceptor { chain ->

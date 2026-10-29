@@ -46,12 +46,37 @@ real; o antigo fixture PNG de um pixel tinha CRC inválido.
 ## Capas da pesquisa
 
 As capas usam o mesmo transporte com negociação TLS/HTTP automática. A recuperação
-HTTPS nativa é limitada por URL de imagem, assim como nas páginas: recuperar uma
-capa não impede que outras capas da grade sejam recuperadas nos próximos 30 segundos.
+HTTPS nativa tem controle por URL, assim como nas páginas: recuperar uma
+capa não impede que outras capas da grade sejam recuperadas. Uma resposta 2xx
+libera também uma nova consulta do mesmo URL; apenas tentativas em andamento
+ou sem sucesso mantêm o intervalo por URL de 30 segundos.
 Falhas da alternativa nativa e respostas 403/429 ainda suspendem novas tentativas
-nativas por 30 segundos. Consultas da API mantêm o limite global anterior.
+nativas por 30 segundos. Consultas da API também têm controle por URL: catálogo, detalhes e feed não
+bloqueiam a recuperação uns dos outros. Uma falha da alternativa nativa ou
+HTTP 403/429 ainda suspende novas recuperações por 30 segundos no cliente.
 
 Para miniaturas MangaDex `.256.jpg` e `.512.jpg`, HTTP 404/410/5xx permite uma única
 tentativa da capa original, no mesmo domínio e preservando cabeçalhos. Não altera
 outras fontes, não tenta contornar 403/429 e não ignora validação de certificados.
 Os testes simulam reset em duas capas distintas, ausência da miniatura e recusas HTTP.
+
+## Catálogo real e falhas de capítulos
+
+A lista de 24 obras de demonstração foi removida do fluxo MangaDex. Uma falha
+na API não gera resultados artificiais nem troca silenciosamente o idioma da
+lista de populares. Registros antigos com as URLs exatas das capas dessa lista, sem idioma
+original e com publicação desconhecida (metadados da demonstração), são ignorados no fallback de pesquisa/cache; favoritos e histórico não são apagados.
+Respostas reais atualizam os metadados normalmente.
+
+Falhas do feed de capítulos são propagadas até a tela quando não há capítulos
+válidos no cache ou nas fontes agregadas. A tela mostra erro e permite repetir;
+“nenhum capítulo” fica reservado a consultas concluídas sem resultados. O modo
+debug também exibe os detalhes copiáveis dessa falha. A verificação remota opcional
+`LiveMangaDexReadFlowCheck` usa catálogo, quatro capas reais, o feed PT-BR de
+Dragon Ball (Official Colored) e decodifica a página 2 do capítulo 471.
+
+Validação remota em 29/10/2026: 50 obras populares, quatro capas decodificadas,
+522 capítulos PT-BR após filtragem/deduplicação, 14 páginas no capítulo 471 e
+página 2 decodificada. A suíte de 210 testes locais mais essa verificação remota
+passou sem falhas. O teste remoto usa o proxy do ambiente somente na infraestrutura
+de teste; o APK não recebe configuração de proxy nem mudança de confiança TLS.

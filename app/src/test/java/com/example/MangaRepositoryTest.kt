@@ -337,6 +337,17 @@ class MangaRepositoryTest {
         assertEquals(emptyList<ChapterModel>(), repository.getAggregatedChapters("Dragon Ball", "https://primary.test/db", "primary", "en"))
     }
 
+    @Test fun `chapter transport failure is propagated when aggregation has no usable chapters`() = runBlocking {
+        repository.registerSource(object : SourceStub("primary", "https://primary.test") {
+            override val canAggregateChapters = false
+            override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = throw java.io.IOException("TLS reset")
+        })
+        try {
+            repository.getAggregatedChapters("Book", "https://primary.test/book", "primary", "pt-br")
+            org.junit.Assert.fail("A failed feed cannot become zero available chapters")
+        } catch (expected: java.io.IOException) { assertEquals("TLS reset", expected.message) }
+    }
+
     @Test fun `an English-only source cannot disguise a failed Portuguese search as zero matches`() = runBlocking {
         repository.registerSource(object : SourceStub("mangadex", "https://api.mangadex.org") {
             override suspend fun searchManga(query: String): List<MangaModel> = throw java.io.IOException("offline")

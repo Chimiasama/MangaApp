@@ -98,7 +98,9 @@ fun MangaDetailScreen(
     onDownloadMultipleChapters: (List<ChapterModel>) -> Unit = {},
     onDeleteDownload: (String) -> Unit,
     onSearchRecommendation: (String) -> Unit = {},
-    onChapterReadChanged: (ChapterModel, Boolean) -> Unit = { _, _ -> }
+    onChapterReadChanged: (ChapterModel, Boolean) -> Unit = { _, _ -> },
+    onRetryChapters: () -> Unit = {},
+    diagnosticsEnabled: Boolean = false
 ) {
     val manga = state.manga ?: return
     val effectiveLanguage = when (val l = selectedLanguage.lowercase(java.util.Locale.ROOT)) {
@@ -110,6 +112,7 @@ fun MangaDetailScreen(
     }
     val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, effectiveLanguage) }
     val context = LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf(setOf<String>()) }
@@ -563,7 +566,7 @@ fun MangaDetailScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Capítulos (${visibleChapters.size})",
+                                    text = if (state.chapterError != null || state.isLoading) "Capítulos" else "Capítulos (${visibleChapters.size})",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -825,6 +828,21 @@ fun MangaDetailScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(color = PrimaryPurple)
+                    }
+                }
+            } else if (state.chapterError != null) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(state.chapterError, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (diagnosticsEnabled && state.chapterErrorDetails != null) {
+                            Text(state.chapterErrorDetails, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.chapterErrorDetails)) }) {
+                                Text("Copiar erro completo")
+                            }
+                        }
+                        TextButton(onClick = onRetryChapters, modifier = Modifier.testTag("retry_chapters")) {
+                            Text("Tentar novamente")
+                        }
                     }
                 }
             } else if (visibleChapters.isEmpty()) {

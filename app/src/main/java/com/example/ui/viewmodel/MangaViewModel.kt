@@ -80,7 +80,9 @@ data class MangaDetailUiState(
     val isFavorite: Boolean = false,
     val readingProgress: ProgressEntity? = null,
     val malRecommendations: List<MalRecommendationItem> = emptyList(),
-    val readChapterIds: Set<String> = emptySet()
+    val readChapterIds: Set<String> = emptySet(),
+    val chapterError: String? = null,
+    val chapterErrorDetails: String? = null
 )
 
 data class ReaderUiState(
@@ -302,6 +304,7 @@ class MangaViewModel(
     // Manga Detail State
     private val _detailManga = MutableStateFlow<MangaModel?>(null)
     private val _detailChapters = MutableStateFlow<List<ChapterModel>>(emptyList())
+    private val _detailChapterError = MutableStateFlow<String?>(null)
     private val _isLoadingDetail = MutableStateFlow(false)
     private val _isFavorite = MutableStateFlow(false)
     private val _currentMangaProgress = MutableStateFlow<ProgressEntity?>(null)
@@ -326,7 +329,10 @@ class MangaViewModel(
             readingProgress = progress,
             malRecommendations = recs
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
+    }.combine(_detailChapterError) { state, error -> state.copy(
+        chapterError = error?.let { "Não foi possível carregar os capítulos. Verifique a conexão e tente novamente." },
+        chapterErrorDetails = error) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val detailUiState: StateFlow<MangaDetailUiState> = combine(
@@ -586,6 +592,7 @@ class MangaViewModel(
         val request = ++detailChapterRequest
         detailChapterJob?.cancel()
         _detailChapters.value = emptyList()
+        _detailChapterError.value = null
         _isLoadingDetail.value = true
         detailChapterJob = viewModelScope.launch {
             try {
@@ -596,12 +603,20 @@ class MangaViewModel(
                 if (request == detailChapterRequest) _detailChapters.value = chapters
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                if (request == detailChapterRequest) _detailChapters.value = emptyList()
+            } catch (error: Exception) {
+                if (request == detailChapterRequest) {
+                    _detailChapters.value = emptyList()
+                    _detailChapterError.value = com.example.source.catalogFailureDetails(error)
+                    android.util.Log.w("MangaChapters", "Falha ao consultar capítulos de ${manga.sourceId}", error)
+                }
             } finally {
                 if (request == detailChapterRequest) _isLoadingDetail.value = false
             }
         }
+    }
+
+    fun retryDetailChapters() {
+        _detailManga.value?.let { loadDetailChapters(it) }
     }
 
     fun selectLanguage(language: String) {

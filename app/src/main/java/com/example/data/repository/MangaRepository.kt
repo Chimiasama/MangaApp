@@ -276,7 +276,8 @@ class MangaRepository(
             .filter(::allowed)
         cacheMangaToDb(partial)
         val cached = failedSources.flatMap { source -> mangaDao.getCachedMangasBySourceSync(source.id) }
-            .filter { entity -> query.isBlank() || entity.title.contains(query.trim(), ignoreCase = true) }
+            .filter { entity -> !MangaDexSource.isLegacyStarterRecord(entity.sourceId, entity.coverUrl, entity.originalLanguage, entity.status) &&
+                (query.isBlank() || entity.title.contains(query.trim(), ignoreCase = true)) }
             .map { entity ->
                 MangaModel(url = entity.url, id = entity.id, title = entity.title, coverUrl = entity.coverUrl,
                     description = entity.description, genres = entity.genres.split(',').map { it.trim() }.filter { it.isNotBlank() },
@@ -332,12 +333,13 @@ class MangaRepository(
                 mangaDao.getAllCachedMangasSync()
             }
             val filteredCached = cachedEntities.filter { entity ->
+                if (MangaDexSource.isLegacyStarterRecord(entity.sourceId, entity.coverUrl, entity.originalLanguage, entity.status)) return@filter false
                 if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 true
             }
-            if (filteredCached.isEmpty() && responses.isNotEmpty() && responses.all { it.isFailure }) {
+            if (filteredCached.isEmpty() && responses.any { it.isFailure }) {
                 throw java.io.IOException("Não foi possível consultar o catálogo da fonte. Verifique a conexão e tente novamente.",
-                    responses.first().exceptionOrNull())
+                    responses.first { it.isFailure }.exceptionOrNull())
             }
             return filteredCached.map { entity ->
                 MangaModel(
@@ -401,6 +403,7 @@ class MangaRepository(
             }
             val queryLower = query.lowercase(Locale.getDefault())
             val matched = cachedEntities.filter { entity ->
+                if (MangaDexSource.isLegacyStarterRecord(entity.sourceId, entity.coverUrl, entity.originalLanguage, entity.status)) return@filter false
                 if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
                 entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
@@ -470,11 +473,13 @@ class MangaRepository(
         language: String = "pt-br"
     ): List<ChapterModel> = kotlinx.coroutines.coroutineScope {
         val primarySource = sourceRegistry[primarySourceId] ?: sourceRegistry.values.first()
+        var primaryFailure: Exception? = null
         val primaryChapters = try {
-            primarySource.getChapters(mangaUrl, language)
+            getChapters(mangaUrl, primarySource.id, language)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
+            primaryFailure = e
             emptyList()
         }
 
@@ -537,6 +542,7 @@ class MangaRepository(
             chapterDao.insertChapters(entities)
         }
 
+        if (mergedList.isEmpty() && primaryFailure != null) throw primaryFailure
         mergedList
     }
 
@@ -566,20 +572,12 @@ class MangaRepository(
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            val cached = chapterDao?.getChaptersForMangaSync(mangaUrl) ?: emptyList()
-            if (cached.isNotEmpty()) {
-                cached.filter { ChapterLanguage.matches(it.language, language) }.map { entity ->
-                    ChapterModel(
-                        id = entity.id,
-                        title = entity.title,
-                        chapterUrl = entity.chapterUrl,
-                        chapterNumber = entity.chapterNumber,
-                        dateUpload = entity.dateUpload,
-                        language = entity.language
-                    )
-                }
-            } else {
-                emptyList()
+            val cached = chapterDao?.getChaptersForMangaSync(mangaUrl).orEmpty()
+                .filter { ChapterLanguage.matches(it.language, language) }
+            if (cached.isEmpty()) throw e
+            cached.map { entity ->
+                ChapterModel(id = entity.id, title = entity.title, chapterUrl = entity.chapterUrl,
+                    chapterNumber = entity.chapterNumber, dateUpload = entity.dateUpload, language = entity.language)
             }
         }
     }

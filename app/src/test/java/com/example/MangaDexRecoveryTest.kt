@@ -61,8 +61,9 @@ class MangaDexRecoveryTest {
                     factory.newCall(next).execute().use { assertEquals("second native page", it.body!!.string()) }
                     assertEquals(2, attempts.get())
                 } else {
-                    assertThrows(IOException::class.java) { factory.newCall(request).execute().close() }
-                    assertEquals(1, attempts.get())
+                    server.enqueue(MockResponse().setBody("repeated native content"))
+                    factory.newCall(request).execute().use { assertEquals("repeated native content", it.body!!.string()) }
+                    assertEquals(2, attempts.get())
                 }
             } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
         }
@@ -82,9 +83,29 @@ class MangaDexRecoveryTest {
                 server.enqueue(MockResponse().setBody("cover"))
                 val request = Request.Builder().url("https://uploads.mangadex.org:${server.port}$path").build()
                 factory.newCall(request).execute().use { assertEquals("cover", it.body!!.string()) }
-                assertThrows(IOException::class.java) { factory.newCall(request).execute().close() }
+                server.enqueue(MockResponse().setBody("same cover retried"))
+                factory.newCall(request).execute().use { assertEquals("same cover retried", it.body!!.string()) }
             }
-            assertEquals(2, attempts.get())
+            assertEquals(4, attempts.get())
+        } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
+    @Test fun `catalog recovery does not block details or chapter feeds on the same client`() {
+        val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
+        val base = client().newBuilder().addNetworkInterceptor { throw SocketException("reset") }.build()
+        val attempts = AtomicInteger()
+        try {
+            val factory = MangaDexCallFactory(base, nativeConnection = { url ->
+                attempts.incrementAndGet()
+                (server.url(url.file).toUrl().openConnection(Proxy.NO_PROXY) as HttpsURLConnection)
+                    .apply { sslSocketFactory = trusted.sslSocketFactory() }
+            })
+            for (path in listOf("/manga?limit=50", "/manga/id", "/manga/id/feed?limit=100")) {
+                server.enqueue(MockResponse().setBody("valid data"))
+                val request = Request.Builder().url("https://api.mangadex.org:${server.port}$path").build()
+                factory.newCall(request).execute().use { assertEquals("valid data", it.body!!.string()) }
+            }
+            assertEquals(3, attempts.get())
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 

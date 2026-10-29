@@ -25,15 +25,14 @@ internal class MangaDexRecoveryInterceptor(
     private val openNative: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
     private val now: () -> Long = System::nanoTime
 ) : Interceptor {
-    private val nextAttempt = AtomicLong(Long.MIN_VALUE)
     private val nativeUnavailableUntil = AtomicLong(Long.MIN_VALUE)
-    private val imageAttempts = object : LinkedHashMap<String, Long>(32, .75f, true) {
+    private val requestAttempts = object : LinkedHashMap<String, Long>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>) = size > 256
     }
 
-    private fun claimImage(url: String, time: Long): Boolean = synchronized(imageAttempts) {
-        if (time < nativeUnavailableUntil.get() || time < (imageAttempts[url] ?: Long.MIN_VALUE)) false
-        else { imageAttempts[url] = time + TimeUnit.SECONDS.toNanos(30); true }
+    private fun claimRequest(url: String, time: Long): Boolean = synchronized(requestAttempts) {
+        if (time < nativeUnavailableUntil.get() || time < (requestAttempts[url] ?: Long.MIN_VALUE)) false
+        else { requestAttempts[url] = time + TimeUnit.SECONDS.toNanos(30); true }
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -42,17 +41,11 @@ internal class MangaDexRecoveryInterceptor(
             val request = chain.request()
             if (request.method != "GET" || request.url.scheme != "https" || chain.call().isCanceled() || !eligible(primary)) throw primary
             val time = now()
-            val image = MangaDexPages.registry.contains(request.url.toString()) ||
-                (request.url.host == "uploads.mangadex.org" && request.url.encodedPath.startsWith("/covers/"))
-            if (image) {
-                if (!claimImage(request.url.toString(), time)) throw primary
-            } else {
-                val next = nextAttempt.get()
-                if (time < next || !nextAttempt.compareAndSet(next, time + TimeUnit.SECONDS.toNanos(30))) throw primary
-            }
+            // Successful recovery of one endpoint must not suppress covers, feeds or another query.
+            if (!claimRequest(request.url.toString(), time)) throw primary
             val connection = try { openNative(request.url.toUrl()) }
             catch (secondary: IOException) {
-                if (image) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
+                nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
                 throw combined(primary, secondary)
             }
             val started = System.nanoTime()
@@ -77,7 +70,10 @@ internal class MangaDexRecoveryInterceptor(
                     if (request.header("User-Agent") == null) setRequestProperty("User-Agent", MangaDexConnectionDiagnostic.USER_AGENT)
                 }
                 val code = connection.responseCode
-                if (image && code in listOf(403, 429)) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
+                if (code in 200..299) synchronized(requestAttempts) {
+                    requestAttempts.remove(request.url.toString())
+                }
+                if (code in listOf(403, 429)) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
                 val stream = if (code >= 400) connection.errorStream else connection.inputStream
                 val source = object : okio.ForwardingSource((stream ?: java.io.ByteArrayInputStream(byteArrayOf())).source()) {
                     override fun close() {
@@ -103,7 +99,7 @@ internal class MangaDexRecoveryInterceptor(
                 deadline.cancel(false)
                 connection.disconnect()
                 if (secondary is IOException) {
-                    if (image && !chain.call().isCanceled()) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
+                    if (!chain.call().isCanceled()) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
                     throw combined(primary, secondary)
                 }
                 throw secondary

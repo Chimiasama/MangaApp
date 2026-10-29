@@ -48,58 +48,11 @@ class MangaDexSource(
             else -> null
         }
 
-        // Tier 1: Try fetching manga with chapters available in selected language
-        var dtos: List<com.example.data.network.model.MangaDexMangaDto> = try {
-            val responseLang = apiService.getMangaList(
-                limit = 50,
-                translatedLanguages = targetLanguages,
-                orderFollowedCount = "desc",
-                includes = listOf("cover_art", "author")
-            )
-            responseLang.data.orEmpty()
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            emptyList()
-        }
-
-        // Tier 2: If language filter returned empty or failed, fetch globally top-followed manga
-        if (dtos.isEmpty() && targetLanguages != null) {
-            dtos = try {
-                val responseGlobal = apiService.getMangaList(
-                    limit = 50,
-                    orderFollowedCount = "desc",
-                    includes = listOf("cover_art", "author")
-                )
-                responseGlobal.data.orEmpty()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (e: Exception) {
-                emptyList()
-            }
-        }
-
-        // Tier 3: If still empty, fetch latest updated manga
-        if (dtos.isEmpty()) {
-            dtos = try {
-                val responseFallback = apiService.getMangaList(
-                    limit = 50,
-                    includes = listOf("cover_art", "author")
-                )
-                responseFallback.data.orEmpty()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (e: Exception) {
-                emptyList()
-            }
-        }
-
-        if (dtos.isNotEmpty()) {
-            return@withContext dtos.map { it.toMangaModel(baseUrl, id) }
-        }
-
-        // Tier 4: Fallback to curated starter offline catalog if network is down or blocked
-        STARTER_FALLBACK_MANGAS
+        val response = apiService.getMangaList(
+            limit = 50, translatedLanguages = targetLanguages,
+            orderFollowedCount = "desc", includes = listOf("cover_art", "author")
+        )
+        response.data.orEmpty().map { it.toMangaModel(baseUrl, id) }
     }
 
     override val filterSupportNote = "MangaDex fornece gêneros, temas, formatos, público editorial, origem e publicação. A classificação depende das etiquetas de cada obra."
@@ -214,8 +167,7 @@ class MangaDexSource(
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            lastFailure = e
-            emptyList()
+            throw e
         }
 
         // 2. If empty, fall back to global title search (allowing English, Japanese, and Romanized titles)
@@ -240,47 +192,23 @@ class MangaDexSource(
             return@withContext dtos.map { it.toMangaModel(baseUrl, id) }
         }
 
-        // 3. Fallback search on offline curated catalog
-        val offlineMatches = STARTER_FALLBACK_MANGAS.filter { m ->
-            m.title.contains(trimmed, ignoreCase = true) ||
-            m.author.contains(trimmed, ignoreCase = true) ||
-            m.genres.any { it.contains(trimmed, ignoreCase = true) } ||
-            m.description.contains(trimmed, ignoreCase = true)
-        }
-        if (offlineMatches.isNotEmpty()) return@withContext offlineMatches
-        lastFailure?.let { failure ->
-            throw java.io.IOException("Não foi possível consultar a MangaDex. Verifique sua conexão e tente novamente.", failure)
-        }
+        lastFailure?.let { throw java.io.IOException("Não foi possível consultar a MangaDex.", it) }
         emptyList()
     }
 
     override suspend fun getMangaDetails(mangaUrl: String): MangaModel = withContext(Dispatchers.IO) {
         val mangaId = mangaUrl.substringAfterLast("/").trim()
-        try {
-            val response = apiService.getMangaDetails(mangaId, includes = listOf("cover_art", "author"))
-            val dto = response.data ?: return@withContext createFallbackDetails(mangaId)
-            dto.toMangaModel(baseUrl, id)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            createFallbackDetails(mangaId)
-        }
+        val response = apiService.getMangaDetails(mangaId, includes = listOf("cover_art", "author"))
+        val dto = response.data ?: throw java.io.IOException("A MangaDex não retornou os detalhes da obra.")
+        dto.toMangaModel(baseUrl, id)
     }
 
     override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, "pt-br")
 
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> = withContext(Dispatchers.IO) {
         val mangaId = mangaUrl.substringAfterLast("/").trim()
-        try {
-            val chapters = fetchChaptersForLanguage(mangaId, language)
-            chapters.mapIndexed { index, dto ->
-                val fallbackNum = (index + 1).toFloat()
-                dto.toChapterModel(baseUrl, fallbackNum)
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        fetchChaptersForLanguage(mangaId, language).mapIndexed { index, dto ->
+            dto.toChapterModel(baseUrl, (index + 1).toFloat())
         }
     }
 
@@ -460,307 +388,37 @@ class MangaDexSource(
 
     private suspend fun fetchMergedChapters(mangaId: String) = fetchChaptersForLanguage(mangaId, "all")
 
-    private fun createFallbackDetails(mangaId: String): MangaModel {
-        return MangaModel(
-            url = "$baseUrl/manga/$mangaId",
-            id = mangaId,
-            title = "Manga #$mangaId",
-            coverUrl = "https://placehold.co/300x450/1e293b/ffffff.png?text=Manga",
-            description = "Detalhes carregados via API MangaDex.",
-            sourceId = id
-        )
-    }
-
     companion object {
-        val STARTER_FALLBACK_MANGAS = listOf(
-            MangaModel(
-                url = "https://api.mangadex.org/manga/ade0306c-f4b6-4890-9edb-1ddf04df2039",
-                id = "ade0306c-f4b6-4890-9edb-1ddf04df2039",
-                title = "Solo Leveling",
-                coverUrl = "https://uploads.mangadex.org/covers/ade0306c-f4b6-4890-9edb-1ddf04df2039/fe76445d-387f-4ff6-8340-f06403c20dbe.jpg.256.jpg",
-                description = "Em um mundo onde caçadores despertam com poderes mágicos para enfrentar monstros, Sung Jin-Woo é conhecido como o mais fraco de toda a humanidade.",
-                genres = listOf("Shounen", "Ação", "Fantasia", "Sobrenatural"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Chugong",
-                year = 2018
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/a1c7c817-4e59-43b7-9365-09675a149a6f",
-                id = "a1c7c817-4e59-43b7-9365-09675a149a6f",
-                title = "One Piece",
-                coverUrl = "https://uploads.mangadex.org/covers/a1c7c817-4e59-43b7-9365-09675a149a6f/2f4aca53-64c7-46ac-ae85-3bc9b3169890.png.256.jpg",
-                description = "Monkey D. Luffy se recusa a deixar que qualquer obstáculo fique em seu caminho para se tornar o Rei dos Piratas.",
-                genres = listOf("Shounen", "Ação", "Aventura", "Comédia", "Fantasia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Eiichiro Oda",
-                year = 1997
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/c52b2ce3-7f95-469c-96b0-479524fb7a1a",
-                id = "c52b2ce3-7f95-469c-96b0-479524fb7a1a",
-                title = "Jujutsu Kaisen",
-                coverUrl = "https://uploads.mangadex.org/covers/c52b2ce3-7f95-469c-96b0-479524fb7a1a/6d9134b2-21ea-4d02-ac2b-7c0d1c6a2aaa.jpg.256.jpg",
-                description = "Yuji Itadori é um estudante do ensino médio que engole um dedo amaldiçoado e ingressa no Colégio Técnico de Jujutsu.",
-                genres = listOf("Shounen", "Ação", "Sobrenatural", "Escolar"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Gege Akutami",
-                year = 2018
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/e896c48c-3150-437d-ba57-d8567eb399ae",
-                id = "e896c48c-3150-437d-ba57-d8567eb399ae",
-                title = "Chainsaw Man",
-                coverUrl = "https://uploads.mangadex.org/covers/e896c48c-3150-437d-ba57-d8567eb399ae/fa06e4e4-ef2a-477b-bfb6-a2a88793620b.jpg.256.jpg",
-                description = "Denji tem um sonho simples, mas após ser traído, renasce com o poder de demônio da motosserra.",
-                genres = listOf("Shounen", "Ação", "Sobrenatural", "Comédia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Tatsuki Fujimoto",
-                year = 2018
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/275c3ee8-bdeb-4070-a333-6add23a8415a",
-                id = "275c3ee8-bdeb-4070-a333-6add23a8415a",
-                title = "Naruto",
-                coverUrl = "https://uploads.mangadex.org/covers/275c3ee8-bdeb-4070-a333-6add23a8415a/b95e8e7c-c510-4a52-a759-9fe6d195afe9.jpg.256.jpg",
-                description = "A história épica do jovem ninja Naruto Uzumaki que busca o reconhecimento de sua aldeia e sonha em se tornar o Hokage.",
-                genres = listOf("Shounen", "Ninja", "Ação", "Aventura"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Masashi Kishimoto",
-                year = 1999
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/789642f8-ca89-4e4e-8f7b-eee4d17ea08b",
-                id = "789642f8-ca89-4e4e-8f7b-eee4d17ea08b",
-                title = "Demon Slayer: Kimetsu no Yaiba",
-                coverUrl = "https://uploads.mangadex.org/covers/789642f8-ca89-4e4e-8f7b-eee4d17ea08b/60530e72-f76f-45d5-b6f9-f95e05058fc3.png.256.jpg",
-                description = "Tanjiro Kamado parte em uma jornada perigosa para curar sua irmã Nezuko e vingar sua família.",
-                genres = listOf("Shounen", "Ação", "Sobrenatural", "Fantasia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Koyoharu Gotouge",
-                year = 2016
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/6b958848-c885-4735-9201-12ee77abcb3c",
-                id = "6b958848-c885-4735-9201-12ee77abcb3c",
-                title = "Spy x Family",
-                coverUrl = "https://uploads.mangadex.org/covers/6b958848-c885-4735-9201-12ee77abcb3c/91a35e78-62b2-41fe-9869-ce051f2d1070.jpg.256.jpg",
-                description = "Um espião mestre cria uma família falsa onde a esposa é uma assassina e a filha uma telepata.",
-                genres = listOf("Shounen", "Comédia", "Ação", "Escolar"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Tatsuya Endo",
-                year = 2019
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/a460ab18-22c1-47eb-a08a-9ee85fe37ec8",
-                id = "a460ab18-22c1-47eb-a08a-9ee85fe37ec8",
-                title = "Bleach",
-                coverUrl = "https://uploads.mangadex.org/covers/a460ab18-22c1-47eb-a08a-9ee85fe37ec8/7c8f9203-2b82-41f2-beb3-e7fb00e151e2.jpg.256.jpg",
-                description = "Ichigo Kurosaki ganha poderes de Ceifeiro de Almas e defende o mundo dos Hollows.",
-                genres = listOf("Shounen", "Ação", "Sobrenatural", "Fantasia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Tite Kubo",
-                year = 2001
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/529d7d4e-54ad-4370-8d12-163bf437c9d4",
-                id = "529d7d4e-54ad-4370-8d12-163bf437c9d4",
-                title = "Attack on Titan",
-                coverUrl = "https://uploads.mangadex.org/covers/529d7d4e-54ad-4370-8d12-163bf437c9d4/512c61d2-bed8-449c-a7d1-fb03a045f05a.jpg.256.jpg",
-                description = "A humanidade vive protegida por gigantescas muralhas contra Titãs devoradores.",
-                genres = listOf("Shounen", "Ação", "Fantasia", "Mistério"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Hajime Isayama",
-                year = 2009
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/1a051bb3-094e-4494-aa2e-fdac29b9ab5b",
-                id = "1a051bb3-094e-4494-aa2e-fdac29b9ab5b",
-                title = "My Hero Academia",
-                coverUrl = "https://uploads.mangadex.org/covers/1a051bb3-094e-4494-aa2e-fdac29b9ab5b/a9d17668-36d4-414b-b146-e15dd8cdafb9.jpg.256.jpg",
-                description = "Em um mundo onde quase todos possuem individualidades, Izuku Midoriya nasce sem poderes mas sonha em ser herói.",
-                genres = listOf("Shounen", "Ação", "Escolar", "Comédia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Kohei Horikoshi",
-                year = 2014
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/b0b721ff-c388-4486-aa0f-c2b0bb321512",
-                id = "b0b721ff-c388-4486-aa0f-c2b0bb321512",
-                title = "Sousou no Frieren",
-                coverUrl = "https://uploads.mangadex.org/covers/b0b721ff-c388-4486-aa0f-c2b0bb321512/b9a049b0-186b-4714-a83e-bb965458914a.jpg.256.jpg",
-                description = "A elfa Frieren derrota o Rei Demônio junto aos seus companheiros e embarca em uma nova jornada após anos de paz.",
-                genres = listOf("Shounen", "Aventura", "Fantasia", "Magia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Kanehito Yamada",
-                year = 2020
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/61d81be6-2759-4cc4-9815-7952a3449149",
-                id = "61d81be6-2759-4cc4-9815-7952a3449149",
-                title = "Tensei Shitara Slime Datta Ken",
-                coverUrl = "https://uploads.mangadex.org/covers/61d81be6-2759-4cc4-9815-7952a3449149/1eebb672-3aa3-4f1d-99c6-ba298420bf54.jpg.256.jpg",
-                description = "Um homem comum de 37 anos é esfaqueado e reencarna em outro mundo como um lodo (slime) com habilidades predadoras.",
-                genres = listOf("Shounen", "Isekai", "Fantasia", "Ação", "Comédia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Fuse",
-                year = 2015
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/6114f59f-4047-496b-8605-c6264c76d49f",
-                id = "6114f59f-4047-496b-8605-c6264c76d49f",
-                title = "Mushoku Tensei: Jobless Reincarnation",
-                coverUrl = "https://uploads.mangadex.org/covers/6114f59f-4047-496b-8605-c6264c76d49f/f9a50ba5-b50c-42b6-b524-9037199da109.jpg.256.jpg",
-                description = "Um desempregado de 34 anos é atropelado e renasce em um mundo mágico determinado a viver sem arrependimentos.",
-                genres = listOf("Isekai", "Fantasia", "Aventura", "Romance"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Rifujin na Magonote",
-                year = 2014
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/a84264f6-a979-4573-89b3-09dd5c050c2b",
-                id = "a84264f6-a979-4573-89b3-09dd5c050c2b",
-                title = "Kaguya-sama: Love Is War",
-                coverUrl = "https://uploads.mangadex.org/covers/a84264f6-a979-4573-89b3-09dd5c050c2b/d92bee6c-a04a-404e-afb2-185066508d30.jpg.256.jpg",
-                description = "Dois prodígios apaixonados tentam a todo custo forçar o outro a se confessar primeiro em uma guerra mental cômica.",
-                genres = listOf("Romance", "Comédia", "Escolar", "Seinen"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Aka Akasaka",
-                year = 2015
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/a25e46ec-30f7-4db6-89df-cacbc1d9a900",
-                id = "a25e46ec-30f7-4db6-89df-cacbc1d9a900",
-                title = "Horimiya",
-                coverUrl = "https://uploads.mangadex.org/covers/a25e46ec-30f7-4db6-89df-cacbc1d9a900/04feed00-d919-4c72-b355-15b37555eb1e.jpg.256.jpg",
-                description = "A garota popular e o garoto quieto compartilham segredos sobre suas verdadeiras personalidades fora da escola.",
-                genres = listOf("Romance", "Comédia", "Escolar", "Shounen"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "HERO",
-                year = 2011
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/a96676e5-8ae2-425e-b549-7f15dd34a6d8",
-                id = "a96676e5-8ae2-425e-b549-7f15dd34a6d8",
-                title = "Komi Can't Communicate",
-                coverUrl = "https://uploads.mangadex.org/covers/a96676e5-8ae2-425e-b549-7f15dd34a6d8/f8f44329-1dd7-4301-9ec7-a4a76182e8eb.jpg.256.jpg",
-                description = "Shouko Komi tem extrema ansiedade social e dificuldade em falar, mas com a ajuda de Tadano busca fazer 100 amigos.",
-                genres = listOf("Comédia", "Escolar", "Shounen", "Romance"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Tomohito Oda",
-                year = 2016
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/29c42e49-d6f5-4084-9cec-771f5660c90f",
-                id = "29c42e49-d6f5-4084-9cec-771f5660c90f",
-                title = "One-Punch Man",
-                coverUrl = "https://uploads.mangadex.org/covers/29c42e49-d6f5-4084-9cec-771f5660c90f/e477f308-bd50-4197-96e1-a14ffbc8a563.png.256.jpg",
-                description = "Saitama treinou tanto que ficou calvo e agora derrota qualquer oponente com um único soco, entediado pela falta de desafios.",
-                genres = listOf("Shounen", "Ação", "Comédia", "Sci-Fi"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "ONE",
-                year = 2012
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/6e2d91b9-81b4-448c-8ace-fb17d4a99d44",
-                id = "6e2d91b9-81b4-448c-8ace-fb17d4a99d44",
-                title = "Mob Psycho 100",
-                coverUrl = "https://uploads.mangadex.org/covers/6e2d91b9-81b4-448c-8ace-fb17d4a99d44/5f1ebcf0-bfb0-4f5c-8a0d-11a93c04f039.png.256.jpg",
-                description = "Shigeo Kageyama (Mob) tenta levar uma vida normal apesar de seus poderes psíquicos avassaladores.",
-                genres = listOf("Shounen", "Ação", "Comédia", "Sobrenatural", "Escolar"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "ONE",
-                year = 2012
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/869ad120-7341-4ea9-a980-f3545bc0503c",
-                id = "869ad120-7341-4ea9-a980-f3545bc0503c",
-                title = "Dr. STONE",
-                coverUrl = "https://uploads.mangadex.org/covers/869ad120-7341-4ea9-a980-f3545bc0503c/93fe851b-4ec5-41d3-8014-ed860b32eef9.jpg.256.jpg",
-                description = "Após a humanidade virar pedra por milênios, o gênio Senku desperta decidido a reconstruir a civilização com a ciência.",
-                genres = listOf("Sci-Fi", "Aventura", "Shounen", "Comédia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Riichiro Inagaki",
-                year = 2017
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/801513ba-a712-498c-8f57-cae55b38cc92",
-                id = "801513ba-a712-498c-8f57-cae55b38cc92",
-                title = "Berserk",
-                coverUrl = "https://uploads.mangadex.org/covers/801513ba-a712-498c-8f57-cae55b38cc92/81e1c82d-6672-400c-8c58-4ff9bfb89031.jpg.256.jpg",
-                description = "Guts, o Espadachim Negro, busca vingança contra o homem que traiu sua lealdade em um mundo medieval sombrio.",
-                genres = listOf("Seinen", "Ação", "Aventura", "Fantasia", "Sobrenatural"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Kentaro Miura",
-                year = 1989
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/91d928a1-7237-4d03-abc3-4b1440cc7d55",
-                id = "91d928a1-7237-4d03-abc3-4b1440cc7d55",
-                title = "The Eminence in Shadow",
-                coverUrl = "https://uploads.mangadex.org/covers/91d928a1-7237-4d03-abc3-4b1440cc7d55/33439369-8fe5-4306-abab-cece3befe57b.jpg.256.jpg",
-                description = "Cid renasce e cria uma organização secreta imaginária que coincidentemente existe na realidade.",
-                genres = listOf("Isekai", "Ação", "Fantasia", "Comédia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Daisuke Aizawa",
-                year = 2018
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/f9c9614d-0657-44c6-9c33-47fd58cd51b3",
-                id = "f9c9614d-0657-44c6-9c33-47fd58cd51b3",
-                title = "Fullmetal Alchemist",
-                coverUrl = "https://uploads.mangadex.org/covers/f9c9614d-0657-44c6-9c33-47fd58cd51b3/2ccc4501-f3e8-4608-9789-d8308185f4c1.jpg.256.jpg",
-                description = "Dois irmãos alquimistas buscam a Pedra Filosofal para restaurar seus corpos após um ritual proibido.",
-                genres = listOf("Shounen", "Ação", "Aventura", "Fantasia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Hiromu Arakawa",
-                year = 2001
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/158e8c61-8146-45fc-b945-d8d08a405477",
-                id = "158e8c61-8146-45fc-b945-d8d08a405477",
-                title = "Steins;Gate",
-                coverUrl = "https://uploads.mangadex.org/covers/158e8c61-8146-45fc-b945-d8d08a405477/dc90c861-7805-4deb-a259-4ad71c895a3c.jpg.256.jpg",
-                description = "Um cientista excêntrico descobre acidentalmente como enviar mensagens ao passado através de um micro-ondas.",
-                genres = listOf("Sci-Fi", "Sobrenatural", "Mistério"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "5pb. / Nitroplus",
-                year = 2009
-            ),
-            MangaModel(
-                url = "https://api.mangadex.org/manga/db692d58-4b13-4174-ae8c-30c515c0689c",
-                id = "db692d58-4b13-4174-ae8c-30c515c0689c",
-                title = "Hunter x Hunter",
-                coverUrl = "https://uploads.mangadex.org/covers/db692d58-4b13-4174-ae8c-30c515c0689c/aa112927-f1e5-4fe4-a4db-7fd4a1536e3c.jpg.256.jpg",
-                description = "Gon Freecss quer se tornar um Hunter de elite para encontrar seu pai que o deixou quando era pequeno.",
-                genres = listOf("Shounen", "Ação", "Aventura", "Fantasia"),
-                isNsfw = false,
-                sourceId = "mangadex",
-                author = "Yoshihiro Togashi",
-                year = 1998
-            )
+        // Only used to reject obsolete demonstration records already cached by older versions.
+        // Keep favorites/history untouched; a real API response replaces their old cover metadata.
+        private val legacyStarterCoverUrls = setOf(
+            "https://uploads.mangadex.org/covers/ade0306c-f4b6-4890-9edb-1ddf04df2039/fe76445d-387f-4ff6-8340-f06403c20dbe.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/a1c7c817-4e59-43b7-9365-09675a149a6f/2f4aca53-64c7-46ac-ae85-3bc9b3169890.png.256.jpg",
+            "https://uploads.mangadex.org/covers/c52b2ce3-7f95-469c-96b0-479524fb7a1a/6d9134b2-21ea-4d02-ac2b-7c0d1c6a2aaa.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/e896c48c-3150-437d-ba57-d8567eb399ae/fa06e4e4-ef2a-477b-bfb6-a2a88793620b.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/275c3ee8-bdeb-4070-a333-6add23a8415a/b95e8e7c-c510-4a52-a759-9fe6d195afe9.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/789642f8-ca89-4e4e-8f7b-eee4d17ea08b/60530e72-f76f-45d5-b6f9-f95e05058fc3.png.256.jpg",
+            "https://uploads.mangadex.org/covers/6b958848-c885-4735-9201-12ee77abcb3c/91a35e78-62b2-41fe-9869-ce051f2d1070.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/a460ab18-22c1-47eb-a08a-9ee85fe37ec8/7c8f9203-2b82-41f2-beb3-e7fb00e151e2.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/529d7d4e-54ad-4370-8d12-163bf437c9d4/512c61d2-bed8-449c-a7d1-fb03a045f05a.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/1a051bb3-094e-4494-aa2e-fdac29b9ab5b/a9d17668-36d4-414b-b146-e15dd8cdafb9.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/b0b721ff-c388-4486-aa0f-c2b0bb321512/b9a049b0-186b-4714-a83e-bb965458914a.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/61d81be6-2759-4cc4-9815-7952a3449149/1eebb672-3aa3-4f1d-99c6-ba298420bf54.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/6114f59f-4047-496b-8605-c6264c76d49f/f9a50ba5-b50c-42b6-b524-9037199da109.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/a84264f6-a979-4573-89b3-09dd5c050c2b/d92bee6c-a04a-404e-afb2-185066508d30.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/a25e46ec-30f7-4db6-89df-cacbc1d9a900/04feed00-d919-4c72-b355-15b37555eb1e.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/a96676e5-8ae2-425e-b549-7f15dd34a6d8/f8f44329-1dd7-4301-9ec7-a4a76182e8eb.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/29c42e49-d6f5-4084-9cec-771f5660c90f/e477f308-bd50-4197-96e1-a14ffbc8a563.png.256.jpg",
+            "https://uploads.mangadex.org/covers/6e2d91b9-81b4-448c-8ace-fb17d4a99d44/5f1ebcf0-bfb0-4f5c-8a0d-11a93c04f039.png.256.jpg",
+            "https://uploads.mangadex.org/covers/869ad120-7341-4ea9-a980-f3545bc0503c/93fe851b-4ec5-41d3-8014-ed860b32eef9.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/801513ba-a712-498c-8f57-cae55b38cc92/81e1c82d-6672-400c-8c58-4ff9bfb89031.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/91d928a1-7237-4d03-abc3-4b1440cc7d55/33439369-8fe5-4306-abab-cece3befe57b.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/f9c9614d-0657-44c6-9c33-47fd58cd51b3/2ccc4501-f3e8-4608-9789-d8308185f4c1.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/158e8c61-8146-45fc-b945-d8d08a405477/dc90c861-7805-4deb-a259-4ad71c895a3c.jpg.256.jpg",
+            "https://uploads.mangadex.org/covers/db692d58-4b13-4174-ae8c-30c515c0689c/aa112927-f1e5-4fe4-a4db-7fd4a1536e3c.jpg.256.jpg"
         )
+        fun isLegacyStarterRecord(sourceId: String, coverUrl: String, originalLanguage: String, status: String): Boolean =
+            sourceId == "mangadex" && originalLanguage.isBlank() && status.equals("Unknown", true) &&
+                coverUrl in legacyStarterCoverUrls
     }
 }
