@@ -429,6 +429,48 @@ fun BrowseScreen(
                     if (state.selectedYearRange != "all") Text("A consulta por data pode levar mais tempo.", fontSize = 12.sp)
                 }
             }
+        } else if (!isFilterOrSearchActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "Pesquisar no Catálogo",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Digite o título de um mangá acima ou abra os filtros para refinar por fonte, idioma, gênero ou data.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    OutlinedButton(
+                        onClick = { dismissSearchKeyboard(); showFilters = true },
+                        modifier = Modifier.testTag("open_filters_search_prompt")
+                    ) {
+                        Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Configurar filtros")
+                    }
+                }
+            }
         } else if (state.mangaList.isEmpty() && !state.isLoading) {
             Box(
                 modifier = Modifier

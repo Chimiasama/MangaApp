@@ -260,7 +260,6 @@ fun MangaApp(
                     }, onRefresh = mangaViewModel::refreshHome)
             }
             composable(MangaDestinations.SEARCH) {
-                androidx.compose.runtime.LaunchedEffect(Unit) { mangaViewModel.ensureSearchLoaded() }
                 BrowseScreen(
                     onBackFromSearch = {
                         val popped = navController.popBackStack(MangaDestinations.BROWSE, inclusive = false)

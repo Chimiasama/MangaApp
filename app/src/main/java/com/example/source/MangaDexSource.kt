@@ -118,6 +118,15 @@ class MangaDexSource(
         fun groupValues(group: FilterGroup) = included.filter { it.group == group }.map { it.id.substringAfter(':') }.takeIf { it.isNotEmpty() }
         val years: List<Int?> = if (bounds.size == 2 && bounds[0] <= bounds[1]) (bounds[0]..bounds[1]).toList() else listOf(null)
         val languages = when (language) { "all" -> null; "pt-br" -> listOf("pt-br", "pt"); "es" -> listOf("es", "es-la"); else -> listOf(language) }
+        val ratingValues = when {
+            filters.included.any { it.startsWith("rating:") } -> {
+                filters.included.filter { it.startsWith("rating:") }.map { it.substringAfter("rating:") }
+            }
+            filters.excluded.any { it.startsWith("rating:") } -> {
+                listOf("safe", "suggestive", "erotica", "pornographic") - filters.excluded.filter { it.startsWith("rating:") }.map { it.substringAfter("rating:") }.toSet()
+            }
+            else -> listOf("safe", "suggestive")
+        }
         suspend fun page(year: Int?, offset: Int = 0, chronological: Boolean = false) = catalogApi.getFilteredCatalog(
             title = query.trim().takeIf { it.isNotEmpty() }, year = year, offset = offset,
             languages = languages, includedTags = included.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
@@ -125,6 +134,7 @@ class MangaDexSource(
             excludedTags = excluded.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },
             demographics = groupValues(FilterGroup.PUBLIC), statuses = groupValues(FilterGroup.STATUS),
             originalLanguages = groupValues(FilterGroup.ORIGIN)?.flatMap { if (it == "zh") listOf("zh", "zh-hk") else listOf(it) },
+            ratings = ratingValues,
             popularity = if (chronological) null else "desc", orderYear = if (chronological) "asc" else null)
         if (historic) return@withContext historicMangaDexCatalog(bounds[0], bounds[1]) { offset -> page(null, offset, true) }
         val result = mutableListOf<MangaModel>()
@@ -409,7 +419,7 @@ class MangaDexSource(
     ): List<com.example.data.network.model.MangaDexChapterDto> {
         val allChapters = mutableListOf<com.example.data.network.model.MangaDexChapterDto>()
         var offset = 0
-        val pageSize = 500
+        val pageSize = 100
         var total = Int.MAX_VALUE
 
         // Paginate up to 3000 chapters to cover complete long-running series
