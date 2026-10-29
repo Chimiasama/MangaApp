@@ -36,7 +36,8 @@ data class SettingsUiState(
     val batterySaverDimPercent: Int = 0,
     val syncOnWifiOnly: Boolean = false,
     val connectionDiagnosticsEnabled: Boolean = false,
-    val homeSections: List<com.example.home.HomeSection> = com.example.home.HomeSections.defaults
+    val homeSections: List<com.example.home.HomeSection> = com.example.home.HomeSections.defaults,
+    val nsfwEnabled: Boolean = false
 )
 
 private data class ReaderPrefs(
@@ -158,11 +159,16 @@ class SettingsViewModel(
     }.combine(preferencesRepository.connectionDiagnosticsEnabled) { state, enabled ->
         state.copy(connectionDiagnosticsEnabled = enabled)
     }.combine(preferencesRepository.homeSections) { state, sections -> state.copy(homeSections = sections)
+    }.combine(preferencesRepository.nsfwEnabled) { state, nsfw -> state.copy(nsfwEnabled = nsfw)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SettingsUiState()
     )
+
+    fun setNsfwEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setNsfwEnabled(enabled) }
+    }
 
     fun setHomeSections(sections: List<com.example.home.HomeSection>) {
         viewModelScope.launch { preferencesRepository.setHomeSections(sections) }

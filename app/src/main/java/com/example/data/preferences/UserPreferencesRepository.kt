@@ -101,6 +101,24 @@ class UserPreferencesRepository(private val context: Context) {
         val BATTERY_SAVER_ENABLED = booleanPreferencesKey("battery_saver_enabled")
         val BATTERY_SAVER_DIM_PERCENT = intPreferencesKey("battery_saver_dim_percent")
         val SYNC_ON_WIFI_ONLY = booleanPreferencesKey("sync_on_wifi_only")
+        val NSFW_ENABLED = booleanPreferencesKey("nsfw_enabled")
+    }
+
+    @Volatile
+    private var _cachedNsfw: Boolean = false
+    val cachedNsfw: Boolean get() = _cachedNsfw
+
+    val nsfwEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        val v = prefs[NSFW_ENABLED] ?: false
+        _cachedNsfw = v
+        v
+    }
+
+    suspend fun setNsfwEnabled(enabled: Boolean) {
+        _cachedNsfw = enabled
+        context.dataStore.edit { prefs ->
+            prefs[NSFW_ENABLED] = enabled
+        }
     }
 
     val connectionDiagnosticsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->

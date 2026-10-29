@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -17,10 +18,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.WindowInsets
@@ -29,10 +34,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import android.app.Activity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -87,6 +96,47 @@ fun MangaApp(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    var showExitDialog by remember { mutableStateOf(false) }
+
+    // Intercept back button when on root/browse screen to confirm exit
+    BackHandler(enabled = currentRoute == MangaDestinations.BROWSE) {
+        showExitDialog = true
+    }
+
+    if (showExitDialog) {
+        val context = LocalContext.current
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = {
+                Text(text = "Fechar aplicativo", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(text = "Deseja fechar o app?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitDialog = false
+                        (context as? Activity)?.finishAffinity()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
+                    modifier = Modifier.testTag("confirm_exit_button")
+                ) {
+                    Text("Fechar")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showExitDialog = false },
+                    modifier = Modifier.testTag("cancel_exit_button")
+                ) {
+                    Text("Cancelar")
+                }
+            },
+            modifier = Modifier.testTag("exit_confirmation_dialog")
+        )
+    }
 
     val bottomNavRoutes = listOf(
         MangaDestinations.BROWSE,
@@ -320,7 +370,8 @@ fun MangaApp(
                             requiresWifiOnly = wifiOnly,
                             requiresBatteryNotLow = true
                         )
-                    }
+                    },
+                    onNsfwToggled = { enabled -> settingsViewModel.setNsfwEnabled(enabled) }
                 )
             }
 

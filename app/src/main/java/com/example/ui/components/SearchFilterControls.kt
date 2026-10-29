@@ -16,8 +16,15 @@ fun languageLabel(language: String) = searchLanguages.find { it.first == languag
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun SearchFilterControls(request: BrowseFilterRequest, sources: List<MangaSource>, onChanged: (BrowseFilterRequest) -> Unit) {
-    CatalogFilterEditor(request.filters, { onChanged(request.copy(filters = it)) }, listOf(FilterGroup.GENRE, FilterGroup.THEME))
+fun SearchFilterControls(
+    request: BrowseFilterRequest,
+    sources: List<MangaSource>,
+    isNsfwEnabled: Boolean = false,
+    onChanged: (BrowseFilterRequest) -> Unit
+) {
+    val firstGroups = if (isNsfwEnabled) listOf(FilterGroup.CONTENT_RATING, FilterGroup.GENRE, FilterGroup.THEME)
+        else listOf(FilterGroup.GENRE, FilterGroup.THEME)
+    CatalogFilterEditor(request.filters, { onChanged(request.copy(filters = it)) }, isNsfwEnabled = isNsfwEnabled, groups = firstGroups)
     Text("Idioma dos capítulos", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         searchLanguages.forEach { (code, label) ->
@@ -37,18 +44,43 @@ fun SearchFilterControls(request: BrowseFilterRequest, sources: List<MangaSource
                 label = { Text(source.name) }, modifier = Modifier.testTag("source_chip_${source.id}"))
         }
     }
-    CatalogFilterEditor(request.filters, { onChanged(request.copy(filters = it)) },
-        listOf(FilterGroup.FORMAT, FilterGroup.ORIGIN, FilterGroup.PUBLIC, FilterGroup.STATUS), showCombine = false)
+    CatalogFilterEditor(
+        filters = request.filters,
+        onChanged = { onChanged(request.copy(filters = it)) },
+        isNsfwEnabled = isNsfwEnabled,
+        groups = listOf(FilterGroup.FORMAT, FilterGroup.ORIGIN, FilterGroup.PUBLIC, FilterGroup.STATUS),
+        showCombine = false
+    )
     Text("Ano de lançamento", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleSmall)
     val maxYear = remember { maxOf(2026, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) }
+    val yearRanges = remember(maxYear) {
+        listOf(
+            "all" to "Todas",
+            "1900-1950" to "1900 - 1950",
+            "1950-1960" to "1950 - 1960",
+            "1960-1970" to "1960 - 1970",
+            "1970-1980" to "1970 - 1980",
+            "1980-1990" to "1980 - 1990",
+            "1990-2000" to "1990 - 2000",
+            "2000-2010" to "2000 - 2010",
+            "2010-2020" to "2010 - 2020",
+            "2020-$maxYear" to "2020 - $maxYear",
+            "unknown" to "Sem data definida"
+        )
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        yearRanges.forEach { (key, label) ->
+            FilterChip(
+                selected = request.yearRange == key,
+                onClick = { onChanged(request.copy(yearRange = key)) },
+                label = { Text(label) },
+                modifier = Modifier.testTag("year_chip_$key")
+            )
+        }
+    }
     val parts = request.yearRange.split('-')
     val start = parts.firstOrNull()?.toIntOrNull()?.coerceIn(1900, maxYear) ?: 1900
     val end = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(start, maxYear) ?: maxYear
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(request.yearRange == "all", { onChanged(request.copy(yearRange = "all")) }, label = { Text("Todos os anos") })
-        FilterChip(request.yearRange == "unknown", { onChanged(request.copy(yearRange = "unknown")) },
-            label = { Text("Sem data definida") }, modifier = Modifier.testTag("year_chip_unknown"))
-    }
     Text("$start – $end", style = MaterialTheme.typography.bodySmall)
     RangeSlider(value = start.toFloat()..end.toFloat(), onValueChange = {
         onChanged(request.copy(yearRange = "${it.start.roundToInt()}-${it.endInclusive.roundToInt()}"))

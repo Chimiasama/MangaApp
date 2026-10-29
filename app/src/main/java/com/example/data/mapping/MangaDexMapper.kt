@@ -175,7 +175,8 @@ object MangaDexMapper {
             status = dto.attributes?.status ?: "Unknown",
             originalLanguage = dto.attributes?.originalLanguage.orEmpty(),
             year = dto.attributes?.year,
-            updatedAt = dto.attributes?.updatedAt.orEmpty()
+            updatedAt = dto.attributes?.updatedAt.orEmpty(),
+            contentRating = dto.attributes?.contentRating?.lowercase()
         )
     }
 

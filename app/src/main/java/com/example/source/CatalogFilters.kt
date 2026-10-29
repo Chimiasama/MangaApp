@@ -4,7 +4,13 @@ import java.text.Normalizer
 import java.util.Locale
 
 enum class FilterGroup(val label: String) {
-    PUBLIC("Público editorial"), GENRE("Gêneros"), THEME("Temas"), FORMAT("Formatos"), ORIGIN("Origem da obra"), STATUS("Publicação")
+    PUBLIC("Público editorial"),
+    CONTENT_RATING("Classificação etária (+18)"),
+    GENRE("Gêneros"),
+    THEME("Temas"),
+    FORMAT("Formatos"),
+    ORIGIN("Origem da obra"),
+    STATUS("Publicação")
 }
 enum class IncludeMode { ALL, ANY }
 enum class FilterSelection { NEUTRAL, INCLUDE, EXCLUDE }
@@ -18,6 +24,19 @@ fun normalizedClassification(value: String): String = Normalizer.normalize(value
 object CatalogTaxonomy {
     // MangaDex IDs verified against its public /manga/tag endpoint; labels stay independent of source language.
     val options = listOf(
+        CatalogFilterOption("rating:safe", "Seguro (Safe)", FilterGroup.CONTENT_RATING, setOf("Safe", "Seguro")),
+        CatalogFilterOption("rating:suggestive", "Sugestivo (Suggestive)", FilterGroup.CONTENT_RATING, setOf("Suggestive", "Sugestivo")),
+        CatalogFilterOption("rating:erotica", "Erótico (Erotica)", FilterGroup.CONTENT_RATING, setOf("Erotica", "Erótico", "Erotico", "Smut")),
+        CatalogFilterOption("rating:pornographic", "Pornográfico (Hentai / 18+)", FilterGroup.CONTENT_RATING, setOf("Pornographic", "Pornográfico", "Hentai", "+18", "18+")),
+        CatalogFilterOption("genre:doujinshi", "Doujinshi", FilterGroup.GENRE, setOf("Doujinshi"), "b13b2a48-c720-44a9-9c77-39c9979373fb"),
+        CatalogFilterOption("genre:ecchi", "Ecchi", FilterGroup.GENRE, setOf("Ecchi"), "5bd0e105-4481-44ca-b6e7-7544da56b1a3"),
+        CatalogFilterOption("genre:smut", "Smut", FilterGroup.GENRE, setOf("Smut"), "e64630a6-1e64-47f6-be3b-287c2b6ca0d0"),
+        CatalogFilterOption("genre:hentai", "Hentai", FilterGroup.GENRE, setOf("Hentai", "Hentai / 18+")),
+        CatalogFilterOption("genre:harem", "Harém", FilterGroup.GENRE, setOf("Harem", "Harém"), "cafaa077-3261-4e1c-8249-7e7ed6190d11"),
+        CatalogFilterOption("genre:yaoi", "Yaoi (Boys' Love)", FilterGroup.GENRE, setOf("Yaoi", "Boys' Love", "BL"), "5920b825-41dd-4264-a29f-7ac4549ac7a0"),
+        CatalogFilterOption("genre:yuri", "Yuri (Girls' Love)", FilterGroup.GENRE, setOf("Yuri", "Girls' Love", "GL"), "a3c5d6d8-d514-4204-8c95-964d6486f664"),
+        CatalogFilterOption("genre:gore", "Gore", FilterGroup.THEME, setOf("Gore"), "b29d6a3d-1569-4e7a-8aca-35e87a7734ea"),
+        CatalogFilterOption("genre:sexual_violence", "Violência Sexual / Conteúdo Explícito", FilterGroup.CONTENT_RATING, setOf("Sexual Violence", "Violência Sexual"), "97893a4c-12af-4dac-b6be-0d0c376f9296"),
         CatalogFilterOption("public:shounen", "Shounen", FilterGroup.PUBLIC, setOf("shounen", "shonen")),
         CatalogFilterOption("public:shoujo", "Shoujo", FilterGroup.PUBLIC, setOf("shoujo", "shojo")),
         CatalogFilterOption("public:seinen", "Seinen", FilterGroup.PUBLIC, setOf("seinen")),
@@ -77,6 +96,13 @@ object CatalogTaxonomy {
         normalizedClassification(label) in (option.aliases + option.label).map(::normalizedClassification)
     }
     fun matches(manga: MangaModel, option: CatalogFilterOption): Boolean {
+        if (option.group == FilterGroup.CONTENT_RATING) {
+            val key = option.id.removePrefix("rating:")
+            val rating = manga.contentRating?.lowercase() ?: if (manga.isNsfw) "pornographic" else "safe"
+            if (rating == key) return true
+            val values = (manga.genres + listOfNotNull(manga.contentRating)).map(::normalizedClassification).toSet()
+            return (option.aliases + option.label).any { normalizedClassification(it) in values }
+        }
         val values = when (option.group) {
             FilterGroup.STATUS -> listOf(manga.status)
             FilterGroup.ORIGIN -> if (manga.originalLanguage.isNotBlank()) listOf(manga.originalLanguage) else manga.genres
@@ -86,6 +112,7 @@ object CatalogTaxonomy {
     }
     fun known(manga: MangaModel, group: FilterGroup): Boolean = when (group) {
         FilterGroup.STATUS -> options.any { it.group == group && matches(manga, it) }
+        FilterGroup.CONTENT_RATING -> manga.contentRating != null || manga.isNsfw
         FilterGroup.ORIGIN -> manga.originalLanguage.isNotBlank() || options.any { it.group == group && matches(manga, it) }
         FilterGroup.PUBLIC -> options.any { it.group == group && matches(manga, it) }
         else -> if (manga.sourceId == "mangadex") manga.genres.isNotEmpty()

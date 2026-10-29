@@ -14,11 +14,16 @@ import com.example.source.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CatalogFilterEditor(filters: CatalogFilters, onChanged: (CatalogFilters) -> Unit,
-    groups: List<FilterGroup> = listOf(FilterGroup.GENRE, FilterGroup.THEME, FilterGroup.FORMAT, FilterGroup.ORIGIN, FilterGroup.PUBLIC, FilterGroup.STATUS),
-    showCombine: Boolean = true) {
+fun CatalogFilterEditor(
+    filters: CatalogFilters,
+    onChanged: (CatalogFilters) -> Unit,
+    isNsfwEnabled: Boolean = false,
+    groups: List<FilterGroup> = if (isNsfwEnabled) listOf(FilterGroup.CONTENT_RATING, FilterGroup.GENRE, FilterGroup.THEME, FilterGroup.FORMAT, FilterGroup.ORIGIN, FilterGroup.PUBLIC, FilterGroup.STATUS)
+        else listOf(FilterGroup.GENRE, FilterGroup.THEME, FilterGroup.FORMAT, FilterGroup.ORIGIN, FilterGroup.PUBLIC, FilterGroup.STATUS),
+    showCombine: Boolean = true
+) {
     var search by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(setOf(FilterGroup.GENRE, FilterGroup.THEME)) }
+    var expanded by remember { mutableStateOf(if (isNsfwEnabled) setOf(FilterGroup.CONTENT_RATING, FilterGroup.GENRE, FilterGroup.THEME) else setOf(FilterGroup.GENRE, FilterGroup.THEME)) }
     if (showCombine) {
         OutlinedTextField(search, { search = it }, label = { Text("Buscar gênero ou tema") }, singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("filter_classification_search"))
@@ -31,9 +36,39 @@ fun CatalogFilterEditor(filters: CatalogFilters, onChanged: (CatalogFilters) -> 
         }
         Text("E exige todos; OU aceita qualquer incluído. Exclusões sempre prevalecem.", style = MaterialTheme.typography.bodySmall)
     }
+
+    if (isNsfwEnabled) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("🔞 Filtros rápidos +18:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                "rating:pornographic" to "Pornográfico (18+)",
+                "rating:erotica" to "Erótico",
+                "genre:doujinshi" to "Doujinshi",
+                "genre:hentai" to "Hentai"
+            ).forEach { (id, label) ->
+                val isIncluded = filters.selection(id) == FilterSelection.INCLUDE
+                FilterChip(
+                    selected = isIncluded,
+                    onClick = {
+                        val next = if (isIncluded) FilterSelection.NEUTRAL else FilterSelection.INCLUDE
+                        onChanged(filters.select(id, next))
+                    },
+                    label = { Text(label, style = MaterialTheme.typography.bodySmall) },
+                    modifier = Modifier.testTag("quick_nsfw_$id")
+                )
+            }
+        }
+    }
+
     for (group in groups) {
+        if (!isNsfwEnabled && group == FilterGroup.CONTENT_RATING) continue
         val choices = CatalogTaxonomy.options.filter { it.group == group }.filter {
-            search.isBlank() || (it.aliases + it.label).any { label -> normalizedClassification(label).contains(normalizedClassification(search)) }
+            if (!isNsfwEnabled && (it.id in setOf("rating:pornographic", "rating:erotica", "genre:hentai", "genre:smut", "genre:sexual_violence"))) false
+            else search.isBlank() || (it.aliases + it.label).any { label -> normalizedClassification(label).contains(normalizedClassification(search)) }
         }
         if (choices.isEmpty()) continue
         val count = choices.count { filters.selection(it.id) != FilterSelection.NEUTRAL }

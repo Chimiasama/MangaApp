@@ -206,7 +206,7 @@ fun BrowseScreen(
                     Text("Filtros", style = MaterialTheme.typography.titleLarge)
                     Text(filterSummary(draft.sourceId, draft.language, draft.yearRange, draft.filters),
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("sheet_filter_summary"))
-                    SearchFilterControls(draft, state.availableSources) { draft = it }
+                    SearchFilterControls(draft, state.availableSources, isNsfwEnabled = state.isNsfwEnabled) { draft = it }
                 }
                 Surface(shadowElevation = 4.dp) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

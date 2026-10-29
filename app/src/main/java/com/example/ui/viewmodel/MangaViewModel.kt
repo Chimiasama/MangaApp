@@ -15,6 +15,7 @@ import com.example.source.GenreCarouselSection
 import com.example.source.MangaDexSource
 import com.example.source.MangaModel
 import com.example.source.CatalogFilters
+import com.example.source.IncludeMode
 import com.example.source.BrowseFilterRequest
 import com.example.source.MangaSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,7 @@ import com.example.data.sync.AniListSyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 
 enum class BrowseFailure { OFFLINE, TIMEOUT, SOURCE }
 
@@ -65,7 +67,8 @@ data class BrowseUiState(
     val failure: BrowseFailure? = null,
     val connectionDiagnostic: ConnectionDiagnosticState = ConnectionDiagnosticState(),
     val filterPreview: FilterPreviewState = FilterPreviewState(),
-    val unclassifiedExcluded: Int = 0
+    val unclassifiedExcluded: Int = 0,
+    val isNsfwEnabled: Boolean = false
 )
 
 data class HomeUiState(val sections: List<GenreCarouselSection> = emptyList(), val isLoading: Boolean = true, val error: String? = null, val configurations: List<HomeSection> = emptyList())
@@ -207,6 +210,26 @@ class MangaViewModel(
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { failure = "Não foi possível atualizar todas as seções." }
         }
+        if (repository.preferencesRepository.cachedNsfw) {
+            try {
+                val adultItems = pools[Triple("all", "pt-br", "all")]?.filter { manga ->
+                    manga.isNsfw || manga.contentRating in listOf("erotica", "pornographic") ||
+                    manga.genres.any { g ->
+                        val gl = g.lowercase()
+                        gl.contains("hentai") || gl.contains("doujinshi") || gl.contains("ecchi") || gl.contains("smut")
+                    }
+                } ?: repository.loadCatalog("", "all", "pt-br", "all",
+                    CatalogFilters(included = setOf("genre:doujinshi", "rating:pornographic"), includeMode = IncludeMode.ANY)).items
+                if (adultItems.isNotEmpty()) {
+                    homeCatalogSections = homeCatalogSections + GenreCarouselSection(
+                        id = "adult_doujinshi",
+                        title = "🔞 Adulto & Doujinshi (+18)",
+                        genreKey = "all",
+                        items = adultItems.take(20)
+                    )
+                }
+            } catch (_: Exception) {}
+        }
         publishHome(error = failure)
     }
 
@@ -234,6 +257,9 @@ class MangaViewModel(
 
     val selectedLanguage: StateFlow<String> = repository.preferencesRepository.selectedLanguage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "pt-br")
+
+    val isNsfwEnabled: StateFlow<Boolean> = repository.preferencesRepository.nsfwEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.preferencesRepository.cachedNsfw)
 
     fun triggerCloudSync() {
         viewModelScope.launch {
@@ -264,8 +290,8 @@ class MangaViewModel(
         _isLoadingBrowse,
         _browseData,
         _catalogFilters,
-        searchHistory
-    ) { (filters, langAndQuery), loading, mangaData, advanced, history ->
+        combine(searchHistory, isNsfwEnabled) { history, nsfw -> history to nsfw }
+    ) { (filters, langAndQuery), loading, mangaData, advanced, (history, isNsfw) ->
         val sources = repository.getAvailableSources()
         val effectiveFilters = advanced.withLegacy(filters.second)
         val selection = BrowseSelection(filters.first, filters.second, filters.third,
@@ -285,7 +311,8 @@ class MangaViewModel(
             errorMessage = if (matchesSelection) mangaData.error else null,
             failure = if (matchesSelection) mangaData.failure else null,
             catalogFilters = effectiveFilters,
-            unclassifiedExcluded = if (matchesSelection) mangaData.unclassified else 0
+            unclassifiedExcluded = if (matchesSelection) mangaData.unclassified else 0,
+            isNsfwEnabled = isNsfw
         )
     }.combine(_filterPreview) { state, preview -> state.copy(filterPreview = preview)
     }.combine(_connectionDiagnostic) { state, diagnostic ->
@@ -365,6 +392,12 @@ class MangaViewModel(
                 if (applyFiltersJob?.isActive != true &&
                     ((online && _browseData.value.failure == BrowseFailure.OFFLINE) ||
                         (!online && _isLoadingBrowse.value))) loadBrowseManga()
+            }
+        }
+        viewModelScope.launch {
+            isNsfwEnabled.drop(1).collect {
+                refreshHome()
+                loadBrowseManga()
             }
         }
     }
