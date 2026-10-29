@@ -164,10 +164,10 @@ class MangaDexPageInterceptor(private val registry: MangaDexPageRegistry = Manga
     private fun recoverable(code: Int) = code == 404 || code == 410 || code in 500..599
     private fun recoverable(error: IOException): Boolean {
         val causes = generateSequence<Throwable>(error) { it.cause }.take(16).toList()
+        if (causes.any { it is CertificateException || it is SSLPeerUnverifiedException }) return false
         return causes.any {
-            it is SocketException || it is SocketTimeoutException || it is javax.net.ssl.SSLException ||
-            it is CertificateException || it is SSLPeerUnverifiedException || it is java.net.UnknownHostException ||
-            it is java.net.ConnectException
+            it is SocketException || it is SocketTimeoutException || it is javax.net.ssl.SSLProtocolException ||
+                it is java.net.UnknownHostException
         }
     }
 }

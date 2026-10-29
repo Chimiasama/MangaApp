@@ -42,3 +42,16 @@ Os testes locais cobrem página 2 pela rota compactada, troca de servidor,
 no botão de repetir, falha na página intermediária, retomada e reparo de download
 antigo corrompido. Um teste usa PNG gerado pelo Android para verificar a decodificação
 real; o antigo fixture PNG de um pixel tinha CRC inválido.
+
+## Capas da pesquisa
+
+As capas usam o mesmo transporte com negociação TLS/HTTP automática. A recuperação
+HTTPS nativa é limitada por URL de imagem, assim como nas páginas: recuperar uma
+capa não impede que outras capas da grade sejam recuperadas nos próximos 30 segundos.
+Falhas da alternativa nativa e respostas 403/429 ainda suspendem novas tentativas
+nativas por 30 segundos. Consultas da API mantêm o limite global anterior.
+
+Para miniaturas MangaDex `.256.jpg` e `.512.jpg`, HTTP 404/410/5xx permite uma única
+tentativa da capa original, no mesmo domínio e preservando cabeçalhos. Não altera
+outras fontes, não tenta contornar 403/429 e não ignora validação de certificados.
+Os testes simulam reset em duas capas distintas, ausência da miniatura e recusas HTTP.

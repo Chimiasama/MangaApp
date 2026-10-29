@@ -94,6 +94,28 @@ class MangaDexCallFactoryTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
+    @Test fun `missing thumbnail loads original cover but denials and other hosts are not retried`() {
+        val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
+        val base = client()
+        try {
+            val factory = MangaDexCallFactory(base)
+            server.enqueue(MockResponse().setResponseCode(404))
+            server.enqueue(MockResponse().setBody("original cover"))
+            val cover = Request.Builder().url("https://uploads.mangadex.org:${server.port}/covers/id/cover.png.256.jpg").build()
+            factory.newCall(cover).execute().use { assertEquals("original cover", it.body!!.string()) }
+            assertEquals("/covers/id/cover.png.256.jpg", server.takeRequest().path)
+            assertEquals("/covers/id/cover.png", server.takeRequest().path)
+            for (code in listOf(403, 429)) {
+                server.enqueue(MockResponse().setResponseCode(code))
+                factory.newCall(cover).execute().use { assertEquals(code, it.code) }
+            }
+            server.enqueue(MockResponse().setResponseCode(404))
+            factory.newCall(cover.newBuilder().url("https://api.mangadex.org.example.test:${server.port}/covers/id/cover.png.256.jpg").build())
+                .execute().use { assertEquals(404, it.code) }
+            assertEquals(5, server.requestCount)
+        } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
     @Test fun `TLS handshake failure includes DNS and selected address without recording private query`() {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)

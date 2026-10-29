@@ -27,13 +27,13 @@ internal class MangaDexRecoveryInterceptor(
 ) : Interceptor {
     private val nextAttempt = AtomicLong(Long.MIN_VALUE)
     private val nativeUnavailableUntil = AtomicLong(Long.MIN_VALUE)
-    private val pageAttempts = object : LinkedHashMap<String, Long>(32, .75f, true) {
+    private val imageAttempts = object : LinkedHashMap<String, Long>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>) = size > 256
     }
 
-    private fun claimPage(url: String, time: Long): Boolean = synchronized(pageAttempts) {
-        if (time < nativeUnavailableUntil.get() || time < (pageAttempts[url] ?: Long.MIN_VALUE)) false
-        else { pageAttempts[url] = time + TimeUnit.SECONDS.toNanos(30); true }
+    private fun claimImage(url: String, time: Long): Boolean = synchronized(imageAttempts) {
+        if (time < nativeUnavailableUntil.get() || time < (imageAttempts[url] ?: Long.MIN_VALUE)) false
+        else { imageAttempts[url] = time + TimeUnit.SECONDS.toNanos(30); true }
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -42,16 +42,17 @@ internal class MangaDexRecoveryInterceptor(
             val request = chain.request()
             if (request.method != "GET" || request.url.scheme != "https" || chain.call().isCanceled() || !eligible(primary)) throw primary
             val time = now()
-            val page = MangaDexPages.registry.contains(request.url.toString())
-            if (page) {
-                if (!claimPage(request.url.toString(), time)) throw primary
+            val image = MangaDexPages.registry.contains(request.url.toString()) ||
+                (request.url.host == "uploads.mangadex.org" && request.url.encodedPath.startsWith("/covers/"))
+            if (image) {
+                if (!claimImage(request.url.toString(), time)) throw primary
             } else {
                 val next = nextAttempt.get()
                 if (time < next || !nextAttempt.compareAndSet(next, time + TimeUnit.SECONDS.toNanos(30))) throw primary
             }
             val connection = try { openNative(request.url.toUrl()) }
             catch (secondary: IOException) {
-                if (page) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
+                if (image) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
                 throw combined(primary, secondary)
             }
             val started = System.nanoTime()
@@ -76,7 +77,7 @@ internal class MangaDexRecoveryInterceptor(
                     if (request.header("User-Agent") == null) setRequestProperty("User-Agent", MangaDexConnectionDiagnostic.USER_AGENT)
                 }
                 val code = connection.responseCode
-                if (page && code in listOf(403, 429)) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
+                if (image && code in listOf(403, 429)) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
                 val stream = if (code >= 400) connection.errorStream else connection.inputStream
                 val source = object : okio.ForwardingSource((stream ?: java.io.ByteArrayInputStream(byteArrayOf())).source()) {
                     override fun close() {
@@ -102,7 +103,7 @@ internal class MangaDexRecoveryInterceptor(
                 deadline.cancel(false)
                 connection.disconnect()
                 if (secondary is IOException) {
-                    if (page && !chain.call().isCanceled()) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
+                    if (image && !chain.call().isCanceled()) nativeUnavailableUntil.set(now() + TimeUnit.SECONDS.toNanos(30))
                     throw combined(primary, secondary)
                 }
                 throw secondary

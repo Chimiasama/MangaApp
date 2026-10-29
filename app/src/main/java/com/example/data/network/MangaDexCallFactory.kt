@@ -31,6 +31,7 @@ class MangaDexCallFactory(
             override fun create(call: Call): okhttp3.EventListener =
                 call.request().tag(MangaDexConnectionTrace::class.java) ?: okhttp3.EventListener.NONE
         })
+        .apply { if (automaticRecovery) addInterceptor(MangaDexCoverInterceptor()) }
         .apply { if (automaticRecovery) addInterceptor(MangaDexPageInterceptor()) }
         .apply { if (automaticRecovery) addInterceptor(MangaDexRecoveryInterceptor(nativeConnection)) }
         .addInterceptor(MangaDexTraceInterceptor)

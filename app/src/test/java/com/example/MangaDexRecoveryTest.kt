@@ -68,6 +68,26 @@ class MangaDexRecoveryTest {
         }
     }
 
+    @Test fun `each cover can recover without sharing the API cooldown`() {
+        val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
+        val base = client().newBuilder().addNetworkInterceptor { throw SocketException("reset") }.build()
+        val attempts = AtomicInteger()
+        try {
+            val factory = MangaDexCallFactory(base, nativeConnection = { url ->
+                attempts.incrementAndGet()
+                (server.url(url.file).toUrl().openConnection(Proxy.NO_PROXY) as HttpsURLConnection)
+                    .apply { sslSocketFactory = trusted.sslSocketFactory() }
+            })
+            for (path in listOf("/covers/one/a.jpg.256.jpg", "/covers/two/b.png.256.jpg")) {
+                server.enqueue(MockResponse().setBody("cover"))
+                val request = Request.Builder().url("https://uploads.mangadex.org:${server.port}$path").build()
+                factory.newCall(request).execute().use { assertEquals("cover", it.body!!.string()) }
+                assertThrows(IOException::class.java) { factory.newCall(request).execute().close() }
+            }
+            assertEquals(2, attempts.get())
+        } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
     @Test fun `HTTP denial rate limit and server errors never trigger another client`() {
         val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
         val base = client()

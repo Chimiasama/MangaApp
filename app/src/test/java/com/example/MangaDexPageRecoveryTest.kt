@@ -52,6 +52,21 @@ class MangaDexPageRecoveryTest {
         } finally { old.shutdown(); current.shutdown(); client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll() }
     }
 
+    @Test fun `certificate failures never refresh the manifest or switch image routes`() {
+        val server = MockWebServer().apply { start() }
+        val registry = MangaDexPageRegistry(load = { throw AssertionError("Unexpected refresh") })
+        val pages = registry.register("certificate-test", manifest(server))
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        val client = OkHttpClient.Builder().addInterceptor(MangaDexPageInterceptor(registry))
+            .addInterceptor { attempts.incrementAndGet(); throw javax.net.ssl.SSLPeerUnverifiedException("Untrusted") }.build()
+        try {
+            assertThrows(javax.net.ssl.SSLPeerUnverifiedException::class.java) {
+                client.newCall(Request.Builder().url(pages[1]).build()).execute().close()
+            }
+            assertEquals(1, attempts.get())
+        } finally { server.shutdown(); client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll() }
+    }
+
     @Test fun `denial and rate limit never refresh or retry page routes`() {
         val server = MockWebServer().apply { start() }
         val registry = MangaDexPageRegistry(load = { throw AssertionError("Unexpected refresh") })
