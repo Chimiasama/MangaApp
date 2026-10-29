@@ -108,3 +108,26 @@ precisa ser confirmada nele.
 
 Referências: https://developer.android.com/reference/android/net/http/HttpEngine
  e https://developer.android.com/develop/connectivity/cronet.
+
+## Descoberta HTTP/3 na primeira conexão
+
+Na consulta de 29/10/2026, tanto `api.mangadex.org` quanto
+`uploads.mangadex.org` responderam `Alt-Svc: h3=":443"; ma=86400`.
+O HttpEngine passa a receber `addQuicHint(host, 443, 443)` para esses dois
+hosts, permitindo descobrir a alternativa QUIC sem depender de uma primeira
+resposta HTTP por TCP. Apenas habilitar QUIC não garante que uma instalação
+nova conheça o anúncio do servidor. Não há alteração de DNS, endereço, domínio,
+porta, certificados ou identidade. Mantém negociação automática e HTTP/2.
+Não aplica indicação a nós At-Home cujo suporte não foi verificado.
+
+O diagnóstico registra que a indicação foi configurada, sem afirmar que HTTP/3
+foi efetivamente negociado: a API HttpURLConnection do motor não expõe esse dado.
+A comparação Wi-Fi/dados móveis e navegador anônimo permanece necessária para
+localizar o reset; esta hipótese ainda não foi confirmada no aparelho.
+Referência: https://developer.android.com/reference/android/net/http/HttpEngine.Builder#addQuicHint(java.lang.String,int,int).
+
+O registro DNS HTTPS (tipo 65) observado para `dxlb.mangadex.org`, destino CNAME
+dos dois hosts, também anuncia `alpn=h3,h2`. O navegador anônimo do aparelho
+abriu a consulta nova com `year=1935&limit=2&offset=1`; a investigação agora
+prioriza a descoberta/negociação do transporte no app, sem exigir troca de rede.
+Build e os 214 testes locais passaram após a configuração das indicações QUIC.

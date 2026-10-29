@@ -141,7 +141,8 @@ class MangaDexConnectionDiagnostic(
             status = code
             received(name, code, active.getHeaderField("X-Request-ID"),
                 if (code == 200) active.inputStream.bufferedReader().use { it.readText() } else "",
-                "Transporte: Chromium HttpEngine; Android API ${android.os.Build.VERSION.SDK_INT}")
+                "Transporte: Chromium HttpEngine; Android API ${android.os.Build.VERSION.SDK_INT}; " +
+                    "HTTP/3 anunciado previamente para API e capas (não confirma o protocolo negociado)")
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { failure(name, error, status) }
         finally { connection?.disconnect() }

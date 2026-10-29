@@ -21,7 +21,7 @@ object MangaDexChromiumTransport {
         !isSupported() -> "Chromium HttpEngine indisponível nesta versão do Android"
         appContext == null -> "Chromium HttpEngine ainda não inicializado"
         unavailableReason != null -> "Chromium HttpEngine indisponível: $unavailableReason"
-        else -> "Chromium HttpEngine do Android (negociação automática)"
+        else -> "Chromium HttpEngine do Android (HTTP/3 anunciado pela MangaDex; negociação automática)"
     }
 
     @SuppressLint("NewApi") // Runtime guard includes the API's S extension backport.
@@ -43,6 +43,11 @@ object MangaDexChromiumTransport {
             return instance ?: android.net.http.HttpEngine.Builder(context)
                 .setUserAgent(MangaDexConnectionDiagnostic.USER_AGENT)
                 .setEnableHttp2(true).setEnableQuic(true)
+                // Both origins advertise Alt-Svc: h3=":443". Seed discovery so a cold
+                // client can attempt QUIC even when its first TCP/TLS handshake resets.
+                // Keep the original host/port and default certificate verification.
+                .addQuicHint("api.mangadex.org", 443, 443)
+                .addQuicHint("uploads.mangadex.org", 443, 443)
                 .setEnableHttpCache(android.net.http.HttpEngine.Builder.HTTP_CACHE_DISABLED, 0)
                 .build().also { instance = it }
         }
