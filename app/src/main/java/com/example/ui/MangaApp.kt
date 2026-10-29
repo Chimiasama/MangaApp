@@ -392,7 +392,7 @@ fun MangaApp(
                     onChapterReadChanged = mangaViewModel::setChapterRead,
                     state = detailState,
                     downloads = downloads,
-                    selectedLanguage = selectedLanguage,
+                    selectedLanguage = if (selectedLanguage.isBlank() || selectedLanguage == "all") "pt-br" else selectedLanguage,
                     onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
                     onBack = { navController.popBackStack() },
                     onToggleFavorite = { manga -> mangaViewModel.toggleFavorite(manga) },

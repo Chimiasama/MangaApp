@@ -101,7 +101,14 @@ fun MangaDetailScreen(
     onChapterReadChanged: (ChapterModel, Boolean) -> Unit = { _, _ -> }
 ) {
     val manga = state.manga ?: return
-    val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, selectedLanguage) }
+    val effectiveLanguage = when (val l = selectedLanguage.lowercase(java.util.Locale.ROOT)) {
+        "pt", "pt-br", "pt_br" -> "pt-br"
+        "en", "en-us" -> "en"
+        "es", "es-la", "es-es" -> "es"
+        "all" -> "all"
+        else -> "pt-br"
+    }
+    val visibleChapters = state.chapters.filter { com.example.source.ChapterLanguage.matches(it.language, effectiveLanguage) }
     val context = LocalContext.current
 
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -604,11 +611,7 @@ fun MangaDetailScreen(
                                     "all" to "🌐 Todas"
                                 )
                                 languages.forEach { (code, label) ->
-                                    val isSelected = if (code == "all") {
-                                        selectedLanguage.lowercase() !in listOf("pt-br", "en", "es") || selectedLanguage.isEmpty() || selectedLanguage == "all"
-                                    } else {
-                                        selectedLanguage.equals(code, ignoreCase = true)
-                                    }
+                                    val isSelected = (code == effectiveLanguage)
                                     FilterChip(
                                         selected = isSelected,
                                         onClick = { onLanguageSelected(code) },
@@ -862,7 +865,7 @@ fun MangaDetailScreen(
                                 "all" to "🌐 Todas"
                             ).forEach { (code, label) ->
                                 FilterChip(
-                                    selected = selectedLanguage.equals(code, ignoreCase = true),
+                                    selected = (code == effectiveLanguage),
                                     onClick = { onLanguageSelected(code) },
                                     label = { Text(label, fontSize = 11.sp) },
                                     modifier = Modifier.testTag("detail_lang_chip_$code"),

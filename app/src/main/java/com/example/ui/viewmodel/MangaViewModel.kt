@@ -210,26 +210,6 @@ class MangaViewModel(
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { failure = "Não foi possível atualizar todas as seções." }
         }
-        if (repository.preferencesRepository.cachedNsfw) {
-            try {
-                val adultItems = pools[Triple("all", "pt-br", "all")]?.filter { manga ->
-                    manga.isNsfw || manga.contentRating in listOf("erotica", "pornographic") ||
-                    manga.genres.any { g ->
-                        val gl = g.lowercase()
-                        gl.contains("hentai") || gl.contains("doujinshi") || gl.contains("ecchi") || gl.contains("smut")
-                    }
-                } ?: repository.loadCatalog("", "all", "pt-br", "all",
-                    CatalogFilters(included = setOf("genre:doujinshi", "rating:pornographic"), includeMode = IncludeMode.ANY)).items
-                if (adultItems.isNotEmpty()) {
-                    homeCatalogSections = homeCatalogSections + GenreCarouselSection(
-                        id = "adult_doujinshi",
-                        title = "🔞 Adulto & Doujinshi (+18)",
-                        genreKey = "all",
-                        items = adultItems.take(20)
-                    )
-                }
-            } catch (_: Exception) {}
-        }
         publishHome(error = failure)
     }
 
@@ -566,6 +546,9 @@ class MangaViewModel(
         _selectedGenre.value = "all"
         _selectedSourceId.value = "all"
         _selectedYearRange.value = "all"
+        viewModelScope.launch {
+            repository.preferencesRepository.setSelectedLanguage("pt-br")
+        }
         loadBrowseManga()
     }
 
@@ -606,7 +589,8 @@ class MangaViewModel(
         _isLoadingDetail.value = true
         detailChapterJob = viewModelScope.launch {
             try {
-                val target = language ?: repository.preferencesRepository.selectedLanguage.first()
+                val prefLang = repository.preferencesRepository.selectedLanguage.first()
+                val target = language ?: if (prefLang.isBlank() || prefLang == "all") "pt-br" else prefLang
                 val chapters = repository.getAggregatedChapters(manga.title, manga.url, manga.sourceId, target)
                 ensureActive()
                 if (request == detailChapterRequest) _detailChapters.value = chapters

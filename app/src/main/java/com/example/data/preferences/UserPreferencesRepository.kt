@@ -130,7 +130,8 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     val selectedLanguage: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[SELECTED_LANGUAGE] ?: DEFAULT_LANGUAGE
+        val saved = prefs[SELECTED_LANGUAGE]
+        if (saved.isNullOrBlank() || saved == "all") DEFAULT_LANGUAGE else saved
     }
 
     val customRulesJson: Flow<String?> = context.dataStore.data.map { prefs ->

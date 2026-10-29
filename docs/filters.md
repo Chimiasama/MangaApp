@@ -46,7 +46,6 @@ preencher valores imaginários. O aviso da fonte informa essas limitações.
 O ano, o status e o idioma original são preservados no cache. A migração 10 → 11 mantém
 favoritos, histórico, capítulos lidos e downloads.
 
-A proposta etária permanece exclusivamente em [planos/classificacao-etaria.md](plans/classificacao-etaria.md).
 
 ## Faixa histórica de 1900–1950
 
