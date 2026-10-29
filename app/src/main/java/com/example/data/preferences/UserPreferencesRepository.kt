@@ -23,11 +23,17 @@ class UserPreferencesRepository(private val context: Context) {
 
     private val steppedZoom = booleanPreferencesKey("reader_stepped_zoom")
     private val controlsTimeout = intPreferencesKey("reader_controls_timeout")
+    private val readerBarSize = stringPreferencesKey("reader_bar_size")
+    private val readerSliderPosition = stringPreferencesKey("reader_slider_position")
+    private val readerExtraInfo = booleanPreferencesKey("reader_extra_info")
     private val preferredScale = floatPreferencesKey("reader_preferred_scale")
 
     val readerOptions: Flow<ReaderOptions> = context.dataStore.data.map { prefs ->
-        ReaderOptions(prefs[steppedZoom] ?: false, (prefs[controlsTimeout] ?: 2).coerceIn(0, 15),
-            (prefs[preferredScale] ?: 1f).coerceIn(1f, 4.5f))
+        ReaderOptions(prefs[steppedZoom] ?: false, (prefs[controlsTimeout] ?: 3).coerceIn(0, 15),
+            (prefs[preferredScale] ?: 1f).coerceIn(1f, 4.5f),
+            prefs[readerBarSize]?.takeIf { it in setOf("compact", "normal") } ?: "compact",
+            prefs[readerSliderPosition]?.takeIf { it in setOf("bottom", "top") } ?: "bottom",
+            prefs[readerExtraInfo] ?: false)
     }
 
     suspend fun setReaderOptions(options: ReaderOptions) {
@@ -35,6 +41,9 @@ class UserPreferencesRepository(private val context: Context) {
             it[steppedZoom] = options.steppedDoubleTap
             it[controlsTimeout] = options.controlsTimeoutSeconds.coerceIn(0, 15)
             it[preferredScale] = options.preferredScale.coerceIn(1f, 4.5f)
+            it[readerBarSize] = options.barSize
+            it[readerSliderPosition] = options.sliderPosition
+            it[readerExtraInfo] = options.showExtraInfo
         }
     }
 

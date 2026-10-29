@@ -12,8 +12,11 @@ const val MAX_READER_SCALE = 4.5f
 
 data class ReaderOptions(
     val steppedDoubleTap: Boolean = false,
-    val controlsTimeoutSeconds: Int = 2,
-    val preferredScale: Float = 1f
+    val controlsTimeoutSeconds: Int = 3,
+    val preferredScale: Float = 1f,
+    val barSize: String = "compact",
+    val sliderPosition: String = "bottom",
+    val showExtraInfo: Boolean = false
 )
 
 /** Fractions survive image resizing, rotation and a process restart; Room keeps legacy progress. */

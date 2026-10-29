@@ -69,12 +69,12 @@ class ReaderInteractionTest {
 
     private fun show(mode: String = "WEBTOON", scale: Float = 1f, pages: List<String> = (0..4).map { "tall:$it" },
                      current: ChapterModel = chapterList[1], onChapter: (ChapterModel) -> Unit = {},
-                     initialViewport: ReaderViewport? = null, readerOptions: ReaderOptions = ReaderOptions(controlsTimeoutSeconds = 4),
-                     width: MutableState<Int>? = null, externalState: MutableState<ReaderUiState>? = null) {
+                     initialViewport: ReaderViewport? = null, readerOptions: ReaderOptions = ReaderOptions(),
+                     width: MutableState<Int>? = null, externalState: MutableState<ReaderUiState>? = null, height: Int = 640) {
         compose.setContent {
             MaterialTheme {
                 var orientation by remember { mutableStateOf("SENSOR") }
-                Box(Modifier.size((width?.value ?: 360).dp, 640.dp)) {
+                Box(Modifier.size((width?.value ?: 360).dp, height.dp)) {
                     ReaderScreen(state = externalState?.value ?: ReaderUiState(mangaTitle = "Teste", currentChapter = current, pages = pages,
                         chaptersList = chapterList, contentVersion = 1,
                         viewport = initialViewport ?: ReaderViewport(current.id, scale = scale, mode = mode)),
@@ -305,4 +305,30 @@ class ReaderInteractionTest {
         assertEquals(2f, snapshot!!.scale, .01f)
     }
     private fun chapter(id: String, number: Float) = ChapterModel(id, "Capítulo $number", "chapter:$id", number)
+    @Test
+    @Config(sdk = [36], qualifiers = "w800dp-h450dp-land")
+    fun `compact landscape controls overlay the page without changing its size`() {
+        show(pages = listOf("square:1"), width = mutableStateOf(800), height = 450,
+            readerOptions = ReaderOptions(controlsTimeoutSeconds = 0))
+        val before = compose.onNodeWithTag("reader_image_0").fetchSemanticsNode().boundsInRoot
+        screen().performTouchInput { click(center) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("reader_controls").assertExists()
+        compose.onNodeWithTag("reader_bottom_controls").assertExists()
+        compose.onNodeWithTag("reader_extra_info").assertDoesNotExist()
+        val after = compose.onNodeWithTag("reader_image_0").fetchSemanticsNode().boundsInRoot
+        assertEquals(before.width, after.width, 1f)
+        assertEquals(before.height, after.height, 1f)
+        assertTrue(compose.onNodeWithTag("reader_controls").fetchSemanticsNode().boundsInRoot.height < before.width * .2f)
+    }
+
+    @Test fun `top slider and optional reader information are independent preferences`() {
+        show(readerOptions = ReaderOptions(controlsTimeoutSeconds = 0, sliderPosition = "top", showExtraInfo = true))
+        compose.onNodeWithTag("reader_extra_info").assertExists()
+        screen().performTouchInput { click(center) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("reader_page_slider").assertExists()
+        compose.onNodeWithTag("reader_bottom_controls").assertDoesNotExist()
+    }
+
 }

@@ -125,10 +125,10 @@ class ReaderSessionTest {
     @Test fun `viewport options and normalized position survive repository recreation`() = runBlocking {
         val viewport = ReaderViewport("1", 2, .375f, 2.75f, -.5f, .25f, "PAGED_RTL")
         preferences.saveReaderViewport(manga.url, viewport)
-        preferences.setReaderOptions(ReaderOptions(true, 0, 2.75f))
+        preferences.setReaderOptions(ReaderOptions(true, 0, 2.75f, "normal", "top", true))
         val recreated = UserPreferencesRepository(ApplicationProvider.getApplicationContext())
         assertEquals(viewport, recreated.getReaderViewport(manga.url))
-        assertEquals(ReaderOptions(true, 0, 2.75f), recreated.readerOptions.first())
+        assertEquals(ReaderOptions(true, 0, 2.75f, "normal", "top", true), recreated.readerOptions.first())
         val vm = model { _, _ -> listOf("a", "b", "c") }
         vm.openReader(manga, chapters[0], chapters)
         withTimeout(10_000) { vm.readerUiState.first { it.currentChapter != null && !it.isLoading } }

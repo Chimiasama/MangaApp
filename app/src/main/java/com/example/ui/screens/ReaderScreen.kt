@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -159,7 +161,7 @@ fun ReaderScreen(
 
     fun touch() { interactionVersion++ }
     val controlInteraction: (Boolean) -> Unit = remember { { active -> controlsInteracting = active; interactionVersion++ } }
-    val timeoutMs = if (options.controlsTimeoutSeconds == 0) 0L else (options.controlsTimeoutSeconds * 1000L).coerceAtMost(2000L)
+    val timeoutMs = if (options.controlsTimeoutSeconds == 0) 0L else (options.controlsTimeoutSeconds * 1000L).coerceIn(1000L, 15_000L)
     LaunchedEffect(controls, interactionVersion, controlsInteracting, settings, chapters, orientationMenu, options.controlsTimeoutSeconds) {
         if (controls && !settings && !chapters && !orientationMenu && timeoutMs > 0L) {
             if (!controlsInteracting) {
@@ -450,24 +452,39 @@ fun ReaderScreen(
                 }
             }
         }
-        AnimatedVisibility(controls && state.pages.size > 1, modifier = Modifier.align(Alignment.CenterEnd)
+        AnimatedVisibility(controls && options.barSize == "normal" && state.pages.size > 1, modifier = Modifier.align(Alignment.CenterEnd)
             .readerControlInteraction(controlInteraction)) {
             ReaderScrollbar(pageIndex, state.pages.size, onSelected = { target ->
                 touch(); scope.launch { if (webtoon) list.scrollToItem(target) else pager.scrollToPage(target) }
             })
         }
+        val compact = options.barSize == "compact"
+        val landscape = size.width > size.height
+        val headerHeight = if (compact) (if (landscape) 48.dp else 56.dp) else (if (landscape) 56.dp else 64.dp)
+        val sliderOnTop = options.sliderPosition == "top"
+        val pageNavigation: @Composable () -> Unit = {
+            ReaderPageNavigation(pageIndex, state.pages.size, previous != null && !state.isLoading,
+                next != null && !state.isLoading,
+                { latestNavigate(false); touch() }, { latestNavigate(true); touch() },
+                { target -> touch(); scope.launch { if (webtoon) list.scrollToItem(target) else pager.scrollToPage(target) } }, compact)
+        }
         AnimatedVisibility(controls, modifier = Modifier.align(Alignment.TopCenter).testTag("reader_controls")) {
-            Surface(color = Color.Black.copy(alpha = 0.94f), contentColor = Color.White,
+            Surface(color = Color.Black.copy(alpha = .85f), contentColor = Color.White,
                 modifier = Modifier.fillMaxWidth().readerControlInteraction(controlInteraction)) {
-                Column(Modifier.statusBarsPadding().padding(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { latestFlush(); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Sair do leitor") }
-                        Column(Modifier.weight(1f)) {
-                            Text(state.mangaTitle, maxLines = 1, style = MaterialTheme.typography.labelMedium)
-                            Text(state.currentChapter?.title ?: "Leitor", maxLines = 1)
+                Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+                    Row(Modifier.fillMaxWidth().height(headerHeight).padding(horizontal = if (landscape) 2.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { latestFlush(); onBack() }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Sair do leitor", Modifier.size(22.dp))
+                        }
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Text(state.mangaTitle, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = if (compact) 12.sp else 14.sp)
+                            val chapterTitle = state.currentChapter?.title ?: "Leitor"
+                            val number = Regex("""(?i)cap(?:ítulo|itulo|\.)?\s*([0-9]+(?:[.,][0-9]+)?)""").find(chapterTitle)?.groupValues?.get(1)
+                            Text(" · " + (number?.let { "Cap. $it" } ?: chapterTitle), Modifier.widthIn(max = 96.dp),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
                         }
                         Box {
-                            IconButton(onClick = { orientationMenu = true; touch() }, modifier = Modifier.testTag("reader_orientation")) {
+                            IconButton(onClick = { orientationMenu = true; touch() }, modifier = Modifier.size(40.dp).testTag("reader_orientation")) {
                                 Icon(when (readerOrientation) {
                                     "PORTRAIT" -> Icons.Default.ScreenLockPortrait
                                     "LANDSCAPE" -> Icons.Default.ScreenLockLandscape
@@ -476,7 +493,7 @@ fun ReaderScreen(
                                     "PORTRAIT" -> "Orientação: retrato travado"
                                     "LANDSCAPE" -> "Orientação: paisagem travada"
                                     else -> "Orientação: rotação livre"
-                                })
+                                }, Modifier.size(20.dp))
                             }
                             DropdownMenu(expanded = orientationMenu, onDismissRequest = { orientationMenu = false; touch() }) {
                                 listOf("PORTRAIT" to "Travar em retrato", "LANDSCAPE" to "Travar em paisagem", "SENSOR" to "Liberar rotação").forEach { (value, label) ->
@@ -486,31 +503,28 @@ fun ReaderScreen(
                                 }
                             }
                         }
-                        IconButton(onClick = { settings = true; touch() }) { Icon(Icons.Default.Tune, "Opções do leitor") }
-                        IconButton(onClick = { onToggleBookmark(pageIndex); touch() }) {
-                            Icon(if (pageIndex in state.bookmarkedPages) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, "Marcar página")
+                        IconButton(onClick = { settings = true; touch() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Tune, "Opções do leitor", Modifier.size(20.dp)) }
+                        IconButton(onClick = { onToggleBookmark(pageIndex); touch() }, modifier = Modifier.size(40.dp)) {
+                            Icon(if (pageIndex in state.bookmarkedPages) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, "Marcar página", Modifier.size(20.dp))
+                        }
+                        IconButton(onClick = { chapters = true; touch() }, modifier = Modifier.size(40.dp).testTag("nav_chapters")) {
+                            Icon(Icons.Default.List, "Lista de capítulos", Modifier.size(20.dp))
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        TextButton(enabled = previous != null && !state.isLoading, onClick = { latestNavigate(false); touch() }, modifier = Modifier.testTag("nav_prev_chapter")) { Text("Anterior") }
-                        TextButton(enabled = state.pages.isNotEmpty(), onClick = {
-                            scope.launch { if (webtoon) list.scrollToItem(0) else pager.scrollToPage(0) }; touch()
-                        }) { Text("Início") }
-                        TextButton(onClick = { chapters = true; touch() }, modifier = Modifier.testTag("nav_chapters")) { Text("Capítulos") }
-                        TextButton(enabled = next != null && !state.isLoading, onClick = { latestNavigate(true); touch() }, modifier = Modifier.testTag("nav_next_chapter")) { Text("Próximo") }
-                    }
-                    if (state.pages.isNotEmpty()) Text(
-                        "${pageIndex + 1} / ${state.pages.size}  •  ${"%.2f".format(scale)}×  •  $clock",
-                        modifier = Modifier.testTag("reader_position").padding(horizontal = 8.dp),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    if (state.pages.size > 1) Slider(value = pageIndex.toFloat(), valueRange = 0f..state.pages.lastIndex.toFloat(),
-                        onValueChange = { value ->
-                            touch(); scope.launch { if (webtoon) list.scrollToItem(value.roundToInt()) else pager.scrollToPage(value.roundToInt()) }
-                        }, modifier = Modifier.testTag("reader_page_slider"))
+                    if (sliderOnTop) pageNavigation()
                 }
             }
         }
+        AnimatedVisibility(controls && !sliderOnTop, modifier = Modifier.align(Alignment.BottomCenter).testTag("reader_bottom_controls")) {
+            Surface(color = Color.Black.copy(alpha = .85f), contentColor = Color.White,
+                modifier = Modifier.fillMaxWidth().readerControlInteraction(controlInteraction)) {
+                Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))) { pageNavigation() }
+            }
+        }
+        if (options.showExtraInfo) Text("${"%.2f".format(scale)}× · $clock", color = Color.White.copy(alpha = .65f),
+            style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart)
+                .navigationBarsPadding().padding(start = 12.dp, bottom = if (controls && !sliderOnTop) 60.dp else 8.dp)
+                .background(Color.Black.copy(alpha = .7f), MaterialTheme.shapes.small).padding(4.dp).testTag("reader_extra_info"))
         if (state.isLoading) Surface(color = Color.Black.copy(alpha = 0.8f), modifier = Modifier.align(Alignment.Center)) {
             Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
@@ -544,6 +558,25 @@ fun ReaderScreen(
         LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("reader_options")) {
             item {
                 Text("Leitura", style = MaterialTheme.typography.titleLarge)
+                Text("Tamanho da barra")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("compact" to "Compacta", "normal" to "Normal").forEach { (value, label) ->
+                        FilterChip(options.barSize == value, { onOptionsChanged(options.copy(barSize = value)) }, label = { Text(label) })
+                    }
+                }
+                Text("Posição do slider")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("bottom" to "Embaixo", "top" to "Em cima").forEach { (value, label) ->
+                        FilterChip(options.sliderPosition == value, { onOptionsChanged(options.copy(sliderPosition = value)) }, label = { Text(label) })
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Mostrar zoom, hora e bateria", Modifier.weight(1f))
+                    Switch(options.showExtraInfo, { onOptionsChanged(options.copy(showExtraInfo = it)) })
+                }
+                TextButton(onClick = {
+                    scope.launch { if (webtoon) list.scrollToItem(0) else pager.scrollToPage(0) }; touch()
+                }) { Text("Voltar ao início do capítulo") }
                 listOf("WEBTOON" to "Webtoon contínuo", "PAGED_RTL" to "Mangá: direita → esquerda", "PAGED_LTR" to "Páginas: esquerda → direita").forEach { (key, title) ->
                     Row(Modifier.fillMaxWidth().clickable { mode = key; onReaderModeChanged(key) }, verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = mode == key, onClick = { mode = key; onReaderModeChanged(key) }); Text(title)
