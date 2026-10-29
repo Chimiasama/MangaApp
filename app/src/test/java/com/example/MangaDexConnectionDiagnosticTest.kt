@@ -55,6 +55,27 @@ class MangaDexConnectionDiagnosticTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
+    @Test fun `Chromium probe reports a fourth independently identified real HTTPS response`() = runBlocking {
+        val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
+        val base = client()
+        try {
+            repeat(4) { server.enqueue(MockResponse().setBody(json)) }
+            fun open(url: java.net.URL) =
+                (server.url(url.file).toUrl().openConnection(Proxy.NO_PROXY) as HttpsURLConnection)
+                    .apply { sslSocketFactory = clientTls.sslSocketFactory() }
+            val runner = MangaDexConnectionDiagnostic(base,
+                server.url("/manga?year=1935&limit=1").newBuilder().host("api.mangadex.org").build(),
+                0, openNative = ::open, openChromium = ::open)
+            val report = runner.run()
+            assertEquals(4, server.requestCount)
+            assertEquals(4, Regex("SUCESSO").findAll(report).count())
+            assertTrue(report.contains("Chromium HttpEngine: transporte alternativo do app"))
+            repeat(4) {
+                assertEquals(MangaDexConnectionDiagnostic.USER_AGENT, server.takeRequest().getHeader("User-Agent"))
+            }
+        } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
     @Test fun `interrupted bodies retain request ids and empty valid API responses still succeed`() = runBlocking {
         val server = MockWebServer()
         server.useHttps(serverTls.sslSocketFactory(), false)

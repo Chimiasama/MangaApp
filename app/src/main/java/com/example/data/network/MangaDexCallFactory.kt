@@ -13,8 +13,9 @@ class MangaDexCallFactory(
     private val defaultClient: OkHttpClient,
     compatibilityProfile: Boolean = false,
     automaticRecovery: Boolean = !compatibilityProfile,
-    nativeConnection: (java.net.URL) -> javax.net.ssl.HttpsURLConnection = {
-        it.openConnection() as javax.net.ssl.HttpsURLConnection
+    nativeConnection: (java.net.URL) -> java.net.HttpURLConnection = {
+        MangaDexChromiumTransport.openConnection(it)
+            ?: it.openConnection() as javax.net.ssl.HttpsURLConnection
     }
 ) : Call.Factory {
     private val tracedClient = defaultClient.newBuilder()

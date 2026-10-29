@@ -16,6 +16,7 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 import java.net.URL
+import java.net.HttpURLConnection
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,7 +30,8 @@ class MangaDexConnectionDiagnostic(
     client: OkHttpClient = RetrofitClient.okHttpClient,
     private val endpoint: HttpUrl = "https://api.mangadex.org/manga?year=1935&limit=1".toHttpUrl(),
     private val pauseMillis: Long = 1200,
-    private val openNative: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }
+    private val openNative: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
+    private val openChromium: (URL) -> HttpURLConnection? = MangaDexChromiumTransport::openConnection
 ) {
     private val probeClient = client.newBuilder().retryOnConnectionFailure(false)
         .connectTimeout(6, TimeUnit.SECONDS).readTimeout(6, TimeUnit.SECONDS)
@@ -37,14 +39,15 @@ class MangaDexConnectionDiagnostic(
     private val request = Request.Builder().url(endpoint)
         .header("User-Agent", USER_AGENT).header("Accept", "application/json").build()
 
-    private data class Result(val name: String, val ok: Boolean, val status: Int?, val details: String)
+    private data class Result(val name: String, val ok: Boolean, val status: Int?, val details: String, val available: Boolean = true)
 
     suspend fun run(): String {
         val results = mutableListOf<Result>()
         val probes: List<suspend () -> Result> = listOf(
             { okhttp("Cliente atual: OkHttp padrão / negociação TLS e HTTP automática", false) },
             { okhttp("Perfil antigo: TLS 1.2 / HTTP/1.1 (somente diagnóstico)", true) },
-            { native() }
+            { native() },
+            { chromium() }
         )
         for ((index, probe) in probes.withIndex()) {
             if (index > 0) delay(pauseMillis)
@@ -58,7 +61,7 @@ class MangaDexConnectionDiagnostic(
         return buildString {
             append("Diagnóstico comparativo da MangaDex\nUTC: $date\nConsulta: $endpoint\nUser-Agent: $USER_AGENT\n\n")
             for (result in results) {
-                append("${result.name}\n${if (result.ok) "SUCESSO" else "FALHA"}\n${result.details}\n\n")
+                append("${result.name}\n${if (!result.available) "INDISPONÍVEL" else if (result.ok) "SUCESSO" else "FALHA"}\n${result.details}\n\n")
             }
             when {
                 results.any { it.status == 403 || it.status == 429 } ->
@@ -114,6 +117,33 @@ class MangaDexConnectionDiagnostic(
                 "Cifra TLS: ${runCatching { active.cipherSuite }.getOrDefault("não informada")}")
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { failure(name, error, observedStatus, requestId) }
+        finally { connection?.disconnect() }
+    }
+
+    private suspend fun chromium(): Result = runInterruptible(Dispatchers.IO) {
+        val name = "Chromium HttpEngine: transporte alternativo do app"
+        var connection: HttpURLConnection? = null
+        var status: Int? = null
+        try {
+            val active = openChromium(endpoint.toUrl())
+                ?: return@runInterruptible Result(name, false, null, MangaDexChromiumTransport.description(), false)
+            connection = active
+            active.apply {
+                connectTimeout = 6000
+                readTimeout = 6000
+                instanceFollowRedirects = false
+                useCaches = false
+                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Accept-Encoding", "identity")
+            }
+            val code = active.responseCode
+            status = code
+            received(name, code, active.getHeaderField("X-Request-ID"),
+                if (code == 200) active.inputStream.bufferedReader().use { it.readText() } else "",
+                "Transporte: Chromium HttpEngine; Android API ${android.os.Build.VERSION.SDK_INT}")
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { failure(name, error, status) }
         finally { connection?.disconnect() }
     }
 

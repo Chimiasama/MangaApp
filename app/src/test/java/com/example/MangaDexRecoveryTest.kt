@@ -109,6 +109,26 @@ class MangaDexRecoveryTest {
         } finally { server.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
     }
 
+    @Test fun `Chromium style HttpURLConnection streams through the existing image and API adapter`() {
+        val secure = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
+        val alternate = MockWebServer().apply { start() }
+        val base = client().newBuilder().addNetworkInterceptor { throw SocketException("TLS reset") }.build()
+        try {
+            alternate.enqueue(MockResponse().setBody("chromium bytes").setHeader("X-Request-ID", "engine"))
+            val factory = MangaDexCallFactory(base, nativeConnection = { url ->
+                alternate.url(url.file).toUrl().openConnection(Proxy.NO_PROXY) as java.net.HttpURLConnection
+            })
+            val request = Request.Builder().url("https://uploads.mangadex.org:${secure.port}/covers/id/cover.jpg")
+                .header("User-Agent", "MangaReaderApp/1.1.0").build()
+            factory.newCall(request).execute().use {
+                assertEquals("chromium bytes", it.body!!.string()); assertEquals("engine", it.header("X-Request-ID"))
+            }
+            val received = alternate.takeRequest()
+            assertEquals("/covers/id/cover.jpg", received.path)
+            assertEquals("MangaReaderApp/1.1.0", received.getHeader("User-Agent"))
+        } finally { secure.shutdown(); alternate.shutdown(); base.dispatcher.executorService.shutdown(); base.connectionPool.evictAll() }
+    }
+
     @Test fun `HTTP denial rate limit and server errors never trigger another client`() {
         val server = MockWebServer().apply { useHttps(serverTls.sslSocketFactory(), false); start() }
         val base = client()

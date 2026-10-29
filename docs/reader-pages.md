@@ -80,3 +80,31 @@ Validação remota em 29/10/2026: 50 obras populares, quatro capas decodificadas
 página 2 decodificada. A suíte de 210 testes locais mais essa verificação remota
 passou sem falhas. O teste remoto usa o proxy do ambiente somente na infraestrutura
 de teste; o APK não recebe configuração de proxy nem mudança de confiança TLS.
+
+## Reset TLS no aparelho e transporte Chromium
+
+O diagnóstico do aparelho em 29/10/2026 mostrou reset antes de qualquer HTTP em
+OkHttp e HttpsURLConnection, inclusive na consulta isolada por 1935; o navegador
+na mesma rede ainda abriu JSON. Isso não determina, por si só, quem interrompeu
+TLS. O transporte automático do OkHttp não voltou a forçar TLS 1.2.
+
+A recuperação HTTPS agora usa o HttpEngine do Android quando disponível
+(Android 14+ ou Android 12/13 com extensão S 7+). Ele fornece a pilha Chromium
+sem adicionar biblioteca. É inicializado de forma preguiçosa com contexto da
+Application, para funcionar também em WorkManager. Nos aparelhos sem suporte,
+conserva a alternativa HttpsURLConnection. Continua restrito às consultas GET
+MangaDex e páginas registradas, após falha de transporte; nunca após HTTP 403/429
+ou falha de validação de certificado. Usa o mesmo endereço, identificação e
+cabeçalhos do app, com os validadores padrão do motor e sem configuração de DNS,
+proxy ou cookies de navegador. A adaptação mantém streaming, cancelamento,
+prazos e fechamento do corpo usados por Retrofit, Coil e downloads.
+
+O diagnóstico manual mostra Chromium separadamente, inclusive quando indisponível.
+Testes locais verificam o adaptador HttpURLConnection, consulta comparativa, guarda
+de versão e regressões de TLS/cancelamento. Eles não executam o HttpEngine real
+do firmware do celular. As consultas remotas deste ambiente passam por proxy e
+não reproduzem o caminho TLS direto do aparelho; a eficácia desta alternativa
+precisa ser confirmada nele.
+
+Referências: https://developer.android.com/reference/android/net/http/HttpEngine
+ e https://developer.android.com/develop/connectivity/cronet.

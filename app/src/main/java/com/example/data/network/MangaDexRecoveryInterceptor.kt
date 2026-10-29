@@ -11,6 +11,7 @@ import java.io.IOException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.HttpURLConnection
 import java.security.cert.CertificateException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -22,7 +23,9 @@ import javax.net.ssl.SSLProtocolException
 
 /** One native HTTPS recovery for public reads, before any response has been delivered. */
 internal class MangaDexRecoveryInterceptor(
-    private val openNative: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection },
+    private val openNative: (URL) -> HttpURLConnection = {
+        MangaDexChromiumTransport.openConnection(it) ?: it.openConnection() as HttpsURLConnection
+    },
     private val now: () -> Long = System::nanoTime
 ) : Interceptor {
     private val nativeUnavailableUntil = AtomicLong(Long.MIN_VALUE)
@@ -118,7 +121,8 @@ internal class MangaDexRecoveryInterceptor(
     }
 
     private fun combined(primary: IOException, secondary: IOException) = IOException(
-        "Falha no OkHttp e na recuperação por HTTPS nativo do Android.\n" +
+        "Falha no OkHttp e na recuperação por HTTPS alternativo do Android.\n" +
+            "Alternativa: ${MangaDexChromiumTransport.description()}; HTTPS nativo quando indisponível.\n" +
             "Primeira tentativa: ${com.example.source.catalogFailureDetails(primary)}\n" +
             "Segunda tentativa: ${com.example.source.catalogFailureDetails(secondary)}", secondary
     ).apply { addSuppressed(primary) }
