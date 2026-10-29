@@ -71,7 +71,7 @@ data class BrowseUiState(
     val isNsfwEnabled: Boolean = false
 )
 
-data class HomeUiState(val sections: List<GenreCarouselSection> = emptyList(), val isLoading: Boolean = true, val error: String? = null, val configurations: List<HomeSection> = emptyList())
+data class HomeUiState(val sections: List<GenreCarouselSection> = emptyList(), val isLoading: Boolean = true, val error: String? = null, val configurations: List<HomeSection> = emptyList(), val quickFilters: HomeQuickFilters = HomeQuickFilters())
 
 data class MangaDetailUiState(
     val manga: MangaModel? = null,
@@ -82,7 +82,8 @@ data class MangaDetailUiState(
     val malRecommendations: List<MalRecommendationItem> = emptyList(),
     val readChapterIds: Set<String> = emptySet(),
     val chapterError: String? = null,
-    val chapterErrorDetails: String? = null
+    val chapterErrorDetails: String? = null,
+    val chapterLanguage: String = "pt-br"
 )
 
 data class ReaderUiState(
@@ -176,23 +177,35 @@ class MangaViewModel(
     private var homeHistoryItems = emptyList<MangaModel>()
     private var browseRequested = false
 
+    fun updateHomeQuickFilters(filters: HomeQuickFilters) {
+        if (filters == _homeUiState.value.quickFilters) return
+        homeCatalogSections = emptyList()
+        _homeUiState.update { it.copy(quickFilters = filters, sections = emptyList(), isLoading = true, error = null) }
+        refreshHome()
+    }
+
     fun ensureSearchLoaded() { if (!browseRequested) loadBrowseManga() }
 
     fun refreshHome() {
         homeJob?.cancel()
-        homeJob = viewModelScope.launch { loadHomeSections(homeConfigurations) }
+        val filters = _homeUiState.value.quickFilters
+        homeJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(250)
+            loadHomeSections(homeConfigurations, filters)
+        }
     }
 
     private fun publishHome(loading: Boolean = false, error: String? = null) {
+        val filters = _homeUiState.value.quickFilters
         val sections = homeConfigurations.filter { it.active }.sortedBy { it.position }.mapNotNull { section ->
             if (section.type == HomeSectionType.CONTINUE_READING)
-                GenreCarouselSection(section.id, section.title, "all", homeHistoryItems, true)
+                if (filters.isActive) null else GenreCarouselSection(section.id, section.title, "all", homeHistoryItems, true)
             else homeCatalogSections.find { it.id == section.id }?.copy(title = section.title)
         }
-        _homeUiState.value = HomeUiState(deduplicateHomeSections(sections, homeConfigurations.associate { it.id to it.itemCount }), loading, error, homeConfigurations)
+        _homeUiState.value = HomeUiState(deduplicateHomeSections(sections, homeConfigurations.associate { it.id to it.itemCount }), loading, error, homeConfigurations, filters)
     }
 
-    private suspend fun loadHomeSections(configurations: List<HomeSection>) {
+    private suspend fun loadHomeSections(configurations: List<HomeSection>, quick: HomeQuickFilters = _homeUiState.value.quickFilters) {
         homeConfigurations = configurations
         homeCatalogSections = emptyList()
         publishHome(loading = true)
@@ -200,12 +213,15 @@ class MangaViewModel(
         var failure: String? = null
         for (section in configurations.filter { it.active && it.type == HomeSectionType.CATALOG }.sortedBy { it.position }) {
             try {
-                val filter = section.filters
+                val filter = quick.catalogRequest(section.filters)
                 val key = Triple(filter.sourceId, filter.language, filter.yearRange)
-                val candidates = pools[key] ?: repository.loadCatalog("", filter.sourceId, filter.language, filter.yearRange).items.also { pools[key] = it }
+                val catalog = if (key in pools) null else repository.loadCatalog("", filter.sourceId, filter.language, filter.yearRange, filter.filters,
+                    allowCachedFallback = !quick.isActive || quick.language == "all")
+                if (catalog?.warning != null) failure = "Não foi possível atualizar todas as seções."
+                val candidates = pools[key] ?: catalog!!.items.also { pools[key] = it }
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val items = sortHomeItems(candidates.filter {
-                    filter.filters.matches(it) && matchesYearRange(it.year, filter.yearRange, it.description)
+                    section.filters.filters.matches(it) && quick.matches(it) && matchesYearRange(it.year, filter.yearRange, it.description)
                 }, section.sort)
                 homeCatalogSections = homeCatalogSections + GenreCarouselSection(section.id, section.title, "all", items)
                 publishHome(loading = true, error = failure)
@@ -305,6 +321,7 @@ class MangaViewModel(
     private val _detailManga = MutableStateFlow<MangaModel?>(null)
     private val _detailChapters = MutableStateFlow<List<ChapterModel>>(emptyList())
     private val _detailChapterError = MutableStateFlow<String?>(null)
+    private val _detailChapterLanguage = MutableStateFlow("pt-br")
     private val _isLoadingDetail = MutableStateFlow(false)
     private val _isFavorite = MutableStateFlow(false)
     private val _currentMangaProgress = MutableStateFlow<ProgressEntity?>(null)
@@ -332,6 +349,7 @@ class MangaViewModel(
     }.combine(_detailChapterError) { state, error -> state.copy(
         chapterError = error?.let { "Não foi possível carregar os capítulos. Verifique a conexão e tente novamente." },
         chapterErrorDetails = error) }
+        .combine(_detailChapterLanguage) { state, language -> state.copy(chapterLanguage = language) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -598,6 +616,7 @@ class MangaViewModel(
             try {
                 val prefLang = repository.preferencesRepository.selectedLanguage.first()
                 val target = language ?: if (prefLang.isBlank() || prefLang == "all") "pt-br" else prefLang
+                _detailChapterLanguage.value = target
                 val chapters = repository.getAggregatedChapters(manga.title, manga.url, manga.sourceId, target)
                 ensureActive()
                 if (request == detailChapterRequest) _detailChapters.value = chapters
@@ -616,7 +635,7 @@ class MangaViewModel(
     }
 
     fun retryDetailChapters() {
-        _detailManga.value?.let { loadDetailChapters(it) }
+        _detailManga.value?.let { loadDetailChapters(it, _detailChapterLanguage.value) }
     }
 
     fun selectLanguage(language: String) {
@@ -651,7 +670,7 @@ class MangaViewModel(
         loadBrowseManga(debounceMillis = if (saveToHistory || trimmed.isEmpty()) 0 else 350)
     }
 
-    fun openMangaDetails(manga: MangaModel) {
+    fun openMangaDetails(manga: MangaModel, language: String? = null) {
         viewModelScope.launch {
             _isLoadingDetail.value = true
             _detailManga.value = manga
@@ -667,7 +686,7 @@ class MangaViewModel(
                 _currentMangaProgress.value = prog
             }
         }
-        loadDetailChapters(manga)
+        loadDetailChapters(manga, language)
         if (repository.getSourceById(manga.sourceId) is com.example.source.HtmlMangaSource) {
             viewModelScope.launch {
                 val detailed = repository.getMangaDetails(manga.url, manga.sourceId)
@@ -963,6 +982,8 @@ class MangaViewModel(
             }.ifEmpty { listOf(chapter) }
 
             _detailManga.value = manga
+            _detailChapterLanguage.value = com.example.source.ChapterLanguage.normalize(chapter.language)
+            _detailChapterError.value = null
             _detailChapters.value = chaptersList
 
             openReader(
@@ -1041,6 +1062,8 @@ class MangaViewModel(
             }.ifEmpty { listOf(chapter) }
 
             _detailManga.value = manga
+            _detailChapterLanguage.value = com.example.source.ChapterLanguage.normalize(chapter.language)
+            _detailChapterError.value = null
             _detailChapters.value = chaptersList
 
             openReader(

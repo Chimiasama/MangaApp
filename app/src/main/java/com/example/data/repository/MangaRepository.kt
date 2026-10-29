@@ -250,9 +250,10 @@ class MangaRepository(
         loadCatalog(query, sourceId, language, yearRange, filters).items
 
     suspend fun loadCatalog(query: String, sourceId: String?, language: String, yearRange: String,
-        filters: com.example.source.CatalogFilters = com.example.source.CatalogFilters()): com.example.source.CatalogLoadResult {
+        filters: com.example.source.CatalogFilters = com.example.source.CatalogFilters(),
+        allowCachedFallback: Boolean = true): com.example.source.CatalogLoadResult {
         if (!filters.isActive && (yearRange.isBlank() || yearRange == "all")) {
-            val items = if (query.isBlank()) getPopularManga(sourceId, language) else searchManga(query, sourceId, language)
+            val items = if (query.isBlank()) getPopularManga(sourceId, language, allowCachedFallback) else searchManga(query, sourceId, language, allowCachedFallback)
             return com.example.source.CatalogLoadResult(items)
         }
         val sources = (if (sourceId.isNullOrBlank() || sourceId == "all") getAvailableSources()
@@ -275,7 +276,7 @@ class MangaRepository(
             ?: (response.exceptionOrNull() as? com.example.source.SourceCatalogPartialException)?.items.orEmpty() }
             .filter(::allowed)
         cacheMangaToDb(partial)
-        val cached = failedSources.flatMap { source -> mangaDao.getCachedMangasBySourceSync(source.id) }
+        val cached = (if (allowCachedFallback) failedSources.flatMap { source -> mangaDao.getCachedMangasBySourceSync(source.id) } else emptyList())
             .filter { entity -> !MangaDexSource.isLegacyStarterRecord(entity.sourceId, entity.coverUrl, entity.originalLanguage, entity.status) &&
                 (query.isBlank() || entity.title.contains(query.trim(), ignoreCase = true)) }
             .map { entity ->
@@ -301,7 +302,8 @@ class MangaRepository(
 
     suspend fun getPopularManga(
         sourceId: String?,
-        language: String = "pt-br"
+        language: String = "pt-br",
+        allowCachedFallback: Boolean = true
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
@@ -327,6 +329,10 @@ class MangaRepository(
         cacheMangaToDb(results)
 
         if (results.isEmpty()) {
+            if (!allowCachedFallback) {
+                responses.firstOrNull { it.isFailure }?.exceptionOrNull()?.let { throw it }
+                return emptyList()
+            }
             val cachedEntities = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
                 mangaDao.getCachedMangasBySourceSync(sourceId)
             } else {
@@ -364,7 +370,8 @@ class MangaRepository(
     suspend fun searchManga(
         query: String,
         sourceId: String?,
-        language: String = "pt-br"
+        language: String = "pt-br",
+        allowCachedFallback: Boolean = true
     ): List<MangaModel> {
         val sourcesToFetch = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
             listOfNotNull(sourceRegistry[sourceId])
@@ -396,6 +403,10 @@ class MangaRepository(
         }
 
         if (results.isEmpty() && query.isNotBlank()) {
+            if (!allowCachedFallback) {
+                lastFailure?.let { throw it }
+                return emptyList()
+            }
             val cachedEntities = if (!sourceId.isNullOrEmpty() && sourceId != "all") {
                 mangaDao.getCachedMangasBySourceSync(sourceId)
             } else {

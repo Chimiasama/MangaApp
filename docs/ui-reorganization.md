@@ -95,3 +95,41 @@ as descrições; detalhes de DataStore/Room/scraping ficam no diagnóstico.
 
 A validação automatizada não substitui a conferência física no Galaxy Fold 4,
 especialmente teclado Samsung, dobra/rotação e modo imersivo.
+
+## Seletor único de filtros rápidos da home
+
+O topo de Explorar usa um botão Fonte / Idioma / Gênero e uma única lista horizontal
+de opções. Trocar de categoria só troca as opções visíveis; as seleções das três
+categorias permanecem no HomeUiState do ViewModel. A categoria e os três estados
+de rolagem usam estado salvo do Compose. Um resumo pequeno mostra as escolhas,
+e Limpar filtros restaura as seções configuradas.
+
+HomeQuickFilters mantém fonte, idioma de capítulos e classificação de forma
+independente. Com filtros rápidos ativos, fonte/idioma substituem temporariamente
+os da configuração da seção, e a classificação rápida é combinada por E com os
+critérios da seção. A consulta usa os repositórios existentes, com debounce curto
+e reaproveitamento do mesmo catálogo entre seções. Os filtros são aplicados antes
+da deduplicação e do limite de itens. Não compara idioma com originalLanguage,
+nem deduz gênero pelo título/sinopse. Exclusões da seção continuam prevalecendo.
+Sem filtros rápidos, as definições persistidas da home continuam valendo normalmente.
+
+Ao escolher um idioma específico, a home não reutiliza um catálogo de cache cujo
+idioma dos capítulos não pode ser validado. Um zero legítimo permanece vazio;
+relaxar só o idioma conserva fonte e gênero. Continuar lendo aparece na home sem
+filtros rápidos, para não misturar histórico sem idioma verificado com resultados.
+Ver mais com seleção rápida abre a pesquisa global com essa mesma combinação;
+sem seleção rápida, abre os filtros da seção. Abrir uma obra da home mantém o
+idioma escolhido nos detalhes sem modificar a preferência de idioma da pesquisa.
+O transporte da MangaDex/HTTP3 e os mecanismos de leitura/download não mudaram.
+
+Validação manual: escolha MangaDash, mude para Idioma e selecione Inglês, depois
+escolha Romance em Gênero; confira o resumo, volte à categoria Fonte e confirme
+que MangaDash segue marcado. Uma fonte sem capítulos EN deve ficar vazia, sem
+retornar obras PT-BR do cache. Teste também MangaDex + Inglês + Romance, abra uma
+obra e confira o idioma dos capítulos; volte à home, alterne abas/rotação e use
+Ver mais e Limpar filtros.
+
+Verificação desta mudança: assembleDebug e a suíte completa de 219 testes passaram.
+Os dois testes de interface foram repetidos com renderização do tema escuro;
+a imagem do seletor único foi inspecionada. As alterações não incluem arquivos
+de transporte, fontes HTTP, leitura de páginas ou download.

@@ -240,9 +240,13 @@ fun MangaApp(
         ) {
             composable(MangaDestinations.BROWSE) {
                 HomeScreen(homeState, favorites.map { it.url }.toSet(),
+                    onQuickFiltersChanged = mangaViewModel::updateHomeQuickFilters,
                     availableSources = browseState.availableSources,
                     onSearch = { navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true } },
-                    onMangaClick = { manga -> mangaViewModel.openMangaDetails(manga); navController.navigate(MangaDestinations.DETAIL) },
+                    onMangaClick = { manga ->
+                        mangaViewModel.openMangaDetails(manga, homeState.quickFilters.language.takeIf { homeState.quickFilters.isActive })
+                        navController.navigate(MangaDestinations.DETAIL)
+                    },
                     onFavoriteToggle = mangaViewModel::toggleFavorite,
                     onContinue = { manga ->
                         history.find { it.mangaUrl == manga.url }?.let {
@@ -255,7 +259,8 @@ fun MangaApp(
                         if (section?.type == com.example.home.HomeSectionType.CONTINUE_READING) {
                             navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true; restoreState = true }
                         } else {
-                            if (section != null) mangaViewModel.applyBrowseFilters(section.filters)
+                            if (homeState.quickFilters.isActive) mangaViewModel.applyBrowseFilters(homeState.quickFilters.searchRequest())
+                            else if (section != null) mangaViewModel.applyBrowseFilters(section.filters)
                             navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true }
                         }
                     }, onRefresh = mangaViewModel::refreshHome)
@@ -395,7 +400,7 @@ fun MangaApp(
                     diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     state = detailState,
                     downloads = downloads,
-                    selectedLanguage = if (selectedLanguage.isBlank() || selectedLanguage == "all") "pt-br" else selectedLanguage,
+                    selectedLanguage = detailState.chapterLanguage,
                     onLanguageSelected = { lang -> mangaViewModel.selectLanguage(lang) },
                     onBack = { navController.popBackStack() },
                     onToggleFavorite = { manga -> mangaViewModel.toggleFavorite(manga) },
