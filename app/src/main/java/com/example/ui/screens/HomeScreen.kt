@@ -23,11 +23,8 @@ fun HomeScreen(state: HomeUiState, favorites: Set<String>, onSearch: () -> Unit,
     onMangaClick: (MangaModel) -> Unit, onFavoriteToggle: (MangaModel) -> Unit,
     onMore: (String) -> Unit, onRefresh: () -> Unit, onContinue: (MangaModel) -> Unit = onMangaClick) {
     Column(Modifier.fillMaxSize().testTag("home_screen")) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Explorar", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            IconButton(onClick = onSearch, modifier = Modifier.testTag("home_open_search")) {
-                Icon(Icons.Default.Search, "Pesquisar mangás")
-            }
         }
         PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize().testTag("home_carousels_list"), contentPadding = PaddingValues(bottom = 24.dp)) {

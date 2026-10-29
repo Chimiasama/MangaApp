@@ -263,9 +263,13 @@ fun MangaApp(
                 androidx.compose.runtime.LaunchedEffect(Unit) { mangaViewModel.ensureSearchLoaded() }
                 BrowseScreen(
                     onBackFromSearch = {
-                        navController.navigate(MangaDestinations.BROWSE) {
-                            popUpTo(MangaDestinations.BROWSE) { saveState = true }
-                            launchSingleTop = true; restoreState = true
+                        val popped = navController.popBackStack(MangaDestinations.BROWSE, inclusive = false)
+                        if (!popped) {
+                            navController.navigate(MangaDestinations.BROWSE) {
+                                popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
                     },
                     diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,

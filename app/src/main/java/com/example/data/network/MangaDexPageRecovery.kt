@@ -49,6 +49,19 @@ class MangaDexPageRegistry(
             val value = url(response, "data-saver", file)
             if (!preserveExisting || value !in pages) pages[value] = Page(chapter, index, files.size)
         }
+        val hash = response.chapter?.hash.orEmpty()
+        if (hash.isNotBlank()) {
+            files.forEachIndexed { index, file ->
+                val central = "https://uploads.mangadex.org/data/$hash/$file"
+                if (!preserveExisting || central !in pages) pages[central] = Page(chapter, index, files.size)
+            }
+            if (saver.size == files.size) {
+                saver.forEachIndexed { index, file ->
+                    val centralSaver = "https://uploads.mangadex.org/data-saver/$hash/$file"
+                    if (!preserveExisting || centralSaver !in pages) pages[centralSaver] = Page(chapter, index, files.size)
+                }
+            }
+        }
         manifests[chapter] = Manifest(response, Long.MIN_VALUE)
         return urls
     }
@@ -80,10 +93,18 @@ class MangaDexPageRegistry(
         val files = response.chapter?.data.orEmpty()
         // Never shift pages if the source changed the chapter's page count.
         if (files.size != page.count || page.index !in files.indices) return@withLock emptyList()
+        val hash = response.chapter?.hash.orEmpty()
+        val fileName = files.getOrNull(page.index).orEmpty()
         buildList {
             add(url(response, "data", files[page.index]))
             val saver = response.chapter?.dataSaver.orEmpty()
             if (saver.size == files.size) add(url(response, "data-saver", saver[page.index]))
+            if (hash.isNotBlank() && fileName.isNotBlank()) {
+                add("https://uploads.mangadex.org/data/$hash/$fileName")
+                if (saver.size == files.size) {
+                    add("https://uploads.mangadex.org/data-saver/$hash/${saver[page.index]}")
+                }
+            }
         }.distinct().filter { it != original }
     }
 
@@ -125,7 +146,7 @@ class MangaDexPageInterceptor(private val registry: MangaDexPageRegistry = Manga
             throw IOException("Não foi possível atualizar o servidor das páginas.", error).apply { failure?.let(::addSuppressed) }
         }
         if (alternatives.isEmpty()) return response ?: throw failure!!
-        for (url in alternatives.take(2)) {
+        for (url in alternatives.take(4)) {
             if (chain.call().isCanceled()) { response?.close(); throw IOException("Canceled") }
             response?.close()
             response = null
@@ -143,7 +164,10 @@ class MangaDexPageInterceptor(private val registry: MangaDexPageRegistry = Manga
     private fun recoverable(code: Int) = code == 404 || code == 410 || code in 500..599
     private fun recoverable(error: IOException): Boolean {
         val causes = generateSequence<Throwable>(error) { it.cause }.take(16).toList()
-        if (causes.any { it is CertificateException || it is SSLPeerUnverifiedException }) return false
-        return causes.any { it is SocketException || it is SocketTimeoutException || it is javax.net.ssl.SSLProtocolException }
+        return causes.any {
+            it is SocketException || it is SocketTimeoutException || it is javax.net.ssl.SSLException ||
+            it is CertificateException || it is SSLPeerUnverifiedException || it is java.net.UnknownHostException ||
+            it is java.net.ConnectException
+        }
     }
 }

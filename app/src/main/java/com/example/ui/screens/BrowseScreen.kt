@@ -40,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
@@ -240,6 +241,20 @@ fun BrowseScreen(
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (onBackFromSearch != null) {
+                    IconButton(
+                        onClick = {
+                            dismissSearchKeyboard()
+                            onBackFromSearch()
+                        },
+                        modifier = Modifier.testTag("search_back_to_browse")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar para Explorar"
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = queryInput,
                     onValueChange = { queryInput = it; onQueryChange(it) },
@@ -390,7 +405,11 @@ fun BrowseScreen(
 
         // Intercept back button to return to full carousel view when filtering
         BackHandler(enabled = !showFilters && (searchFocused || keyboardVisible || isFilterOrSearchActive || onBackFromSearch != null)) {
-            if (searchFocused || keyboardVisible) dismissSearchKeyboard() else if (onBackFromSearch != null) onBackFromSearch() else {
+            if (searchFocused || keyboardVisible) {
+                dismissSearchKeyboard()
+            } else if (onBackFromSearch != null) {
+                onBackFromSearch()
+            } else {
                 filtersApplied = false
                 onClearFilters()
             }
@@ -502,9 +521,17 @@ fun BrowseScreen(
             // Filtered / Search Results in Grid
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("${state.mangaList.size} resultados", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { if (state.searchQuery.isNotBlank()) onSearchSubmit("") else { filtersApplied = false; onClearFilters() } }, modifier = Modifier.testTag("clear_filter_header_button")) {
-                        Text(if (state.searchQuery.isNotBlank()) "Limpar busca" else "Limpar filtros")
+                    val countLabel = if (isFilterOrSearchActive) "${state.mangaList.size} resultados" else "Sugestões e Populares (${state.mangaList.size})"
+                    Text(countLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (isFilterOrSearchActive) {
+                        TextButton(onClick = {
+                            queryInput = ""
+                            filtersApplied = false
+                            onClearFilters()
+                            onSearchSubmit("")
+                        }, modifier = Modifier.testTag("clear_filter_header_button")) {
+                            Text("Limpar busca")
+                        }
                     }
                 }
 

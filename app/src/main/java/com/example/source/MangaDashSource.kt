@@ -41,9 +41,12 @@ class MangaDashSource(
     override suspend fun getPopularManga(language: String) = searchManga("", language)
     override suspend fun searchManga(query: String) = searchManga(query, lang)
 
-    private fun catalogUrl(query: String, year: Int? = null): String = "$baseUrl/mangas".toHttpUrl().newBuilder().apply {
+    private fun catalogUrl(query: String, year: Int? = null, genre: String? = null): String = "$baseUrl/mangas".toHttpUrl().newBuilder().apply {
         if (query.isNotBlank()) addQueryParameter("q", query.trim())
         if (year != null) addQueryParameter("ano", year.toString())
+        if (!genre.isNullOrBlank()) {
+            addQueryParameter("genero", genre.trim().lowercase())
+        }
     }.build().toString()
 
     private fun parseCatalog(doc: Document): List<MangaModel> =
@@ -55,8 +58,10 @@ class MangaDashSource(
                 ?: image?.attr("title")?.takeIf { it.isNotBlank() }
                 ?: image?.attr("alt")?.removePrefix("Capa do mangá ")?.substringBefore(" - Acompanhe online")
             if (url.isBlank() || title.isNullOrBlank()) return@mapNotNull null
+            val cardGenres = card.select(".badge, .tag, .genre, .categoria, .genres a").map { it.text().trim() }.filter { it.isNotBlank() }
             MangaModel(url = url, id = "$id:${url.toHttpUrl().encodedPath}", title = title,
                 coverUrl = image?.absUrl("data-src")?.ifBlank { image.absUrl("src") }.orEmpty(), sourceId = id,
+                genres = cardGenres,
                 isNsfw = card.hasClass("is-plus18") || card.selectFirst(".badge-18, .adult-badge") != null,
                 year = card.selectFirst(".netflix-meta-custom .fa-calendar")?.parent()?.text()?.trim()?.toIntOrNull())
         }.distinctBy { it.url }
@@ -65,9 +70,21 @@ class MangaDashSource(
         if (!supportsLanguage(language)) return@withContext emptyList()
         val url = catalogUrl(query)
         val doc = Jsoup.parse(fetch(url), url)
-        val results = parseCatalog(doc)
-        if (results.isEmpty() && (query.isBlank() || doc.selectFirst("#mangasGrid") == null)) throw IOException("MangaDash não retornou seu catálogo. Tente novamente mais tarde.")
-        results
+        val results = parseCatalog(doc).toMutableList()
+        val nextLinks = doc.select(".pagination a[href], a.page-link[href], .page-item a[href]")
+            .map { it.absUrl("href") }
+            .filter { it.isNotBlank() && it != url && (it.contains("page=") || it.contains("pagina=")) }
+            .distinct()
+        for (nextUrl in nextLinks.take(2)) {
+            coroutineContext.ensureActive()
+            try {
+                val nextDoc = Jsoup.parse(fetch(nextUrl), nextUrl)
+                results.addAll(parseCatalog(nextDoc))
+            } catch (_: Exception) {}
+        }
+        val distinctResults = results.distinctBy { it.url }
+        if (distinctResults.isEmpty() && (query.isBlank() || doc.selectFirst("#mangasGrid") == null)) throw IOException("MangaDash não retornou seu catálogo. Tente novamente mais tarde.")
+        distinctResults
     }
 
     override suspend fun getCatalogManga(query: String, language: String, yearRange: String): List<MangaModel> = withContext(Dispatchers.IO) {
@@ -83,6 +100,52 @@ class MangaDashSource(
             val filteredUrl = catalogUrl(query, year)
             parseCatalog(Jsoup.parse(fetch(filteredUrl), filteredUrl))
         }.distinctBy { it.url }
+    }
+
+    override suspend fun getFilteredCatalog(query: String, language: String, yearRange: String, filters: CatalogFilters): List<MangaModel> = withContext(Dispatchers.IO) {
+        if (!supportsLanguage(language)) return@withContext emptyList()
+        val genreFilter = filters.included.firstOrNull { it.startsWith("genre:") }
+        val genreSlug = genreFilter?.substringAfter("genre:")?.takeIf { it.isNotBlank() }
+
+        val bounds = yearRange.split("-").mapNotNull { it.toIntOrNull() }
+        val candidates = if (bounds.size == 2) {
+            val url = catalogUrl(query, genre = genreSlug)
+            val doc = Jsoup.parse(fetch(url), url)
+            val years = doc.select("#filterAno option").mapNotNull { it.attr("value").toIntOrNull() }
+                .filter { it in bounds[0]..bounds[1] }.distinct()
+            years.flatMap { year ->
+                coroutineContext.ensureActive()
+                val filteredUrl = catalogUrl(query, year, genreSlug)
+                parseCatalog(Jsoup.parse(fetch(filteredUrl), filteredUrl))
+            }.distinctBy { it.url }
+        } else {
+            val url = catalogUrl(query, genre = genreSlug)
+            val doc = Jsoup.parse(fetch(url), url)
+            val all = parseCatalog(doc).toMutableList()
+            val nextLinks = doc.select(".pagination a[href], a.page-link[href], .page-item a[href]")
+                .map { it.absUrl("href") }
+                .filter { it.isNotBlank() && it != url && (it.contains("page=") || it.contains("pagina=")) }
+                .distinct()
+            for (nextUrl in nextLinks.take(2)) {
+                coroutineContext.ensureActive()
+                try {
+                    val nextDoc = Jsoup.parse(fetch(nextUrl), nextUrl)
+                    all.addAll(parseCatalog(nextDoc))
+                } catch (_: Exception) {}
+            }
+            all.distinctBy { it.url }
+        }
+        if (!filters.isActive) return@withContext candidates
+        candidates.map { manga ->
+            if (manga.genres.isNotEmpty()) manga else {
+                try {
+                    val details = getMangaDetails(manga.url)
+                    details.copy(id = manga.id, url = manga.url, sourceId = manga.sourceId,
+                        year = details.year ?: manga.year, coverUrl = details.coverUrl.ifBlank { manga.coverUrl },
+                        genres = details.genres.ifEmpty { manga.genres })
+                } catch (_: Exception) { manga }
+            }
+        }
     }
 
     private fun currentUrl(url: String): String {

@@ -653,7 +653,7 @@ private fun ReaderPageImage(
                                         it is java.security.cert.CertificateException || it is javax.net.ssl.SSLPeerUnverifiedException
                                     }
                                     val registry = com.example.data.network.MangaDexPages.registry
-                                    if (registry.contains(url) && code !in listOf(403, 429) && !certificateFailure) {
+                                    if (registry.contains(url) && code !in listOf(403, 429)) {
                                         registry.invalidate(url)
                                         val alternatives = try { registry.alternatives(url) }
                                         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
