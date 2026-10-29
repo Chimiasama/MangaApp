@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.map
+import com.example.home.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -65,7 +68,7 @@ data class BrowseUiState(
     val unclassifiedExcluded: Int = 0
 )
 
-data class HomeUiState(val sections: List<GenreCarouselSection> = emptyList(), val isLoading: Boolean = true, val error: String? = null)
+data class HomeUiState(val sections: List<GenreCarouselSection> = emptyList(), val isLoading: Boolean = true, val error: String? = null, val configurations: List<HomeSection> = emptyList())
 
 data class MangaDetailUiState(
     val manga: MangaModel? = null,
@@ -130,6 +133,7 @@ fun matchesYearRange(year: Int?, rangeKey: String, description: String = ""): Bo
 class MangaViewModel(
     val repository: MangaRepository,
     private val loadBrowseOnInit: Boolean = true,
+    private val loadHomeOnInit: Boolean = false,
     private val readerPages: suspend (ChapterModel, String) -> List<String> = { chapter, source ->
         repository.getPages(chapter.chapterUrl, chapter.id, source)
     },
@@ -155,24 +159,55 @@ class MangaViewModel(
     private val _searchQuery = MutableStateFlow("")
     private val _isLoadingBrowse = MutableStateFlow(false)
     private val _browseData = MutableStateFlow(MangaData(
-        emptyList(), buildCarouselSections(MangaDexSource.STARTER_FALLBACK_MANGAS)
+        emptyList(), emptyList()
     ))
 
     private val _homeUiState = MutableStateFlow(HomeUiState())
     val homeUiState: StateFlow<HomeUiState> = _homeUiState
     private var homeJob: Job? = null
 
+    private var homeConfigurations: List<HomeSection> = HomeSections.defaults
+    private var homeCatalogSections = emptyList<GenreCarouselSection>()
+    private var homeHistoryItems = emptyList<MangaModel>()
+    private var browseRequested = false
+
+    fun ensureSearchLoaded() { if (!browseRequested) loadBrowseManga() }
+
     fun refreshHome() {
         homeJob?.cancel()
-        _homeUiState.update { it.copy(isLoading = true) }
-        homeJob = viewModelScope.launch {
-            try {
-                val language = repository.preferencesRepository.selectedLanguage.first()
-                val items = repository.getPopularManga("all", language)
-                _homeUiState.value = HomeUiState(buildCarouselSections(items), false)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { _homeUiState.update { it.copy(isLoading = false, error = "Fonte indisponível") } }
+        homeJob = viewModelScope.launch { loadHomeSections(homeConfigurations) }
+    }
+
+    private fun publishHome(loading: Boolean = false, error: String? = null) {
+        val sections = homeConfigurations.filter { it.active }.sortedBy { it.position }.mapNotNull { section ->
+            if (section.type == HomeSectionType.CONTINUE_READING)
+                GenreCarouselSection(section.id, section.title, "all", homeHistoryItems, true)
+            else homeCatalogSections.find { it.id == section.id }?.copy(title = section.title)
         }
+        _homeUiState.value = HomeUiState(deduplicateHomeSections(sections, homeConfigurations.associate { it.id to it.itemCount }), loading, error, homeConfigurations)
+    }
+
+    private suspend fun loadHomeSections(configurations: List<HomeSection>) {
+        homeConfigurations = configurations
+        homeCatalogSections = emptyList()
+        publishHome(loading = true)
+        val pools = mutableMapOf<Triple<String, String, String>, List<MangaModel>>()
+        var failure: String? = null
+        for (section in configurations.filter { it.active && it.type == HomeSectionType.CATALOG }.sortedBy { it.position }) {
+            try {
+                val filter = section.filters
+                val key = Triple(filter.sourceId, filter.language, filter.yearRange)
+                val candidates = pools[key] ?: repository.loadCatalog("", filter.sourceId, filter.language, filter.yearRange).items.also { pools[key] = it }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                val items = sortHomeItems(candidates.filter {
+                    filter.filters.matches(it) && matchesYearRange(it.year, filter.yearRange, it.description)
+                }, section.sort)
+                homeCatalogSections = homeCatalogSections + GenreCarouselSection(section.id, section.title, "all", items)
+                publishHome(loading = true, error = failure)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { failure = "Não foi possível atualizar todas as seções." }
+        }
+        publishHome(error = failure)
     }
 
     // Room Flows
@@ -307,6 +342,24 @@ class MangaViewModel(
     init {
         // Initial load of browse items
         if (loadBrowseOnInit) loadBrowseManga()
+        if (loadHomeOnInit) {
+            viewModelScope.launch {
+                repository.preferencesRepository.homeSections.collectLatest { sections ->
+                    homeJob?.cancel()
+                    homeJob = launch { loadHomeSections(sections) }
+                }
+            }
+            viewModelScope.launch {
+                repository.readingProgress.distinctUntilChangedBy { history -> history.map { it.mangaUrl } }.collectLatest { history ->
+                    homeHistoryItems = history.map { progress ->
+                        val cached = repository.getMangaByUrlSync(progress.mangaUrl)
+                        MangaModel(progress.mangaUrl, cached?.id ?: progress.mangaUrl, cached?.title ?: "Continuar lendo", cached?.coverUrl.orEmpty(),
+                            sourceId = cached?.sourceId.orEmpty())
+                    }
+                    publishHome(_homeUiState.value.isLoading, _homeUiState.value.error)
+                }
+            }
+        }
         viewModelScope.launch {
             repository.connectivity.distinctUntilChanged().collect { online ->
                 if (applyFiltersJob?.isActive != true &&
@@ -314,75 +367,6 @@ class MangaViewModel(
                         (!online && _isLoadingBrowse.value))) loadBrowseManga()
             }
         }
-    }
-
-    private fun buildCarouselSections(allMangas: List<MangaModel>): List<GenreCarouselSection> {
-        if (allMangas.isEmpty()) return emptyList()
-
-        val highlights = allMangas.take(20)
-
-        fun getForGenre(genreKey: String, keywords: List<String>): List<MangaModel> {
-            val matched = allMangas.filter { manga ->
-                val gLower = manga.genres.map { it.lowercase() }
-                val tLower = manga.title.lowercase()
-                val dLower = manga.description.lowercase()
-                keywords.any { kw ->
-                    gLower.any { it.contains(kw) } || tLower.contains(kw) || dLower.contains(kw)
-                }
-            }
-            return if (matched.size >= 5) {
-                matched.take(20)
-            } else {
-                (matched + allMangas.shuffled(java.util.Random(genreKey.hashCode().toLong())))
-                    .distinctBy { it.id }
-                    .take(20)
-            }
-        }
-
-        return listOf(
-            GenreCarouselSection(
-                id = "highlights",
-                title = "🔥 Destaques & Populares",
-                genreKey = "all",
-                items = highlights
-            ),
-            GenreCarouselSection(
-                id = "shounen",
-                title = "⚔️ Shounen Épico",
-                genreKey = "Shounen",
-                items = getForGenre("Shounen", listOf("shounen", "shonen", "ninja", "herói", "luta", "one piece", "naruto", "jujutsu", "chainsaw", "bleach", "hero"))
-            ),
-            GenreCarouselSection(
-                id = "action",
-                title = "💥 Ação & Aventura",
-                genreKey = "Ação",
-                items = getForGenre("Ação", listOf("ação", "action", "aventura", "adventure", "batalha", "combate", "caçador", "hunter"))
-            ),
-            GenreCarouselSection(
-                id = "fantasy_isekai",
-                title = "🪄 Fantasia & Isekai",
-                genreKey = "Fantasia",
-                items = getForGenre("Fantasia", listOf("fantasia", "fantasy", "isekai", "magia", "magic", "elfa", "slime", "reencarna"))
-            ),
-            GenreCarouselSection(
-                id = "romance_comedy",
-                title = "❤️ Romance & Comédia Escolar",
-                genreKey = "Romance",
-                items = getForGenre("Romance", listOf("romance", "comédia", "comedy", "escolar", "school", "escola", "amor"))
-            ),
-            GenreCarouselSection(
-                id = "scifi_supernatural",
-                title = "🚀 Sci-Fi & Sobrenatural",
-                genreKey = "Sci-Fi",
-                items = getForGenre("Sci-Fi", listOf("sci-fi", "science fiction", "ficção", "sobrenatural", "supernatural", "demônios", "psíquico", "tempo", "pedra"))
-            ),
-            GenreCarouselSection(
-                id = "seinen",
-                title = "🗡️ Seinen & Histórias Maduras",
-                genreKey = "Seinen",
-                items = getForGenre("Seinen", listOf("seinen", "sombrio", "dark", "medieval", "espada", "guerra", "vingança"))
-            )
-        )
     }
 
     fun previewBrowseFilters(request: BrowseFilterRequest) {
@@ -438,6 +422,7 @@ class MangaViewModel(
     }
 
     fun loadBrowseManga(debounceMillis: Long = 0) {
+        browseRequested = true
         val request = ++browseRequestId
         browseJob?.cancel()
         val currentSource = _selectedSourceId.value
@@ -480,12 +465,9 @@ class MangaViewModel(
 
                 ensureActive()
                 if (request != browseRequestId) return@launch
-                if (_homeUiState.value.isLoading && _homeUiState.value.sections.isEmpty() && popular && currentSource == "all" && currentYearRange == "all") {
-                    _homeUiState.value = HomeUiState(buildCarouselSections(results), false)
-                }
                 _browseData.value = MangaData(
                     list = results.filter(catalogFilters::matches),
-                    carousels = if (popular && currentYearRange == "all" && results.isNotEmpty()) buildCarouselSections(results) else emptyList(),
+                    carousels = emptyList(),
                     selection = selection(),
                     error = sourceWarning,
                     unclassified = results.count { catalogFilters.missingExclusionData(it) }
@@ -497,7 +479,6 @@ class MangaViewModel(
             } catch (error: Exception) {
                 if (request == browseRequestId) _browseData.value = browseError(selection(), error)
             } finally {
-                if (_homeUiState.value.sections.isEmpty()) _homeUiState.update { it.copy(isLoading = false, error = _browseData.value.error) }
                 if (request == browseRequestId) _isLoadingBrowse.value = false
             }
         }

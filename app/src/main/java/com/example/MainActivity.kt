@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MangaViewModel(mangaRepository) as T
+                return MangaViewModel(mangaRepository, loadBrowseOnInit = false, loadHomeOnInit = true) as T
             }
         }
     }

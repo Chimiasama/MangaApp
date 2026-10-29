@@ -193,12 +193,24 @@ fun MangaApp(
                     onSearch = { navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true } },
                     onMangaClick = { manga -> mangaViewModel.openMangaDetails(manga); navController.navigate(MangaDestinations.DETAIL) },
                     onFavoriteToggle = mangaViewModel::toggleFavorite,
-                    onMore = { genre ->
-                        mangaViewModel.selectGenre(genre)
-                        navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true }
+                    onContinue = { manga ->
+                        history.find { it.mangaUrl == manga.url }?.let {
+                            mangaViewModel.resumeReadingFromProgress(it)
+                            navController.navigate(MangaDestinations.READER)
+                        }
+                    },
+                    onMore = { id ->
+                        val section = homeState.configurations.find { it.id == id }
+                        if (section?.type == com.example.home.HomeSectionType.CONTINUE_READING) {
+                            navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true; restoreState = true }
+                        } else {
+                            if (section != null) mangaViewModel.applyBrowseFilters(section.filters)
+                            navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true }
+                        }
                     }, onRefresh = mangaViewModel::refreshHome)
             }
             composable(MangaDestinations.SEARCH) {
+                androidx.compose.runtime.LaunchedEffect(Unit) { mangaViewModel.ensureSearchLoaded() }
                 BrowseScreen(
                     onBackFromSearch = {
                         navController.navigate(MangaDestinations.BROWSE) {
@@ -275,6 +287,8 @@ fun MangaApp(
             composable(MangaDestinations.SETTINGS) {
                 val context = LocalContext.current
                 SettingsScreen(
+                    homeSources = mangaViewModel.repository.getAvailableSources(),
+                    onHomeSectionsChanged = settingsViewModel::setHomeSections,
                     onConnectionDiagnosticsToggled = settingsViewModel::setConnectionDiagnosticsEnabled,
                     state = settingsState,
                     syncState = cloudSyncState,

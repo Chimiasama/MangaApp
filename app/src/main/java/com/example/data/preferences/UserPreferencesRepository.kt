@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
@@ -63,7 +64,15 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    val homeSections: Flow<List<com.example.home.HomeSection>> = context.dataStore.data.map {
+        com.example.home.HomeSections.decode(it[HOME_SECTIONS])
+    }.distinctUntilChanged()
+    suspend fun setHomeSections(sections: List<com.example.home.HomeSection>) {
+        context.dataStore.edit { it[HOME_SECTIONS] = com.example.home.HomeSections.encode(sections) }
+    }
+
     companion object {
+        val HOME_SECTIONS = stringPreferencesKey("home_sections_v1")
         val CONNECTION_DIAGNOSTICS = booleanPreferencesKey("connection_diagnostics")
         const val DEFAULT_LANGUAGE = "pt-br"
         val CUSTOM_RULES_JSON = stringPreferencesKey("custom_rules_json")

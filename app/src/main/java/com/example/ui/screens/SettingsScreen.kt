@@ -113,7 +113,9 @@ fun SettingsScreen(
     onBatterySaverToggled: (Boolean) -> Unit = {},
     onBatterySaverDimPercentChanged: (Int) -> Unit = {},
     onSyncOnWifiOnlyToggled: (Boolean) -> Unit = {},
-    onConnectionDiagnosticsToggled: (Boolean) -> Unit = {}
+    onConnectionDiagnosticsToggled: (Boolean) -> Unit = {},
+    homeSources: List<com.example.source.MangaSource> = emptyList(),
+    onHomeSectionsChanged: (List<com.example.home.HomeSection>) -> Unit = {}
 ) {
     val context = LocalContext.current
     var showRulesModal by remember { mutableStateOf(false) }
@@ -154,6 +156,9 @@ fun SettingsScreen(
                     modifier = Modifier.testTag("connection_diagnostics_switch"))
             }
         }
+        Spacer(Modifier.height(16.dp))
+
+        com.example.ui.components.HomeSectionsEditor(state.homeSections, homeSources, onHomeSectionsChanged)
         Spacer(Modifier.height(16.dp))
 
         // Section: Theme & Appearance Preferences (Persisted via DataStore)

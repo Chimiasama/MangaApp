@@ -21,7 +21,7 @@ import com.example.ui.viewmodel.HomeUiState
 @Composable
 fun HomeScreen(state: HomeUiState, favorites: Set<String>, onSearch: () -> Unit,
     onMangaClick: (MangaModel) -> Unit, onFavoriteToggle: (MangaModel) -> Unit,
-    onMore: (String) -> Unit, onRefresh: () -> Unit) {
+    onMore: (String) -> Unit, onRefresh: () -> Unit, onContinue: (MangaModel) -> Unit = onMangaClick) {
     Column(Modifier.fillMaxSize().testTag("home_screen")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Explorar", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -34,15 +34,18 @@ fun HomeScreen(state: HomeUiState, favorites: Set<String>, onSearch: () -> Unit,
                 if (state.error != null) item {
                     TextButton(onClick = onRefresh) { Text("Não foi possível atualizar as seções. Tentar novamente") }
                 }
+                if (!state.isLoading && state.sections.isEmpty() && state.error == null) item {
+                    Text("Nenhuma seção com resultados. Configure a tela inicial nos Ajustes.", Modifier.padding(16.dp))
+                }
                 items(state.sections, key = { it.id }) { section ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("carousel_section_${section.id}")) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(section.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                            TextButton(onClick = { onMore(section.genreKey) }) { Text("Ver mais") }
+                            TextButton(onClick = { onMore(section.id) }) { Text("Ver mais") }
                         }
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(section.items, key = { it.url }) { manga ->
-                                MangaCard(manga, { onMangaClick(manga) }, manga.url in favorites,
+                                MangaCard(manga, { if (section.isContinueReading) onContinue(manga) else onMangaClick(manga) }, manga.url in favorites,
                                     { onFavoriteToggle(manga) }, modifier = Modifier.width(135.dp))
                             }
                         }

@@ -44,6 +44,7 @@ data class MangaDexMangaAttributesDto(
     val year: Int? = null,
     val publicationDemographic: String? = null,
     val originalLanguage: String? = null,
+    val updatedAt: String? = null,
     val contentRating: String? = null,
     val tags: List<MangaDexTagDto>? = emptyList()
 )

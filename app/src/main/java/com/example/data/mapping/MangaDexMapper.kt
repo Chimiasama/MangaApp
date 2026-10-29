@@ -174,7 +174,8 @@ object MangaDexMapper {
             author = extractAuthor(dto),
             status = dto.attributes?.status ?: "Unknown",
             originalLanguage = dto.attributes?.originalLanguage.orEmpty(),
-            year = dto.attributes?.year
+            year = dto.attributes?.year,
+            updatedAt = dto.attributes?.updatedAt.orEmpty()
         )
     }
 

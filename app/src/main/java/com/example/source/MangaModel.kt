@@ -12,7 +12,9 @@ data class MangaModel(
     val author: String = "",
     val status: String = "Unknown",
     val year: Int? = null,
-    val originalLanguage: String = ""
+    val originalLanguage: String = "",
+    val updatedAt: String = "",
+    val rating: Double? = null
 )
 
 /**
@@ -22,6 +24,7 @@ data class GenreCarouselSection(
     val id: String,
     val title: String,
     val genreKey: String,
-    val items: List<MangaModel> = emptyList()
+    val items: List<MangaModel> = emptyList(),
+    val isContinueReading: Boolean = false
 )
 
