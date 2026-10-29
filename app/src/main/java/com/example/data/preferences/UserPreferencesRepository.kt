@@ -104,20 +104,13 @@ class UserPreferencesRepository(private val context: Context) {
         val NSFW_ENABLED = booleanPreferencesKey("nsfw_enabled")
     }
 
-    @Volatile
-    private var _cachedNsfw: Boolean = false
-    val cachedNsfw: Boolean get() = _cachedNsfw
+    val cachedNsfw: Boolean get() = false
 
-    val nsfwEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        val v = prefs[NSFW_ENABLED] ?: false
-        _cachedNsfw = v
-        v
-    }
+    val nsfwEnabled: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(false)
 
     suspend fun setNsfwEnabled(enabled: Boolean) {
-        _cachedNsfw = enabled
         context.dataStore.edit { prefs ->
-            prefs[NSFW_ENABLED] = enabled
+            prefs[NSFW_ENABLED] = false
         }
     }
 

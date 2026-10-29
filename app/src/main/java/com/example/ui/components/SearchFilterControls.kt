@@ -22,9 +22,8 @@ fun SearchFilterControls(
     isNsfwEnabled: Boolean = false,
     onChanged: (BrowseFilterRequest) -> Unit
 ) {
-    val firstGroups = if (isNsfwEnabled) listOf(FilterGroup.CONTENT_RATING, FilterGroup.GENRE, FilterGroup.THEME)
-        else listOf(FilterGroup.GENRE, FilterGroup.THEME)
-    CatalogFilterEditor(request.filters, { onChanged(request.copy(filters = it)) }, isNsfwEnabled = isNsfwEnabled, groups = firstGroups)
+    val firstGroups = listOf(FilterGroup.GENRE, FilterGroup.THEME)
+    CatalogFilterEditor(request.filters, { onChanged(request.copy(filters = it)) }, isNsfwEnabled = false, groups = firstGroups)
     Text("Idioma dos capítulos", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         searchLanguages.forEach { (code, label) ->

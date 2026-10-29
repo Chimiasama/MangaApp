@@ -218,8 +218,7 @@ class MangaRepository(
     }
 
     fun getAvailableSources(): List<MangaSource> {
-        val isNsfw = preferencesRepository.cachedNsfw
-        return sourceRegistry.values.filter { source -> isNsfw || !source.isNsfw }
+        return sourceRegistry.values.filter { !it.isNsfw }
     }
 
     fun getSourceById(id: String): MangaSource? = sourceRegistry[id]
@@ -258,9 +257,8 @@ class MangaRepository(
         }
         val sources = (if (sourceId.isNullOrBlank() || sourceId == "all") getAvailableSources()
             else listOfNotNull(sourceRegistry[sourceId]))
-        val isNsfwActive = preferencesRepository.cachedNsfw
-        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
-        fun allowed(manga: MangaModel) = isNsfwActive || (!manga.isNsfw && manga.genres.none { adultTags.contains(it.trim().lowercase()) })
+        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+", "pornographic", "erotica")
+        fun allowed(manga: MangaModel) = !manga.isNsfw && manga.genres.none { adultTags.contains(it.trim().lowercase()) }
         val responses = kotlinx.coroutines.coroutineScope {
             sources.map { source ->
                 async {
@@ -310,15 +308,14 @@ class MangaRepository(
             getAvailableSources()
         }
 
-        val isNsfwActive = preferencesRepository.cachedNsfw
-        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
+        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+", "pornographic", "erotica")
 
         val responses = kotlinx.coroutines.coroutineScope {
             sourcesToFetch.map { src ->
                 async {
                     try {
                         Result.success(src.getPopularManga(language).filter { manga ->
-                            isNsfwActive || (!manga.isNsfw && manga.genres.none { g -> adultTags.contains(g.trim().lowercase()) })
+                            !manga.isNsfw && manga.genres.none { g -> adultTags.contains(g.trim().lowercase()) }
                         })
                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                     catch (error: Exception) { Result.failure<List<MangaModel>>(error) }
@@ -335,7 +332,7 @@ class MangaRepository(
                 mangaDao.getAllCachedMangasSync()
             }
             val filteredCached = cachedEntities.filter { entity ->
-                if (!isNsfwActive && (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) })) return@filter false
+                if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 true
             }
             if (filteredCached.isEmpty() && responses.isNotEmpty() && responses.all { it.isFailure }) {
@@ -373,8 +370,7 @@ class MangaRepository(
             getAvailableSources()
         }
 
-        val isNsfwActive = preferencesRepository.cachedNsfw
-        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+")
+        val adultTags = setOf("hentai", "+18", "adulto", "erotico", "erótica", "nsfw", "smut", "doujinshi", "ecchi", "hentai / 18+", "pornographic", "erotica")
 
         var lastFailure: Exception? = null
         var completedSources = 0
@@ -383,7 +379,7 @@ class MangaRepository(
             try {
                 val list = src.searchManga(query, language)
                 val filtered = list.filter { manga ->
-                    if (!isNsfwActive && (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) })) return@filter false
+                    if (manga.isNsfw || manga.genres.any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                     true
                 }
                 results.addAll(filtered)
@@ -405,7 +401,7 @@ class MangaRepository(
             }
             val queryLower = query.lowercase(Locale.getDefault())
             val matched = cachedEntities.filter { entity ->
-                if (!isNsfwActive && (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) })) return@filter false
+                if (entity.isNsfw || entity.genres.split(",").any { g -> adultTags.contains(g.trim().lowercase()) }) return@filter false
                 entity.title.lowercase(Locale.getDefault()).contains(queryLower) ||
                 entity.genres.lowercase(Locale.getDefault()).contains(queryLower)
             }

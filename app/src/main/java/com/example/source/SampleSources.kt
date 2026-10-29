@@ -21,24 +21,6 @@ object SampleSources {
         "chapterLinkSelector": "a.chapter-url",
         "pageImageSelector": "div.reader-images img",
         "pageImageAttr": "src"
-      },
-      {
-        "id": "hentai_adult_source",
-        "name": "Hentai Vault (+18 Restricted)",
-        "baseUrl": "https://hentai-vault-example.com",
-        "isNsfw": true,
-        "lang": "pt-BR",
-        "listSelector": "div.adult-item",
-        "titleSelector": "h4.item-title",
-        "coverAttrSelector": "img.thumb",
-        "linkAttrSelector": "a.item-link",
-        "detailDescSelector": "p.adult-desc",
-        "detailAuthorSelector": "span.artist",
-        "chapterListSelector": "div.chapter-row",
-        "chapterTitleSelector": "span.ch-name",
-        "chapterLinkSelector": "a.ch-link",
-        "pageImageSelector": "div.adult-reader img",
-        "pageImageAttr": "src"
       }
     ]
     """.trimIndent()
@@ -47,37 +29,11 @@ object SampleSources {
         override val id: String,
         override val name: String,
         override val baseUrl: String,
-        override val isNsfw: Boolean,
+        override val isNsfw: Boolean = false,
         override val lang: String = "pt-BR"
     ) : MangaSource {
 
-        private val items = if (isNsfw) {
-            listOf(
-                MangaModel(
-                    url = "$baseUrl/manga/hentai_1",
-                    id = "hentai_1",
-                    title = "[+18] Secret Romance Uncensored",
-                    coverUrl = "https://picsum.photos/seed/nsfw1/300/450",
-                    description = "Conteúdo maduro e restrito para maiores de 18 anos.",
-                    genres = listOf("Hentai", "+18", "Romance", "Adulto"),
-                    isNsfw = true,
-                    sourceId = id,
-                    author = "Red Studio"
-                ),
-                MangaModel(
-                    url = "$baseUrl/manga/hentai_2",
-                    id = "hentai_2",
-                    title = "[+18] Midnight Stories Vol 2",
-                    coverUrl = "https://picsum.photos/seed/nsfw2/300/450",
-                    description = "Coletânea de histórias adultas.",
-                    genres = listOf("Hentai", "Drama", "+18", "Adulto"),
-                    isNsfw = true,
-                    sourceId = id,
-                    author = "Akira X"
-                )
-            )
-        } else {
-            listOf(
+        private val items = listOf(
                 MangaModel(
                     url = "$baseUrl/manga/naruto_ninja",
                     id = "naruto_ninja",
@@ -189,7 +145,6 @@ object SampleSources {
                     author = "5pb. & Nitroplus"
                 )
             )
-        }
 
         override suspend fun getPopularManga(): List<MangaModel> = items
 

@@ -146,35 +146,6 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Section: Adult Content (+18 / NSFW)
-        Card(
-            modifier = Modifier.fillMaxWidth().testTag("nsfw_card"),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("🔞 Conteúdo Adulto (+18 / Hentai)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Libera mangás, doujinshis, erótica e classificação pornographic na tela inicial, buscas e catálogo.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.width(12.dp))
-                Switch(
-                    checked = state.nsfwEnabled,
-                    onCheckedChange = onNsfwToggled,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = CrimsonRed,
-                        checkedTrackColor = CrimsonRed.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier.testTag("nsfw_switch")
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

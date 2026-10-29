@@ -118,15 +118,7 @@ class MangaDexSource(
         fun groupValues(group: FilterGroup) = included.filter { it.group == group }.map { it.id.substringAfter(':') }.takeIf { it.isNotEmpty() }
         val years: List<Int?> = if (bounds.size == 2 && bounds[0] <= bounds[1]) (bounds[0]..bounds[1]).toList() else listOf(null)
         val languages = when (language) { "all" -> null; "pt-br" -> listOf("pt-br", "pt"); "es" -> listOf("es", "es-la"); else -> listOf(language) }
-        val ratingValues = when {
-            filters.included.any { it.startsWith("rating:") } -> {
-                filters.included.filter { it.startsWith("rating:") }.map { it.substringAfter("rating:") }
-            }
-            filters.excluded.any { it.startsWith("rating:") } -> {
-                listOf("safe", "suggestive", "erotica", "pornographic") - filters.excluded.filter { it.startsWith("rating:") }.map { it.substringAfter("rating:") }.toSet()
-            }
-            else -> listOf("safe", "suggestive")
-        }
+        val ratingValues = listOf("safe", "suggestive")
         suspend fun page(year: Int?, offset: Int = 0, chronological: Boolean = false) = catalogApi.getFilteredCatalog(
             title = query.trim().takeIf { it.isNotEmpty() }, year = year, offset = offset,
             languages = languages, includedTags = included.mapNotNull { it.mangaDexTagId }.takeIf { it.isNotEmpty() },

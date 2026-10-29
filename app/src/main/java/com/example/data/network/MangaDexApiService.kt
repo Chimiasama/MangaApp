@@ -24,7 +24,7 @@ interface MangaDexApiService {
         @Query("order[followedCount]") orderFollowedCount: String? = null,
         @Query("order[relevance]") orderRelevance: String? = null,
         @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
-        @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive", "erotica", "pornographic"),
+        @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive"),
         @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
     ): MangaDexMangaListResponse
 
@@ -42,7 +42,7 @@ interface MangaDexApiService {
         @Query("offset") offset: Int = 0,
         @Query("translatedLanguage[]") translatedLanguages: List<String>? = null,
         @Query("order[chapter]") orderChapter: String = "desc",
-        @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive", "erotica", "pornographic"),
+        @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive"),
         @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
     ): MangaDexChapterFeedResponse
 

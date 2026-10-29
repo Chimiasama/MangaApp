@@ -240,6 +240,7 @@ fun MangaApp(
         ) {
             composable(MangaDestinations.BROWSE) {
                 HomeScreen(homeState, favorites.map { it.url }.toSet(),
+                    availableSources = browseState.availableSources,
                     onSearch = { navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true } },
                     onMangaClick = { manga -> mangaViewModel.openMangaDetails(manga); navController.navigate(MangaDestinations.DETAIL) },
                     onFavoriteToggle = mangaViewModel::toggleFavorite,
