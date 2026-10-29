@@ -93,16 +93,16 @@ fun MangaCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(4.dp)
-                            .size(48.dp)
+                            .size(40.dp)
                             .testTag("favorite_button_${manga.id}")
                     ) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
                             tint = if (isFavorite) CrimsonRed else Color.White,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(26.dp)
                                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
-                                .padding(7.dp)
+                                .padding(5.dp)
                         )
                     }
                 }
@@ -112,7 +112,7 @@ fun MangaCard(
                 Text(
                     text = manga.title,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     minLines = 2,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -170,7 +171,7 @@ fun SettingsScreen(
                 .testTag("theme_preferences_card")
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.Palette,
                         contentDescription = null,
@@ -180,13 +181,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Tema & Aparência (DataStore)",
+                            text = "Tema e aparência",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "A preferência selecionada é salva via Jetpack Preferences DataStore.",
+                            text = if (state.connectionDiagnosticsEnabled) "Preferência salva via Jetpack Preferences DataStore." else "Escolha o tema do aplicativo.",
                             fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -252,7 +254,7 @@ fun SettingsScreen(
                 .testTag("reader_preferences_card")
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.MenuBook,
                         contentDescription = null,
@@ -267,8 +269,9 @@ fun SettingsScreen(
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "Estilo de navegação salvo no DataStore.",
+                            text = if (state.connectionDiagnosticsEnabled) "Estilo salvo no DataStore." else "Escolha como navegar pelas páginas.",
                             fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -331,7 +334,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.ScreenRotation,
                         contentDescription = null,
@@ -454,7 +457,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Seletor de Cor de Fundo do Leitor
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.Palette,
                         contentDescription = null,
@@ -562,12 +565,12 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Pré-carregamento de Páginas (Pre-fetch)",
+                            text = "Pré-carregamento de páginas",
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "Baixa as próximas páginas em background para transição instantânea.",
+                            text = "Prepara as próximas páginas para a leitura.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -594,7 +597,7 @@ fun SettingsScreen(
                 .testTag("battery_saver_card")
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.EnergySavingsLeaf,
                         contentDescription = null,
@@ -625,12 +628,12 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Modo Economia de Bateria (Eco Mode)",
+                            text = "Economia de bateria",
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "Fundo OLED preto puro (#000000) desliga pixels, decodificação RGB_565 poupa 50% de RAM/GPU e reduz pré-downloads.",
+                            text = if (state.connectionDiagnosticsEnabled) "OLED, RGB_565 e menos pré-downloads." else "Reduz brilho e pré-carregamento.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -671,6 +674,7 @@ fun SettingsScreen(
                                 text = "${state.batterySaverDimPercent}% de redução",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 color = Color(0xFF4CAF50)
                             )
                         }
@@ -715,7 +719,7 @@ fun SettingsScreen(
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "Evita ativações repetidas dos módulos de rádio 4G/5G móvel, economizando bateria do modem.",
+                            text = "Sincroniza somente quando houver Wi-Fi.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -747,7 +751,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "⚡ Telas OLED desligam pixels pretos. Decodificação RGB_565 poupa 50% de RAM. WorkManager sincroniza em lotes inteligentes.",
+                        text = if (state.connectionDiagnosticsEnabled) "OLED, RGB_565 e WorkManager reduzem consumo." else "Ajustes para reduzir o consumo durante a leitura.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -764,7 +768,7 @@ fun SettingsScreen(
                 .testTag("storage_cache_card")
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.Storage,
                         contentDescription = null,
@@ -781,6 +785,7 @@ fun SettingsScreen(
                         Text(
                             text = "Controle o espaço interno utilizado pelas páginas e capas salvas.",
                             fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -800,6 +805,7 @@ fun SettingsScreen(
                         Text(
                             text = "Espaço ocupado em Cache",
                             fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
@@ -842,7 +848,7 @@ fun SettingsScreen(
                 .testTag("cloud_sync_card")
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = null,
@@ -852,7 +858,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Sincronização na Nuvem (Firebase)",
+                            text = "Sincronização na nuvem",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
@@ -890,7 +896,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Sincronizando com Firebase Firestore...",
+                                text = "Sincronizando seus dados…",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = PrimaryPurple
@@ -953,6 +959,7 @@ fun SettingsScreen(
                             Text(
                                 text = "Pronto para sincronizar na nuvem.",
                                 fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -1097,7 +1104,7 @@ fun SettingsScreen(
                 .testTag("anilist_card")
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.SyncAlt,
                         contentDescription = null,
@@ -1198,6 +1205,7 @@ fun SettingsScreen(
                     Text(
                         text = "Conecte sua conta AniList para sincronizar seus capítulos lidos na nuvem de forma transparente.",
                         fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
@@ -1228,6 +1236,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        if (state.connectionDiagnosticsEnabled) {
         // Section 2: Dynamic JSON Scraper Rules Engine
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1235,7 +1244,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.Code,
                         contentDescription = null,
@@ -1283,7 +1292,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         imageVector = Icons.Default.Storage,
                         contentDescription = null,
@@ -1309,6 +1318,8 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+
+        }
 
         // App Version and Build Info Footer
         Column(
@@ -1360,6 +1371,7 @@ fun SettingsScreen(
                     Text(
                         text = "Para autorizar o aplicativo a registrar seu progresso de leitura, você pode gerar um Personal Token no AniList:",
                         fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))

@@ -49,6 +49,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
@@ -114,7 +115,8 @@ fun LibraryScreen(
             .fillMaxSize()
             .testTag("library_screen")
     ) {
-        TabRow(
+        ScrollableTabRow(
+            edgePadding = 0.dp,
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = PrimaryPurple,
