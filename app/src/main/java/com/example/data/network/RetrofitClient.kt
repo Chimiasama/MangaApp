@@ -23,6 +23,8 @@ object RetrofitClient {
             level = HttpLoggingInterceptor.Level.HEADERS
         }
         OkHttpClient.Builder()
+            .addInterceptor(MangaDexHeaderInterceptor())
+            .addInterceptor(MangaDexWafInterceptor())
             .addInterceptor(logging)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)

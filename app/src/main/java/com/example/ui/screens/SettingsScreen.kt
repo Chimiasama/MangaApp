@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.sync.CloudSyncState
 import com.example.ui.components.DynamicRulesDialog
+import com.example.ui.theme.AccentGold
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.viewmodel.SettingsUiState
@@ -107,6 +108,10 @@ fun SettingsScreen(
     onPagePreloadToggled: (Boolean) -> Unit = {},
     onClearCacheClicked: () -> Unit = {},
     onRefreshCacheSize: () -> Unit = {},
+    onClearOldDownloadsAndCacheClicked: () -> Unit = {},
+    onClearAllDownloadsClicked: () -> Unit = {},
+    onAutoCleanCacheToggled: (Boolean) -> Unit = {},
+    onKeepFavoritesDownloadsToggled: (Boolean) -> Unit = {},
     onConnectAniList: (String) -> Unit = {},
     onDisconnectAniList: () -> Unit = {},
     onAniListAutoSyncToggled: (Boolean) -> Unit = {},
@@ -788,12 +793,12 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Armazenamento & Cache de Imagens",
+                            text = "Armazenamento & Cache de Páginas",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "Controle o espaço interno utilizado pelas páginas e capas salvas.",
+                            text = "Controle o espaço interno utilizado pelas páginas, capas e downloads.",
                             fontSize = 12.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -801,8 +806,9 @@ fun SettingsScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
+                // Detalhamento de Armazenamento
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -811,37 +817,159 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Espaço ocupado em Cache",
-                            fontSize = 12.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            text = "Cache de Páginas (Online)",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = state.cacheSizeFormatted,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             color = PrimaryPurple
                         )
                     }
 
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Capítulos Baixados",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = state.downloadsSizeFormatted,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = PrimaryPurple
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "Total Ocupado",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = state.totalStorageFormatted,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = AccentGold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Configuração: Auto-limpeza após 3 dias
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Auto-limpeza após 3 dias",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Remove automaticamente páginas e capítulos lidos sem abertura há mais de 3 dias, evitando encher o celular.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 16.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = state.autoCleanCacheEnabled,
+                        onCheckedChange = { onAutoCleanCacheToggled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = PrimaryPurple
+                        ),
+                        modifier = Modifier.testTag("auto_clean_cache_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Configuração: Preservar favoritos
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Preservar downloads de Favoritos",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Nunca apaga capítulos baixados de mangás marcados com coração.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 16.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = state.keepFavoritesDownloads,
+                        onCheckedChange = { onKeepFavoritesDownloadsToggled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = PrimaryPurple
+                        ),
+                        modifier = Modifier.testTag("keep_favorites_downloads_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Botões de Ação
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = {
                             onClearCacheClicked()
-                            Toast.makeText(context, "Cache de imagens liberado com sucesso!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Cache de páginas liberado com sucesso!", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("clear_cache_button")
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("clear_cache_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Limpar Cache", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Limpar Cache", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            onClearOldDownloadsAndCacheClicked()
+                            Toast.makeText(context, "Dados com mais de 3 dias limpos com sucesso!", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("clear_old_cache_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Limpar >3 dias", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

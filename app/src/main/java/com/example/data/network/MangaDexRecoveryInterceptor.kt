@@ -71,6 +71,7 @@ internal class MangaDexRecoveryInterceptor(
                     }
                     setRequestProperty("Accept-Encoding", "identity")
                     if (request.header("User-Agent") == null) setRequestProperty("User-Agent", MangaDexConnectionDiagnostic.USER_AGENT)
+                    if (request.header("Accept") == null) setRequestProperty("Accept", "application/json")
                 }
                 val code = connection.responseCode
                 if (code in 200..299) synchronized(requestAttempts) {

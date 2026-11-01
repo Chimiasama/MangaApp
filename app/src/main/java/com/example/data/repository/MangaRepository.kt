@@ -48,14 +48,14 @@ import java.util.Locale
 class MangaRepository(
     private val mangaDao: MangaDao,
     private val progressDao: ProgressDao,
-    private val downloadDao: DownloadDao,
+    val downloadDao: DownloadDao,
     private val readingSessionDao: ReadingSessionDao,
     val downloadManager: ChapterDownloadManager,
     val preferencesRepository: UserPreferencesRepository,
     private val chapterDao: ChapterDao? = null,
     private val bookmarkDao: BookmarkDao? = null,
     private val searchHistoryDao: SearchHistoryDao? = null,
-    private val appContext: android.content.Context? = null
+    val appContext: android.content.Context? = null
 ) {
 
     fun isNetworkAvailable(): Boolean {
@@ -189,6 +189,7 @@ class MangaRepository(
         // MangaDash uses its verified public .net catalog and native PDF pages.
         registerSource(MangaDexSource())
         registerSource(com.example.source.MangaDashSource(cacheDir = appContext?.cacheDir))
+        registerSource(com.example.source.MangaflixSource())
         com.example.source.HtmlMangaSource.Site.entries.forEach { registerSource(com.example.source.HtmlMangaSource(it)) }
     }
 
@@ -633,6 +634,7 @@ class MangaRepository(
             url.contains("consumet", ignoreCase = true) -> "consumet"
             url.contains("mangadex", ignoreCase = true) -> "mangadex"
             url.contains("mangadash", ignoreCase = true) -> "mangadash"
+            url.contains("mangaflix", ignoreCase = true) -> "mangaflix"
             else -> null
         }
     }

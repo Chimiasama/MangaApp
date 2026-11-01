@@ -102,6 +102,10 @@ class UserPreferencesRepository(private val context: Context) {
         val BATTERY_SAVER_DIM_PERCENT = intPreferencesKey("battery_saver_dim_percent")
         val SYNC_ON_WIFI_ONLY = booleanPreferencesKey("sync_on_wifi_only")
         val NSFW_ENABLED = booleanPreferencesKey("nsfw_enabled")
+        val AUTO_CLEAN_CACHE_ENABLED = booleanPreferencesKey("auto_clean_cache_enabled")
+        val AUTO_CLEAN_CACHE_DAYS = intPreferencesKey("auto_clean_cache_days")
+        val AUTO_CLEAN_DOWNLOADS_ENABLED = booleanPreferencesKey("auto_clean_downloads_enabled")
+        val KEEP_FAVORITES_DOWNLOADS = booleanPreferencesKey("keep_favorites_downloads")
     }
 
     val cachedNsfw: Boolean get() = false
@@ -293,5 +297,37 @@ class UserPreferencesRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[SYNC_ON_WIFI_ONLY] = wifiOnly
         }
+    }
+
+    val autoCleanCacheEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[AUTO_CLEAN_CACHE_ENABLED] ?: true
+    }
+
+    val autoCleanCacheDays: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[AUTO_CLEAN_CACHE_DAYS] ?: 3
+    }
+
+    val autoCleanDownloadsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[AUTO_CLEAN_DOWNLOADS_ENABLED] ?: true
+    }
+
+    val keepFavoritesDownloads: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEEP_FAVORITES_DOWNLOADS] ?: true
+    }
+
+    suspend fun setAutoCleanCacheEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[AUTO_CLEAN_CACHE_ENABLED] = enabled }
+    }
+
+    suspend fun setAutoCleanCacheDays(days: Int) {
+        context.dataStore.edit { prefs -> prefs[AUTO_CLEAN_CACHE_DAYS] = days.coerceIn(1, 30) }
+    }
+
+    suspend fun setAutoCleanDownloadsEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[AUTO_CLEAN_DOWNLOADS_ENABLED] = enabled }
+    }
+
+    suspend fun setKeepFavoritesDownloads(keep: Boolean) {
+        context.dataStore.edit { prefs -> prefs[KEEP_FAVORITES_DOWNLOADS] = keep }
     }
 }

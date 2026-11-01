@@ -32,6 +32,9 @@ class MangaDexCallFactory(
             override fun create(call: Call): okhttp3.EventListener =
                 call.request().tag(MangaDexConnectionTrace::class.java) ?: okhttp3.EventListener.NONE
         })
+        .addInterceptor(MangaDexHeaderInterceptor())
+        .addInterceptor(MangaDexWafInterceptor())
+        .apply { if (automaticRecovery) addInterceptor(MangaDexEndpointFallbackInterceptor()) }
         .apply { if (automaticRecovery) addInterceptor(MangaDexCoverInterceptor()) }
         .apply { if (automaticRecovery) addInterceptor(MangaDexPageInterceptor()) }
         .apply { if (automaticRecovery) addInterceptor(MangaDexRecoveryInterceptor(nativeConnection)) }
@@ -39,7 +42,7 @@ class MangaDexCallFactory(
         .build()
 
     override fun newCall(request: Request): Call {
-        return if (request.url.host in setOf("api.mangadex.org", "uploads.mangadex.org") ||
+        return if (request.url.host in setOf("api.mangadex.org", "api.mangadex.dev", "uploads.mangadex.org") ||
             MangaDexPages.registry.contains(request.url.toString())) {
             val traced = request.newBuilder()
                 .tag(MangaDexConnectionTrace::class.java, MangaDexConnectionTrace(request.url.host)).build()

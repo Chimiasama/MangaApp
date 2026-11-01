@@ -25,6 +25,6 @@ interface MangaDexCatalogFilterApi {
         @Query("contentRating[]") ratings: List<String> = listOf("safe", "suggestive"),
         @Query("order[followedCount]") popularity: String? = "desc",
         @Query("order[year]") orderYear: String? = null,
-        @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
+        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT
     ): MangaDexMangaListResponse
 }

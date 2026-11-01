@@ -406,6 +406,14 @@ class MangaViewModel(
                 loadBrowseManga()
             }
         }
+        repository.appContext?.let { ctx ->
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    kotlinx.coroutines.delay(2000)
+                    com.example.util.CacheCleanupManager.performAutoCleanup(ctx, repository)
+                } catch (_: Throwable) {}
+            }
+        }
     }
 
     fun previewBrowseFilters(request: BrowseFilterRequest) {
@@ -726,11 +734,26 @@ class MangaViewModel(
     }
 
     fun toggleFavorite(manga: MangaModel) {
+        val wasFavorite = if (_detailManga.value?.url == manga.url) {
+            _isFavorite.value
+        } else {
+            favorites.value.any { it.url == manga.url }
+        }
+        val newFavorite = !wasFavorite
+        if (_detailManga.value?.url == manga.url) {
+            _isFavorite.value = newFavorite
+        }
         viewModelScope.launch {
-            if (_isFavorite.value) {
-                repository.removeFavorite(manga.url)
-            } else {
-                repository.toggleFavorite(manga)
+            try {
+                if (wasFavorite) {
+                    repository.removeFavorite(manga.url)
+                } else {
+                    repository.toggleFavorite(manga)
+                }
+            } catch (e: Exception) {
+                if (_detailManga.value?.url == manga.url) {
+                    _isFavorite.value = wasFavorite
+                }
             }
         }
     }

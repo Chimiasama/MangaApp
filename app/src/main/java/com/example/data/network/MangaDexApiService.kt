@@ -25,14 +25,14 @@ interface MangaDexApiService {
         @Query("order[relevance]") orderRelevance: String? = null,
         @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
         @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive"),
-        @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
+        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT
     ): MangaDexMangaListResponse
 
     @GET("manga/{id}")
     suspend fun getMangaDetails(
         @Path("id") mangaId: String,
         @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
-        @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
+        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT
     ): MangaDexMangaDetailsResponse
 
     @GET("manga/{id}/feed")
@@ -43,12 +43,12 @@ interface MangaDexApiService {
         @Query("translatedLanguage[]") translatedLanguages: List<String>? = null,
         @Query("order[chapter]") orderChapter: String = "desc",
         @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive"),
-        @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
+        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT
     ): MangaDexChapterFeedResponse
 
     @GET("at-home/server/{chapterId}")
     suspend fun getAtHomeServer(
         @Path("chapterId") chapterId: String,
-        @Header("User-Agent") userAgent: String = "MangaReaderApp/1.1.0"
+        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT
     ): MangaDexAtHomeResponse
 }

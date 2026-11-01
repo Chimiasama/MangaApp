@@ -12,7 +12,11 @@ import retrofit2.HttpException
 fun catalogFailureDescription(error: Throwable): String {
     val causes = catalogFailureCauses(error)
     val http = causes.filterIsInstance<HttpException>().firstOrNull()
-    val description = if (http != null) {
+    val isWaf = causes.any { it is com.example.data.network.MangaDexWafException } ||
+        http?.response()?.headers()?.get("X-MangaDex-WAF-Challenge") == "true"
+    val description = if (isWaf) {
+        "a fonte bloqueou a requisição com verificação anti-bot (Cloudflare WAF / HTTP ${http?.code() ?: 403})"
+    } else if (http != null) {
         when (http.code()) {
             401, 403 -> "a fonte recusou o acesso (HTTP ${http.code()})"
             429 -> "a fonte limitou as consultas temporariamente (HTTP 429)"

@@ -65,7 +65,7 @@ class MangaDexCallFactoryTest {
             assertEquals(listOf(Protocol.HTTP_2), observed)
             assertEquals(listOf(TlsVersion.TLS_1_3), tlsVersions)
             val request = server.takeRequest(5, TimeUnit.SECONDS)!!
-            assertEquals("MangaReaderApp/1.1.0", request.getHeader("User-Agent"))
+            assertEquals(com.example.data.network.MangaDexApiConfig.USER_AGENT, request.getHeader("User-Agent"))
             assertEquals(listOf("pt-br", "pt"), request.requestUrl!!.queryParameterValues("availableTranslatedLanguage[]"))
             assertEquals("asc", request.requestUrl!!.queryParameter("order[year]"))
             assertNull(request.requestUrl!!.queryParameter("title"))

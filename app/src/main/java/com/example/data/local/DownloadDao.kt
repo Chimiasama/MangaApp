@@ -19,6 +19,9 @@ interface DownloadDao {
     @Query("SELECT * FROM chapter_downloads WHERE chapterId = :chapterId LIMIT 1")
     suspend fun getDownloadSync(chapterId: String): DownloadEntity?
 
+    @Query("SELECT * FROM chapter_downloads")
+    suspend fun getAllDownloadsSync(): List<DownloadEntity>
+
     @Query("SELECT * FROM chapter_downloads WHERE downloadState = 'COMPLETED' ORDER BY timestamp DESC")
     fun getCompletedDownloads(): Flow<List<DownloadEntity>>
 

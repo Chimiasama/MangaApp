@@ -163,5 +163,5 @@ class MangaDexConnectionDiagnostic(
         return Result(name, false, status, "$http\n${catalogFailureDetails(error)}")
     }
 
-    companion object { const val USER_AGENT = "MangaReaderApp/1.1.0" }
+    companion object { const val USER_AGENT = MangaDexApiConfig.USER_AGENT }
 }

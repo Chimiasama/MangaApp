@@ -74,6 +74,7 @@ class MangaRepositoryTest {
         override fun getAllDownloads(): Flow<List<DownloadEntity>> = flowOf(emptyList())
         override fun getDownload(chapterId: String): Flow<DownloadEntity?> = flowOf(null)
         override suspend fun getDownloadSync(chapterId: String): DownloadEntity? = null
+        override suspend fun getAllDownloadsSync(): List<DownloadEntity> = emptyList()
         override fun getCompletedDownloads(): Flow<List<DownloadEntity>> = flowOf(emptyList())
         override suspend fun insertDownload(download: DownloadEntity) {}
         override suspend fun updateDownloadStatus(

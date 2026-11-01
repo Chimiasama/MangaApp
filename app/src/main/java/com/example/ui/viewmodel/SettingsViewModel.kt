@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -26,6 +27,12 @@ data class SettingsUiState(
     val readerInvertColors: Boolean = false,
     val pagePreloadEnabled: Boolean = true,
     val cacheSizeFormatted: String = "0 B",
+    val downloadsSizeFormatted: String = "0 B",
+    val totalStorageFormatted: String = "0 B",
+    val autoCleanCacheEnabled: Boolean = true,
+    val autoCleanCacheDays: Int = 3,
+    val autoCleanDownloadsEnabled: Boolean = true,
+    val keepFavoritesDownloads: Boolean = true,
     val aniListToken: String? = null,
     val aniListUsername: String? = null,
     val aniListAvatar: String? = null,
@@ -63,6 +70,8 @@ private data class SettingsUiFlags(
     val autoSync: Boolean,
     val rulesStatus: Boolean?,
     val cacheSize: String,
+    val downloadsSize: String,
+    val totalStorage: String,
     val isCheckingAniList: Boolean,
     val aniListError: String?,
     val syncOnWifiOnly: Boolean
@@ -76,6 +85,8 @@ class SettingsViewModel(
 
     private val _rulesStatus = MutableStateFlow<Boolean?>(null)
     private val _cacheSize = MutableStateFlow("0 B")
+    private val _downloadsSize = MutableStateFlow("0 B")
+    private val _totalStorage = MutableStateFlow("0 B")
     private val _isCheckingAniList = MutableStateFlow(false)
     private val _aniListErrorMessage = MutableStateFlow<String?>(null)
 
@@ -120,6 +131,8 @@ class SettingsViewModel(
             preferencesRepository.autoCloudSync,
             _rulesStatus,
             _cacheSize,
+            _downloadsSize,
+            _totalStorage,
             _isCheckingAniList,
             _aniListErrorMessage,
             preferencesRepository.syncOnWifiOnly
@@ -128,9 +141,11 @@ class SettingsViewModel(
                 autoSync = args[0] as Boolean,
                 rulesStatus = args[1] as? Boolean,
                 cacheSize = args[2] as String,
-                isCheckingAniList = args[3] as Boolean,
-                aniListError = args[4] as? String,
-                syncOnWifiOnly = args[5] as Boolean
+                downloadsSize = args[3] as String,
+                totalStorage = args[4] as String,
+                isCheckingAniList = args[5] as Boolean,
+                aniListError = args[6] as? String,
+                syncOnWifiOnly = args[7] as Boolean
             )
         }
     ) { (customJson, reader, anilist), flags ->
@@ -144,6 +159,8 @@ class SettingsViewModel(
             readerInvertColors = reader.invertColors,
             pagePreloadEnabled = reader.preloadEnabled,
             cacheSizeFormatted = flags.cacheSize,
+            downloadsSizeFormatted = flags.downloadsSize,
+            totalStorageFormatted = flags.totalStorage,
             autoCloudSync = flags.autoSync,
             rulesUpdateSuccess = flags.rulesStatus,
             aniListToken = anilist.token,
@@ -160,6 +177,10 @@ class SettingsViewModel(
         state.copy(connectionDiagnosticsEnabled = enabled)
     }.combine(preferencesRepository.homeSections) { state, sections -> state.copy(homeSections = sections)
     }.combine(preferencesRepository.nsfwEnabled) { state, nsfw -> state.copy(nsfwEnabled = nsfw)
+    }.combine(preferencesRepository.autoCleanCacheEnabled) { state, enabled -> state.copy(autoCleanCacheEnabled = enabled)
+    }.combine(preferencesRepository.autoCleanCacheDays) { state, days -> state.copy(autoCleanCacheDays = days)
+    }.combine(preferencesRepository.autoCleanDownloadsEnabled) { state, enabled -> state.copy(autoCleanDownloadsEnabled = enabled)
+    }.combine(preferencesRepository.keepFavoritesDownloads) { state, keep -> state.copy(keepFavoritesDownloads = keep)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -226,17 +247,50 @@ class SettingsViewModel(
 
     fun refreshCacheSize(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            val size = ImageCacheConfig.getDiskCacheSizeBytes(context)
-            _cacheSize.value = ImageCacheConfig.formatSizeBytes(size)
+            val stats = com.example.util.CacheCleanupManager.getStorageStats(context)
+            _cacheSize.value = stats.pageCacheFormatted
+            _downloadsSize.value = stats.downloadsFormatted
+            _totalStorage.value = stats.totalFormatted
         }
     }
 
     fun clearImageCache(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            ImageCacheConfig.clearImageCache(context)
-            val size = ImageCacheConfig.getDiskCacheSizeBytes(context)
-            _cacheSize.value = ImageCacheConfig.formatSizeBytes(size)
+            com.example.util.CacheCleanupManager.clearAllPageCache(context)
+            refreshCacheSize(context)
         }
+    }
+
+    fun clearOldDownloadsAndCache(context: Context, days: Int = 3) {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.util.CacheCleanupManager.purgeOldDiskCache(context, days)
+            val protect = preferencesRepository.keepFavoritesDownloads.first()
+            com.example.util.CacheCleanupManager.purgeOldDownloads(context, repository, days, protect)
+            refreshCacheSize(context)
+        }
+    }
+
+    fun clearAllDownloads(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.util.CacheCleanupManager.clearAllDownloads(context, repository)
+            refreshCacheSize(context)
+        }
+    }
+
+    fun setAutoCleanCacheEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAutoCleanCacheEnabled(enabled) }
+    }
+
+    fun setAutoCleanCacheDays(days: Int) {
+        viewModelScope.launch { preferencesRepository.setAutoCleanCacheDays(days) }
+    }
+
+    fun setAutoCleanDownloadsEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAutoCleanDownloadsEnabled(enabled) }
+    }
+
+    fun setKeepFavoritesDownloads(keep: Boolean) {
+        viewModelScope.launch { preferencesRepository.setKeepFavoritesDownloads(keep) }
     }
 
     fun setReaderBackgroundColor(colorKey: String) {

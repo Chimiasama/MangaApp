@@ -48,11 +48,24 @@ class MangaDexSource(
             else -> null
         }
 
-        val response = apiService.getMangaList(
-            limit = 50, translatedLanguages = targetLanguages,
-            orderFollowedCount = "desc", includes = listOf("cover_art", "author")
-        )
-        response.data.orEmpty().map { it.toMangaModel(baseUrl, id) }
+        val response = mangaDexCatalogRequest {
+            apiService.getMangaList(
+                limit = 50, translatedLanguages = targetLanguages,
+                orderFollowedCount = "desc", includes = listOf("cover_art", "author")
+            )
+        }
+        val data = response.data.orEmpty()
+        if (data.isEmpty() && targetLanguages != null) {
+            val globalResponse = runCatching {
+                mangaDexCatalogRequest {
+                    apiService.getMangaList(
+                        limit = 50, orderFollowedCount = "desc", includes = listOf("cover_art", "author")
+                    )
+                }
+            }.getOrNull()
+            return@withContext (globalResponse?.data ?: emptyList()).map { it.toMangaModel(baseUrl, id) }
+        }
+        data.map { it.toMangaModel(baseUrl, id) }
     }
 
     override val filterSupportNote = "MangaDex fornece gêneros, temas, formatos, público editorial, origem e publicação. A classificação depende das etiquetas de cada obra."
@@ -167,7 +180,8 @@ class MangaDexSource(
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            throw e
+            lastFailure = e
+            emptyList()
         }
 
         // 2. If empty, fall back to global title search (allowing English, Japanese, and Romanized titles)

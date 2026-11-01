@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -69,9 +72,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -209,11 +215,28 @@ fun MangaDetailScreen(
                     }
 
                     // Marcador Fixo de Favorito no topo da tela ao abrir o mangá
+                    val haptic = LocalHapticFeedback.current
+                    val favoriteScale by animateFloatAsState(
+                        targetValue = if (state.isFavorite) 1.15f else 1.0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "favorite_fixed_marker_scale"
+                    )
+
                     IconButton(
-                        onClick = { onToggleFavorite(manga) },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleFavorite(manga)
+                        },
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(16.dp)
+                            .graphicsLayer {
+                                scaleX = favoriteScale
+                                scaleY = favoriteScale
+                            }
                             .background(
                                 if (state.isFavorite) CrimsonRed else Color.Black.copy(alpha = 0.5f),
                                 CircleShape
