@@ -94,4 +94,85 @@ class DownloadProgressScreenTest {
         }
         compose.onNodeWithTag("library_back_button").assertDoesNotExist()
     }
+
+    @Test fun `naturalAlphabeticalCompare orders chapters naturally with numbers`() {
+        val list = listOf("Capítulo 10", "Capítulo 2", "Capítulo 1", "Capítulo 20", "Capítulo 1.5", "[PT-BR] Capítulo 3")
+        val sorted = list.sortedWith(Comparator { a, b ->
+            com.example.ui.screens.naturalAlphabeticalCompare(a, b)
+        })
+        assertEquals(
+            listOf("Capítulo 1", "Capítulo 1.5", "Capítulo 2", "[PT-BR] Capítulo 3", "Capítulo 10", "Capítulo 20"),
+            sorted
+        )
+    }
+
+    @Test fun `multiple mangas start collapsed with summary and can expand collapse individually and all together`() {
+        val db1 = DownloadEntity("db_10", "Capítulo 10", "url10", "url_db", "Dragon Ball", "", "mangadex",
+            downloadState = DownloadEntity.STATE_QUEUED)
+        val db2 = DownloadEntity("db_2", "Capítulo 2", "url2", "url_db", "Dragon Ball", "", "mangadex",
+            downloadState = DownloadEntity.STATE_COMPLETED, totalPages = 20)
+        val db3 = DownloadEntity("db_1", "Capítulo 1", "url1", "url_db", "Dragon Ball", "", "mangadex",
+            downloadState = DownloadEntity.STATE_DOWNLOADING)
+
+        val naruto1 = DownloadEntity("naruto_1", "Capítulo 1", "url_n1", "url_naruto", "Naruto", "", "mangadex",
+            downloadState = DownloadEntity.STATE_COMPLETED, totalPages = 18)
+        val naruto2 = DownloadEntity("naruto_2", "Capítulo 2", "url_n2", "url_naruto", "Naruto", "", "mangadex",
+            downloadState = DownloadEntity.STATE_COMPLETED, totalPages = 19)
+
+        val allDownloads = listOf(db1, db2, db3, naruto1, naruto2)
+
+        compose.setContent {
+            MangaReaderTheme {
+                Surface {
+                    LibraryScreen(
+                        favorites = emptyList(),
+                        history = emptyList(),
+                        downloads = allDownloads,
+                        requestedTab = 3,
+                        onMangaClick = {},
+                        onContinueReading = {},
+                        onReadDownloadedChapter = { _, _ -> },
+                        onDeleteDownload = {}
+                    )
+                }
+            }
+        }
+
+        // Summary for each manga should be displayed in closed state
+        compose.onNodeWithTag("download_group_title_${"url_db".hashCode()}", useUnmergedTree = true)
+            .assertExists()
+            .assertTextContains("Dragon Ball")
+        compose.onNodeWithTag("download_group_summary_${"url_db".hashCode()}", useUnmergedTree = true)
+            .assertExists()
+            .assertTextContains("Baixou 1 de 3", substring = true)
+
+        compose.onNodeWithTag("download_group_title_${"url_naruto".hashCode()}", useUnmergedTree = true)
+            .assertExists()
+            .assertTextContains("Naruto")
+        compose.onNodeWithTag("download_group_summary_${"url_naruto".hashCode()}", useUnmergedTree = true)
+            .assertExists()
+            .assertTextContains("Baixou todos os 2 capítulos", substring = true)
+
+        // Chapters should initially be collapsed when multiple mangas are present
+        compose.onNodeWithTag("download_item_db_10").assertDoesNotExist()
+
+        // Tap Dragon Ball group header to expand it
+        compose.onNodeWithTag("download_group_header_${"url_db".hashCode()}").performClick()
+        compose.onNodeWithTag("download_item_db_1").assertExists()
+        compose.onNodeWithTag("download_item_db_2").assertExists()
+        compose.onNodeWithTag("download_item_db_10").assertExists()
+
+        // Naruto should still be collapsed
+        compose.onNodeWithTag("download_item_naruto_1").assertDoesNotExist()
+
+        // Tap Expandir todos
+        compose.onNodeWithTag("toggle_expand_all_downloads").performClick()
+        compose.onNodeWithTag("download_item_naruto_1").assertExists()
+        compose.onNodeWithTag("download_item_naruto_2").assertExists()
+
+        // Tap Recolher todos
+        compose.onNodeWithTag("toggle_expand_all_downloads").performClick()
+        compose.onNodeWithTag("download_item_db_1").assertDoesNotExist()
+        compose.onNodeWithTag("download_item_naruto_1").assertDoesNotExist()
+    }
 }

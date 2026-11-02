@@ -56,7 +56,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import com.example.ui.components.DownloadSummary
 import com.example.ui.components.statusText
 import com.example.ui.components.displayPriority
@@ -64,6 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -596,6 +600,70 @@ private fun HistoryList(
     }
 }
 
+fun naturalAlphabeticalCompare(a: String, b: String): Int {
+    val cleanA = formatChapterTitle(a).trim()
+    val cleanB = formatChapterTitle(b).trim()
+
+    val regex = Regex("(\\d+)|([^\\d]+)")
+    val tokensA = regex.findAll(cleanA).map { it.value }.toList()
+    val tokensB = regex.findAll(cleanB).map { it.value }.toList()
+
+    val size = minOf(tokensA.size, tokensB.size)
+    for (i in 0 until size) {
+        val tA = tokensA[i]
+        val tB = tokensB[i]
+        val numA = tA.toLongOrNull()
+        val numB = tB.toLongOrNull()
+
+        val cmp = if (numA != null && numB != null) {
+            numA.compareTo(numB)
+        } else {
+            tA.compareTo(tB, ignoreCase = true)
+        }
+        if (cmp != 0) return cmp
+    }
+    val sizeCmp = tokensA.size.compareTo(tokensB.size)
+    return if (sizeCmp != 0) sizeCmp else cleanA.compareTo(cleanB, ignoreCase = true)
+}
+
+data class MangaDownloadGroup(
+    val mangaUrl: String,
+    val mangaTitle: String,
+    val mangaCoverUrl: String,
+    val sourceId: String,
+    val chapters: List<DownloadEntity>
+) {
+    val totalCount: Int get() = chapters.size
+    val completedCount: Int get() = chapters.count { it.downloadState == DownloadEntity.STATE_COMPLETED }
+    val downloadingCount: Int get() = chapters.count { it.downloadState == DownloadEntity.STATE_DOWNLOADING }
+    val preparingCount: Int get() = chapters.count { it.downloadState == DownloadEntity.STATE_PREPARING }
+    val queuedCount: Int get() = chapters.count { it.downloadState == DownloadEntity.STATE_QUEUED }
+    val retryingCount: Int get() = chapters.count { it.downloadState == DownloadEntity.STATE_RETRYING }
+    val failedCount: Int get() = chapters.count { it.downloadState == DownloadEntity.STATE_FAILED }
+    val isAllCompleted: Boolean get() = totalCount > 0 && completedCount == totalCount
+    val progressFraction: Float get() = if (totalCount > 0) completedCount.toFloat() / totalCount.toFloat() else 0f
+}
+
+fun groupDownloadsByManga(downloads: List<DownloadEntity>): List<MangaDownloadGroup> {
+    if (downloads.isEmpty() && downloads.none { true }) return emptyList()
+    val grouped = downloads.groupBy { it.mangaUrl }
+    return grouped.map { (url, items) ->
+        val first = items.first()
+        val sortedChapters = items.sortedWith(Comparator { a, b ->
+            naturalAlphabeticalCompare(a.chapterTitle, b.chapterTitle)
+        })
+        MangaDownloadGroup(
+            mangaUrl = url,
+            mangaTitle = first.mangaTitle.ifBlank { "Sem título" },
+            mangaCoverUrl = first.mangaCoverUrl,
+            sourceId = first.sourceId,
+            chapters = sortedChapters
+        )
+    }.sortedWith(Comparator { g1, g2 ->
+        naturalAlphabeticalCompare(g1.mangaTitle, g2.mangaTitle)
+    })
+}
+
 @Composable
 private fun DownloadsList(
     downloads: List<DownloadEntity>,
@@ -632,6 +700,10 @@ private fun DownloadsList(
             }
         }
     } else {
+        val groups = remember(downloads) { groupDownloadsByManga(downloads) }
+        var expandedMangaUrls by rememberSaveable { mutableStateOf<Set<String>?>(null) }
+        val effectiveExpanded = expandedMangaUrls ?: if (groups.size <= 1) groups.map { it.mangaUrl }.toSet() else emptySet()
+
         Column(modifier = Modifier.fillMaxSize()) {
             SwipeGestureHintHeader()
             LazyColumn(
@@ -640,114 +712,319 @@ private fun DownloadsList(
                 modifier = Modifier.fillMaxSize()
             ) {
                 item { DownloadSummary(downloads, isEnqueueing = isEnqueueing, error = queueError) }
-                items(downloads.sortedWith(compareBy<DownloadEntity> { it.displayPriority() }.thenByDescending { it.timestamp }),
-                    key = { it.chapterId }) { download ->
-                    val mangaModel = MangaModel(
-                        url = download.mangaUrl,
-                        id = download.mangaUrl.hashCode().toString(),
-                        title = download.mangaTitle,
-                        coverUrl = download.mangaCoverUrl,
-                        sourceId = download.sourceId
-                    )
-                    val chapterModel = ChapterModel(
-                        id = download.chapterId,
-                        title = download.chapterTitle,
-                        chapterUrl = download.chapterUrl
-                    )
 
-                    SwipeableLibraryItem(
-                        onDelete = { onDeleteDownload(download.chapterId) },
-                        onRefresh = {
-                            if (download.downloadState == DownloadEntity.STATE_COMPLETED) onReadDownloadedChapter(mangaModel, chapterModel)
-                            else if (download.downloadState == DownloadEntity.STATE_FAILED) onRetryDownload(mangaModel, chapterModel)
-                        },
-                        deleteLabel = "Excluir Download",
-                        refreshLabel = when (download.downloadState) {
-                            DownloadEntity.STATE_COMPLETED -> "Ler Offline"
-                            DownloadEntity.STATE_FAILED -> "Tentar novamente"
-                            else -> "Aguardando conclusão"
-                        },
-                        testTag = "download_swipe_item_${download.chapterId}"
-                    ) {
-                        Card(
+                if (groups.isNotEmpty()) {
+                    item {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable(enabled = download.downloadState == DownloadEntity.STATE_COMPLETED) { onReadDownloadedChapter(mangaModel, chapterModel) }
-                                .testTag("download_item_${download.chapterId}"),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
+                            Text(
+                                text = "Obras (${groups.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (groups.size > 1) {
+                                val allExpanded = groups.all { effectiveExpanded.contains(it.mangaUrl) }
+                                TextButton(
+                                    onClick = {
+                                        expandedMangaUrls = if (allExpanded) {
+                                            emptySet()
+                                        } else {
+                                            groups.map { it.mangaUrl }.toSet()
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("toggle_expand_all_downloads")
+                                ) {
+                                    Icon(
+                                        imageVector = if (allExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (allExpanded) "Recolher todos" else "Expandir todos",
+                                        fontSize = 12.sp,
+                                        color = PrimaryPurple,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    items(groups, key = { it.mangaUrl }) { group ->
+                        val isExpanded = effectiveExpanded.contains(group.mangaUrl)
+                        MangaDownloadGroupCard(
+                            group = group,
+                            isExpanded = isExpanded,
+                            onToggleExpand = {
+                                expandedMangaUrls = if (isExpanded) {
+                                    effectiveExpanded - group.mangaUrl
+                                } else {
+                                    effectiveExpanded + group.mangaUrl
+                                }
+                            },
+                            onRetryDownload = onRetryDownload,
+                            onReadDownloadedChapter = onReadDownloadedChapter,
+                            onDeleteDownload = onDeleteDownload
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MangaDownloadGroupCard(
+    group: MangaDownloadGroup,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onRetryDownload: (MangaModel, ChapterModel) -> Unit,
+    onReadDownloadedChapter: (MangaModel, ChapterModel) -> Unit,
+    onDeleteDownload: (String) -> Unit
+) {
+    val mangaModel = remember(group) {
+        MangaModel(
+            url = group.mangaUrl,
+            id = group.mangaUrl.hashCode().toString(),
+            title = group.mangaTitle,
+            coverUrl = group.mangaCoverUrl,
+            sourceId = group.sourceId
+        )
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .testTag("download_manga_group_${group.mangaUrl.hashCode()}"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Group Header (always visible, tap anywhere on header to expand/collapse)
+            Surface(
+                color = if (isExpanded) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleExpand() }
+                    .testTag("download_group_header_${group.mangaUrl.hashCode()}")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.size(width = 46.dp, height = 62.dp)
+                    ) {
+                        AsyncImage(
+                            model = group.mangaCoverUrl,
+                            contentDescription = group.mangaTitle,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = group.mangaTitle,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("download_group_title_${group.mangaUrl.hashCode()}")
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+
+                        val summaryText = if (group.isAllCompleted) {
+                            "Baixou todos os ${group.totalCount} capítulos"
+                        } else {
+                            "Baixou ${group.completedCount} de ${group.totalCount}"
+                        }
+
+                        val statusDetail = buildList {
+                            if (group.downloadingCount > 0) add("${group.downloadingCount} baixando")
+                            if (group.queuedCount > 0) add("${group.queuedCount} na fila")
+                            if (group.preparingCount > 0) add("${group.preparingCount} preparando")
+                            if (group.failedCount > 0) add("${group.failedCount} com falha")
+                        }.joinToString(" · ")
+
+                        Text(
+                            text = if (statusDetail.isNotEmpty() && !group.isAllCompleted) "$summaryText · $statusDetail" else summaryText,
+                            fontSize = 12.sp,
+                            color = when {
+                                group.failedCount > 0 -> MaterialTheme.colorScheme.error
+                                group.isAllCompleted -> Color(0xFF4CAF50)
+                                else -> PrimaryPurple
+                            },
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("download_group_summary_${group.mangaUrl.hashCode()}")
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        if (group.isAllCompleted) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4CAF50),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Pronto para ler offline",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF4CAF50)
+                                )
+                            }
+                        } else {
+                            LinearProgressIndicator(
+                                progress = { group.progressFraction },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = PrimaryPurple,
+                                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onToggleExpand,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("toggle_expand_group_${group.mangaUrl.hashCode()}")
+                    ) {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (isExpanded) "Recolher capítulos" else "Mostrar capítulos",
+                            tint = PrimaryPurple
+                        )
+                    }
+                }
+            }
+
+            // Expanded Chapter List (Alphabetically sorted!)
+            if (isExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Capítulos (${group.chapters.size}) em ordem alfabética:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 6.dp, top = 2.dp)
+                    )
+
+                    group.chapters.forEach { download ->
+                        val chapterModel = ChapterModel(
+                            id = download.chapterId,
+                            title = download.chapterTitle,
+                            chapterUrl = download.chapterUrl
+                        )
+
+                        SwipeableLibraryItem(
+                            onDelete = { onDeleteDownload(download.chapterId) },
+                            onRefresh = {
+                                if (download.downloadState == DownloadEntity.STATE_COMPLETED) onReadDownloadedChapter(mangaModel, chapterModel)
+                                else if (download.downloadState == DownloadEntity.STATE_FAILED) onRetryDownload(mangaModel, chapterModel)
+                            },
+                            deleteLabel = "Excluir Download",
+                            refreshLabel = when (download.downloadState) {
+                                DownloadEntity.STATE_COMPLETED -> "Ler Offline"
+                                DownloadEntity.STATE_FAILED -> "Tentar novamente"
+                                else -> "Aguardando conclusão"
+                            },
+                            testTag = "download_swipe_item_${download.chapterId}"
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable(enabled = download.downloadState == DownloadEntity.STATE_COMPLETED) {
+                                        onReadDownloadedChapter(mangaModel, chapterModel)
+                                    }
+                                    .testTag("download_item_${download.chapterId}"),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                             ) {
-                                Card(
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.size(50.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    AsyncImage(
-                                        model = download.mangaCoverUrl,
-                                        contentDescription = download.mangaTitle,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = download.mangaTitle,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = download.chapterTitle,
-                                        fontSize = 13.sp,
-                                        color = PrimaryPurple,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    if (download.downloadState == DownloadEntity.STATE_COMPLETED) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = null,
-                                                tint = Color(0xFF4CAF50),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = formatChapterTitle(download.chapterTitle),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        if (download.downloadState == DownloadEntity.STATE_COMPLETED) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF4CAF50),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "${download.totalPages} páginas baixadas (Offline)",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        } else {
                                             Text(
-                                                text = "${download.totalPages} páginas baixadas (Offline)",
+                                                text = download.statusText(),
                                                 fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (download.downloadState == DownloadEntity.STATE_FAILED) MaterialTheme.colorScheme.error else PrimaryPurple,
+                                                modifier = Modifier.testTag("download_status_${download.chapterId}")
                                             )
                                         }
-                                    } else {
-                                        Text(text = download.statusText(), fontSize = 11.sp,
-                                            color = if (download.downloadState == DownloadEntity.STATE_FAILED) MaterialTheme.colorScheme.error else PrimaryPurple,
-                                            modifier = Modifier.testTag("download_status_${download.chapterId}"))
                                     }
-                                }
 
-                                if (download.downloadState == DownloadEntity.STATE_FAILED) {
-                                    IconButton(onClick = { onRetryDownload(mangaModel, chapterModel) },
-                                        modifier = Modifier.testTag("retry_download_${download.chapterId}")) {
-                                        Icon(Icons.Default.Download, contentDescription = "Tentar download novamente")
+                                    if (download.downloadState == DownloadEntity.STATE_FAILED) {
+                                        IconButton(
+                                            onClick = { onRetryDownload(mangaModel, chapterModel) },
+                                            modifier = Modifier.testTag("retry_download_${download.chapterId}")
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = "Tentar download novamente")
+                                        }
                                     }
-                                }
-                                IconButton(onClick = { onDeleteDownload(download.chapterId) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Excluir Download",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    IconButton(onClick = { onDeleteDownload(download.chapterId) }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Excluir Download",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
