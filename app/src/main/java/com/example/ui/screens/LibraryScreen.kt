@@ -55,6 +55,8 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Surface
 import com.example.ui.components.DownloadSummary
 import com.example.ui.components.statusText
 import com.example.ui.components.displayPriority
@@ -109,7 +111,8 @@ fun LibraryScreen(
     onRequestedTabConsumed: () -> Unit = {},
     isEnqueueingDownloads: Boolean = false,
     downloadQueueError: String? = null,
-    onRetryDownload: (MangaModel, ChapterModel) -> Unit = { _, _ -> }
+    onRetryDownload: (MangaModel, ChapterModel) -> Unit = { _, _ -> },
+    onBack: (() -> Unit)? = null
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(requestedTab) {
@@ -131,6 +134,39 @@ fun LibraryScreen(
             .fillMaxSize()
             .testTag("library_screen")
     ) {
+        if (onBack != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("library_back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = "Acompanhamento de Downloads",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+            }
+        }
+
         ScrollableTabRow(
             edgePadding = 0.dp,
             selectedTabIndex = selectedTab,

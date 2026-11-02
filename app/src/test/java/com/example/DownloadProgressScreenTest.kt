@@ -51,4 +51,47 @@ class DownloadProgressScreenTest {
         compose.runOnIdle { assertTrue(opened) }
         compose.onNodeWithText("Downloads: 0/1 concluídos").assertExists()
     }
+
+    @Test fun `library shows back button when opened from manga details and back triggers callback`() {
+        var backed = false
+        compose.setContent {
+            MangaReaderTheme {
+                Surface {
+                    LibraryScreen(
+                        favorites = emptyList(),
+                        history = emptyList(),
+                        downloads = emptyList(),
+                        requestedTab = 3,
+                        onMangaClick = {},
+                        onContinueReading = {},
+                        onReadDownloadedChapter = { _, _ -> },
+                        onDeleteDownload = {},
+                        onBack = { backed = true }
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("library_back_button").assertExists().performClick()
+        compose.runOnIdle { assertTrue(backed) }
+    }
+
+    @Test fun `library hides back button when opened normally as a root tab`() {
+        compose.setContent {
+            MangaReaderTheme {
+                Surface {
+                    LibraryScreen(
+                        favorites = emptyList(),
+                        history = emptyList(),
+                        downloads = emptyList(),
+                        onMangaClick = {},
+                        onContinueReading = {},
+                        onReadDownloadedChapter = { _, _ -> },
+                        onDeleteDownload = {},
+                        onBack = null
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("library_back_button").assertDoesNotExist()
+    }
 }

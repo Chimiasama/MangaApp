@@ -96,6 +96,7 @@ fun MangaApp(
     val downloadQueue by mangaViewModel.downloadQueueState.collectAsStateWithLifecycle()
     val downloadTotals = downloadCounts(downloads)
     var requestedLibraryTab by rememberSaveable { mutableStateOf<Int?>(null) }
+    var navigatedToDownloadsFromDetail by rememberSaveable { mutableStateOf(false) }
     val bookmarks by mangaViewModel.bookmarks.collectAsStateWithLifecycle()
     val stats by mangaViewModel.readingStats.collectAsStateWithLifecycle()
     val cloudSyncState by mangaViewModel.cloudSyncState.collectAsStateWithLifecycle()
@@ -109,6 +110,12 @@ fun MangaApp(
     // Intercept back button when on root/browse screen to confirm exit
     BackHandler(enabled = currentRoute == MangaDestinations.BROWSE) {
         showExitDialog = true
+    }
+
+    // Intercept back button on library screen when opened from manga details
+    BackHandler(enabled = currentRoute == MangaDestinations.LIBRARY && navigatedToDownloadsFromDetail) {
+        navigatedToDownloadsFromDetail = false
+        navController.popBackStack()
     }
 
     if (showExitDialog) {
@@ -171,11 +178,11 @@ fun MangaApp(
                     NavigationBarItem(
                         selected = currentRoute == MangaDestinations.BROWSE,
                         onClick = {
+                            navigatedToDownloadsFromDetail = false
                             if (currentRoute != MangaDestinations.BROWSE) {
                                 navController.navigate(MangaDestinations.BROWSE) {
-                                    popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                                    popUpTo(MangaDestinations.BROWSE) { inclusive = false }
                                     launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
                         },
@@ -188,10 +195,12 @@ fun MangaApp(
                     NavigationBarItem(
                         selected = currentRoute == MangaDestinations.SEARCH,
                         onClick = {
-                            navController.navigate(MangaDestinations.SEARCH) {
-                                popUpTo(MangaDestinations.BROWSE) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            navigatedToDownloadsFromDetail = false
+                            if (currentRoute != MangaDestinations.SEARCH) {
+                                navController.navigate(MangaDestinations.SEARCH) {
+                                    popUpTo(MangaDestinations.BROWSE) { inclusive = false }
+                                    launchSingleTop = true
+                                }
                             }
                         },
                         icon = { Icon(Icons.Default.Search, "Pesquisar", Modifier.size(22.dp)) },
@@ -202,11 +211,11 @@ fun MangaApp(
                     NavigationBarItem(
                         selected = currentRoute == MangaDestinations.LIBRARY,
                         onClick = {
+                            navigatedToDownloadsFromDetail = false
                             if (currentRoute != MangaDestinations.LIBRARY) {
                                 navController.navigate(MangaDestinations.LIBRARY) {
-                                    popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                                    popUpTo(MangaDestinations.BROWSE) { inclusive = false }
                                     launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
                         },
@@ -223,11 +232,11 @@ fun MangaApp(
                     NavigationBarItem(
                         selected = currentRoute == MangaDestinations.SETTINGS,
                         onClick = {
+                            navigatedToDownloadsFromDetail = false
                             if (currentRoute != MangaDestinations.SETTINGS) {
                                 navController.navigate(MangaDestinations.SETTINGS) {
-                                    popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                                    popUpTo(MangaDestinations.BROWSE) { inclusive = false }
                                     launchSingleTop = true
-                                    restoreState = true
                                 }
                             }
                         },
@@ -253,7 +262,7 @@ fun MangaApp(
                 HomeScreen(homeState, favorites.map { it.url }.toSet(),
                     onQuickFiltersChanged = mangaViewModel::updateHomeQuickFilters,
                     availableSources = browseState.availableSources,
-                    onSearch = { navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true } },
+                    onSearch = { navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true } },
                     onMangaClick = { manga ->
                         mangaViewModel.openMangaDetails(manga, homeState.quickFilters.language.takeIf { homeState.quickFilters.isActive })
                         navController.navigate(MangaDestinations.DETAIL)
@@ -268,11 +277,11 @@ fun MangaApp(
                     onMore = { id ->
                         val section = homeState.configurations.find { it.id == id }
                         if (section?.type == com.example.home.HomeSectionType.CONTINUE_READING) {
-                            navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true; restoreState = true }
+                            navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true }
                         } else {
                             if (homeState.quickFilters.isActive) mangaViewModel.applyBrowseFilters(homeState.quickFilters.searchRequest())
                             else if (section != null) mangaViewModel.applyBrowseFilters(section.filters)
-                            navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true; restoreState = true }
+                            navController.navigate(MangaDestinations.SEARCH) { launchSingleTop = true }
                         }
                     }, onRefresh = mangaViewModel::refreshHome)
             }
@@ -282,9 +291,8 @@ fun MangaApp(
                         val popped = navController.popBackStack(MangaDestinations.BROWSE, inclusive = false)
                         if (!popped) {
                             navController.navigate(MangaDestinations.BROWSE) {
-                                popUpTo(MangaDestinations.BROWSE) { saveState = true }
+                                popUpTo(MangaDestinations.BROWSE) { inclusive = false }
                                 launchSingleTop = true
-                                restoreState = true
                             }
                         }
                     },
@@ -356,7 +364,13 @@ fun MangaApp(
                     onDeleteFavorite = { mangaUrl ->
                         mangaViewModel.removeFavoriteByUrl(mangaUrl)
                     },
-                    onSyncClicked = { mangaViewModel.triggerCloudSync() }
+                    onSyncClicked = { mangaViewModel.triggerCloudSync() },
+                    onBack = if (navigatedToDownloadsFromDetail) {
+                        {
+                            navigatedToDownloadsFromDetail = false
+                            navController.popBackStack()
+                        }
+                    } else null
                 )
             }
 
@@ -427,7 +441,8 @@ fun MangaApp(
                     downloadQueueError = downloadQueue.error.takeIf { downloadQueue.mangaUrl == detailState.manga?.url },
                     onOpenDownloads = {
                         requestedLibraryTab = 3
-                        navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true; restoreState = true }
+                        navigatedToDownloadsFromDetail = true
+                        navController.navigate(MangaDestinations.LIBRARY) { launchSingleTop = true }
                     },
                     downloads = downloads,
                     selectedLanguage = detailState.chapterLanguage,
