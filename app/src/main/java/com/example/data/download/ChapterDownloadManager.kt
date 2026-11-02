@@ -130,22 +130,62 @@ class ChapterDownloadManager(
     private class PageHttpFailure(val code: Int) : java.io.IOException("Servidor da página respondeu HTTP $code")
 
     private suspend fun downloadRemotePage(original: String, target: File) {
-        try { fetchImage(original, target); return }
-        catch (primary: java.io.IOException) {
+        try {
+            fetchImage(original, target)
+            return
+        } catch (primary: java.io.IOException) {
             val registry = com.example.data.network.MangaDexPages.registry
-            if (primary is PageHttpFailure || !registry.contains(original) || certificateFailure(primary)) throw primary
+            val isMangaDex = original.contains("mangadex") || registry.contains(original)
+            if (!isMangaDex || certificateFailure(primary)) throw primary
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            val alternatives = registry.alternatives(original)
+
+            val alternatives = buildList {
+                if (registry.contains(original)) {
+                    runCatching { addAll(registry.alternatives(original)) }
+                }
+                for (fallback in extractMangaDexFallbacks(original)) {
+                    if (!contains(fallback) && fallback != original) {
+                        add(fallback)
+                    }
+                }
+            }
+
+            if (alternatives.isEmpty()) throw primary
+
             var last = primary
-            for (alternative in alternatives.take(2)) {
+            for (alternative in alternatives) {
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                try { fetchImage(alternative, target); return }
-                catch (error: java.io.IOException) {
-                    if (certificateFailure(error) || (error is PageHttpFailure && error.code in listOf(403, 429))) throw error
+                try {
+                    fetchImage(alternative, target)
+                    return
+                } catch (error: java.io.IOException) {
+                    if (certificateFailure(error)) throw error
                     last = error
                 }
             }
             throw last
+        }
+    }
+
+    private fun extractMangaDexFallbacks(url: String): List<String> = buildList {
+        val isData = url.contains("/data/")
+        val isDataSaver = url.contains("/data-saver/")
+        if (!isData && !isDataSaver) return@buildList
+
+        val marker = if (isData) "/data/" else "/data-saver/"
+        val prefix = url.substringBefore(marker)
+        val pathAfter = url.substringAfter(marker).substringBefore('?')
+        val segments = pathAfter.split('/')
+        if (segments.size >= 2 && segments[0].isNotBlank() && segments[1].isNotBlank()) {
+            val hash = segments[0]
+            val fileName = segments[1]
+            if (isData) {
+                add("$prefix/data-saver/$hash/$fileName")
+            }
+            add("https://uploads.mangadex.org/data/$hash/$fileName")
+            if (isData) {
+                add("https://uploads.mangadex.org/data-saver/$hash/$fileName")
+            }
         }
     }
 
@@ -154,7 +194,14 @@ class ChapterDownloadManager(
     }
 
     private fun fetchImage(url: String, target: File) {
-        calls.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        val isMangaDex = url.contains("mangadex") || com.example.data.network.MangaDexPages.registry.contains(url)
+        val requestBuilder = Request.Builder().url(url)
+        if (isMangaDex) {
+            requestBuilder.header("User-Agent", com.example.data.network.MangaDexApiConfig.USER_AGENT)
+            requestBuilder.header("Referer", "https://mangadex.org/")
+            requestBuilder.header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+        }
+        calls.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) throw PageHttpFailure(response.code)
             val body = response.body ?: throw java.io.IOException("Resposta de página vazia.")
             val expected = body.contentLength()

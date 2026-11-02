@@ -26,6 +26,11 @@ class MangaDexEndpointFallbackInterceptor(
             return chain.proceed(originalRequest)
         }
 
+        // Avoid redirecting /at-home/ chapter server allocation requests to dev sandbox, as api.mangadex.dev does not host production At-Home chapter nodes
+        if (originalUrl.encodedPath.contains("/at-home/")) {
+            return chain.proceed(originalRequest)
+        }
+
         // Avoid redirecting MockWebServer tests on non-standard ports (e.g. random port numbers)
         val isStandardPort = originalUrl.port == 443 || originalUrl.port == 80
         if (!isStandardPort) {

@@ -17,9 +17,13 @@ class MangaDexHeaderInterceptor(
         val original = chain.request()
         val builder = original.newBuilder()
 
+        val isMangaDexDomain = original.url.host.contains("mangadex") ||
+            original.url.host in setOf("api.mangadex.org", "api.mangadex.dev", "uploads.mangadex.org") ||
+            MangaDexPages.registry.contains(original.url.toString())
+
         // 1. Mandatory User-Agent header
         val currentUa = original.header("User-Agent")
-        if (shouldSetUserAgent(currentUa)) {
+        if (shouldSetUserAgent(currentUa, isMangaDexDomain)) {
             builder.header("User-Agent", userAgent)
         }
 
@@ -34,7 +38,6 @@ class MangaDexHeaderInterceptor(
         }
 
         // 3. Legitimate client headers for Cloudflare / MangaDex WAF compliance
-        val isMangaDexDomain = original.url.host.contains("mangadex")
         if (isMangaDexDomain) {
             if (original.header("Referer") == null) {
                 builder.header("Referer", "https://mangadex.org/")
@@ -47,14 +50,16 @@ class MangaDexHeaderInterceptor(
         return chain.proceed(builder.build())
     }
 
-    private fun shouldSetUserAgent(currentUa: String?): Boolean {
+    private fun shouldSetUserAgent(currentUa: String?, isMangaDexDomain: Boolean = false): Boolean {
         if (currentUa.isNullOrBlank()) return true
         if (currentUa.startsWith("okhttp", ignoreCase = true)) return true
+        if (isMangaDexDomain && (currentUa.contains("MangaApp") || currentUa == "Mozilla/5.0 MangaApp/1.1")) return true
         return false
     }
 
     private fun isImageRequest(path: String, host: String): Boolean {
-        if (host == "uploads.mangadex.org" || host.contains("mangadex.network") || path.contains("/covers/")) {
+        if (host == "uploads.mangadex.org" || host.contains("mangadex.network") ||
+            path.contains("/covers/") || path.contains("/data/") || path.contains("/data-saver/")) {
             return true
         }
         val lower = path.lowercase()

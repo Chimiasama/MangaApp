@@ -190,4 +190,38 @@ class MangaDexEndpointFallbackTest {
             assertEquals(listOf("api.mangadex.dev"), requestedHosts)
         }
     }
+
+    @Test
+    fun `at-home chapter allocation endpoints are never redirected to api mangadex dev`() {
+        MangaDexEndpointManager.markPrimaryFailure("Temporary outage")
+        assertTrue(MangaDexEndpointManager.isFallbackActive())
+
+        val requestedHosts = mutableListOf<String>()
+        val mockBackend = Interceptor { chain ->
+            val req = chain.request()
+            requestedHosts.add(req.url.host)
+            Response.Builder()
+                .request(req)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("""{"result":"ok","baseUrl":"https://uploads.mangadex.org"}""".toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+
+        val client = OkHttpClient.Builder()
+            .addInterceptor(MangaDexEndpointFallbackInterceptor(MangaDexEndpointManager))
+            .addInterceptor(mockBackend)
+            .build()
+
+        val request = Request.Builder()
+            .url("https://api.mangadex.org/at-home/server/chap-12345")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            assertEquals(200, response.code)
+            // /at-home/ MUST remain on api.mangadex.org even when fallback is active
+            assertEquals(listOf("api.mangadex.org"), requestedHosts)
+        }
+    }
 }

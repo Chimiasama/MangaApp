@@ -42,8 +42,10 @@ class MangaDexCallFactory(
         .build()
 
     override fun newCall(request: Request): Call {
-        return if (request.url.host in setOf("api.mangadex.org", "api.mangadex.dev", "uploads.mangadex.org") ||
-            MangaDexPages.registry.contains(request.url.toString())) {
+        val isMangaDex = request.url.host in setOf("api.mangadex.org", "api.mangadex.dev", "uploads.mangadex.org") ||
+            request.url.host.contains("mangadex") ||
+            MangaDexPages.registry.contains(request.url.toString())
+        return if (isMangaDex) {
             val traced = request.newBuilder()
                 .tag(MangaDexConnectionTrace::class.java, MangaDexConnectionTrace(request.url.host)).build()
             tracedClient.newCall(traced)

@@ -123,4 +123,43 @@ class LocalChapterDownloadTest {
         } finally { manager.deleteDownload(id); server.shutdown(); db.close() }
     }
 
+    @Test fun `mangadex chapter download recovers from failing node using central uploads fallback`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val server = okhttp3.mockwebserver.MockWebServer().apply { start() }
+        val id = "mangadex-download-${java.util.UUID.randomUUID()}"
+        val bytes = image()
+        val atHomeManifest = com.example.data.network.model.MangaDexAtHomeResponse(
+            result = "ok",
+            baseUrl = server.url("/").toString().trimEnd('/'),
+            chapter = com.example.data.network.model.MangaDexAtHomeChapterDto(
+                hash = "hash123",
+                data = listOf("page1.png"),
+                dataSaver = listOf("page1.jpg")
+            )
+        )
+        // Register chapter pages in MangaDexPages.registry
+        val registeredUrls = com.example.data.network.MangaDexPages.registry.register(id, atHomeManifest)
+        val manager = ChapterDownloadManager(context, db.downloadDao())
+        val manga = MangaModel("https://api.mangadex.org/manga/$id", id, "MangaDex Test", "", sourceId = "mangadex")
+        val chapter = ChapterModel(id, "Capítulo 1", "https://api.mangadex.org/chapter/$id")
+        try {
+            // First attempt to node returns 503 error
+            server.enqueue(okhttp3.mockwebserver.MockResponse().setResponseCode(503))
+            // Alternative fallback (data-saver or next attempt) returns 200 with valid image
+            server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(okio.Buffer().write(bytes)))
+
+            val success = manager.downloadChapter(manga, chapter, registeredUrls)
+            assertTrue("Download should succeed via alternative fallback", success)
+            val record = db.downloadDao().getDownloadSync(id)!!
+            assertEquals(DownloadEntity.STATE_COMPLETED, record.downloadState)
+            assertEquals(1, record.downloadedPagesCount)
+            val downloadedPages = manager.getDownloadedPages(id)
+            assertEquals(1, downloadedPages.size)
+        } finally {
+            manager.deleteDownload(id)
+            server.shutdown()
+            db.close()
+        }
+    }
 }
