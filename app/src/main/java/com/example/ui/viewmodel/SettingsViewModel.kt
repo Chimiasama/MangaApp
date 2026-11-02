@@ -15,6 +15,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+sealed class UpdateUiState {
+    object Idle : UpdateUiState()
+    object Checking : UpdateUiState()
+    data class Available(val info: com.example.data.updater.AppReleaseInfo) : UpdateUiState()
+    object UpToDate : UpdateUiState()
+    data class Error(val message: String) : UpdateUiState()
+}
+
 data class SettingsUiState(
     val customRulesJson: String = "",
     val rulesUpdateSuccess: Boolean? = null,
@@ -44,7 +52,9 @@ data class SettingsUiState(
     val syncOnWifiOnly: Boolean = false,
     val connectionDiagnosticsEnabled: Boolean = false,
     val homeSections: List<com.example.home.HomeSection> = com.example.home.HomeSections.defaults,
-    val nsfwEnabled: Boolean = false
+    val nsfwEnabled: Boolean = false,
+    val githubRepo: String = com.example.data.updater.AppUpdateManager.DEFAULT_REPO,
+    val updateUiState: UpdateUiState = UpdateUiState.Idle
 )
 
 private data class ReaderPrefs(
@@ -89,6 +99,7 @@ class SettingsViewModel(
     private val _totalStorage = MutableStateFlow("0 B")
     private val _isCheckingAniList = MutableStateFlow(false)
     private val _aniListErrorMessage = MutableStateFlow<String?>(null)
+    private val _updateUiState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(
@@ -181,11 +192,41 @@ class SettingsViewModel(
     }.combine(preferencesRepository.autoCleanCacheDays) { state, days -> state.copy(autoCleanCacheDays = days)
     }.combine(preferencesRepository.autoCleanDownloadsEnabled) { state, enabled -> state.copy(autoCleanDownloadsEnabled = enabled)
     }.combine(preferencesRepository.keepFavoritesDownloads) { state, keep -> state.copy(keepFavoritesDownloads = keep)
+    }.combine(preferencesRepository.githubRepo) { state, repo -> state.copy(githubRepo = repo)
+    }.combine(_updateUiState) { state, updateState -> state.copy(updateUiState = updateState)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SettingsUiState()
     )
+
+    fun checkForUpdates(repoOverride: String? = null) {
+        viewModelScope.launch {
+            _updateUiState.value = UpdateUiState.Checking
+            val targetRepo = repoOverride?.trim()?.ifBlank { null }
+                ?: preferencesRepository.githubRepo.first()
+            val result = com.example.data.updater.AppUpdateManager.checkForUpdates(targetRepo)
+            result.onSuccess { release ->
+                if (release.isUpdateAvailable) {
+                    _updateUiState.value = UpdateUiState.Available(release)
+                } else {
+                    _updateUiState.value = UpdateUiState.UpToDate
+                }
+            }.onFailure { error ->
+                _updateUiState.value = UpdateUiState.Error(error.message ?: "Falha ao verificar atualizações no GitHub.")
+            }
+        }
+    }
+
+    fun setGithubRepo(repo: String) {
+        viewModelScope.launch {
+            preferencesRepository.setGithubRepo(repo)
+        }
+    }
+
+    fun clearUpdateState() {
+        _updateUiState.value = UpdateUiState.Idle
+    }
 
     fun setNsfwEnabled(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.setNsfwEnabled(enabled) }

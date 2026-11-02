@@ -86,6 +86,13 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material.icons.filled.SyncAlt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.SystemUpdate
+import com.example.BuildConfig
+import com.example.ui.viewmodel.UpdateUiState
 import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
 
@@ -122,7 +129,10 @@ fun SettingsScreen(
     onConnectionDiagnosticsToggled: (Boolean) -> Unit = {},
     homeSources: List<com.example.source.MangaSource> = emptyList(),
     onHomeSectionsChanged: (List<com.example.home.HomeSection>) -> Unit = {},
-    onNsfwToggled: (Boolean) -> Unit = {}
+    onNsfwToggled: (Boolean) -> Unit = {},
+    onCheckForUpdates: (String?) -> Unit = {},
+    onSetGithubRepo: (String) -> Unit = {},
+    onClearUpdateState: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showRulesModal by remember { mutableStateOf(false) }
@@ -1464,6 +1474,298 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Section: Atualização e Releases via GitHub
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("github_update_card")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(
+                        imageVector = Icons.Default.SystemUpdate,
+                        contentDescription = null,
+                        tint = PrimaryPurple,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Atualização via GitHub",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Versão atual instalada: v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Repositório GitHub configurável
+                var isEditingRepo by remember { mutableStateOf(false) }
+                var repoInput by remember(state.githubRepo) { mutableStateOf(state.githubRepo) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Repositório GitHub:",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = state.githubRepo,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = PrimaryPurple
+                            )
+                        }
+                        IconButton(onClick = { isEditingRepo = !isEditingRepo }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Alterar repositório",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    if (isEditingRepo) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = repoInput,
+                            onValueChange = { repoInput = it },
+                            placeholder = { Text("usuario/repositorio", fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                Button(
+                                    onClick = {
+                                        onSetGithubRepo(repoInput)
+                                        isEditingRepo = false
+                                        Toast.makeText(context, "Repositório salvo!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+                                ) {
+                                    Text("Salvar", fontSize = 11.sp)
+                                }
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Estado da verificação
+                when (val update = state.updateUiState) {
+                    is UpdateUiState.Idle -> { }
+                    is UpdateUiState.Checking -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(PrimaryPurple.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = PrimaryPurple,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Consultando últimos releases no GitHub...",
+                                fontSize = 12.sp,
+                                color = PrimaryPurple
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    is UpdateUiState.UpToDate -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF4CAF50).copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Você já está na versão mais recente (v${BuildConfig.VERSION_NAME})!",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF4CAF50)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    is UpdateUiState.Error -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(CrimsonRed.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = CrimsonRed,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = update.message,
+                                fontSize = 12.sp,
+                                color = CrimsonRed
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    is UpdateUiState.Available -> {
+                        val release = update.info
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF02A9FF).copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.SystemUpdate,
+                                        contentDescription = null,
+                                        tint = Color(0xFF02A9FF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Nova Versão: ${release.tagName}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF02A9FF)
+                                    )
+                                }
+                                if (release.publishedAt.isNotBlank()) {
+                                    Text(
+                                        text = release.publishedAt,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            if (release.changelog.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = release.changelog.take(300),
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (release.apkDownloadUrl != null) {
+                                    Button(
+                                        onClick = {
+                                            com.example.data.updater.AppUpdateManager.downloadApk(
+                                                context = context,
+                                                downloadUrl = release.apkDownloadUrl,
+                                                fileName = release.apkName ?: "MangaReader-${release.tagName}.apk"
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF02A9FF)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Baixar APK", fontSize = 12.sp)
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        com.example.data.updater.AppUpdateManager.openReleasesPage(context, release.htmlUrl)
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Ver no GitHub", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
+                // Botão de checar atualizações
+                Button(
+                    onClick = { onCheckForUpdates(state.githubRepo) },
+                    enabled = state.updateUiState !is UpdateUiState.Checking,
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("check_github_updates_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Verificar Atualizações no GitHub", fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "A cada novo push ou release gerado no GitHub, você pode atualizar o APK diretamente por aqui.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // App Version and Build Info Footer
         Column(

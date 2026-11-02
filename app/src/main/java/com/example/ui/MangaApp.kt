@@ -401,7 +401,10 @@ fun MangaApp(
                             requiresBatteryNotLow = true
                         )
                     },
-                    onNsfwToggled = { enabled -> settingsViewModel.setNsfwEnabled(enabled) }
+                    onNsfwToggled = { enabled -> settingsViewModel.setNsfwEnabled(enabled) },
+                    onCheckForUpdates = { repo -> settingsViewModel.checkForUpdates(repo) },
+                    onSetGithubRepo = { repo -> settingsViewModel.setGithubRepo(repo) },
+                    onClearUpdateState = { settingsViewModel.clearUpdateState() }
                 )
             }
 

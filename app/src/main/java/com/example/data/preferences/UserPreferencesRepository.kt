@@ -106,6 +106,7 @@ class UserPreferencesRepository(private val context: Context) {
         val AUTO_CLEAN_CACHE_DAYS = intPreferencesKey("auto_clean_cache_days")
         val AUTO_CLEAN_DOWNLOADS_ENABLED = booleanPreferencesKey("auto_clean_downloads_enabled")
         val KEEP_FAVORITES_DOWNLOADS = booleanPreferencesKey("keep_favorites_downloads")
+        val GITHUB_REPO = stringPreferencesKey("github_repo")
     }
 
     val cachedNsfw: Boolean get() = false
@@ -329,5 +330,13 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun setKeepFavoritesDownloads(keep: Boolean) {
         context.dataStore.edit { prefs -> prefs[KEEP_FAVORITES_DOWNLOADS] = keep }
+    }
+
+    val githubRepo: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[GITHUB_REPO] ?: com.example.data.updater.AppUpdateManager.DEFAULT_REPO
+    }
+
+    suspend fun setGithubRepo(repo: String) {
+        context.dataStore.edit { prefs -> prefs[GITHUB_REPO] = repo.trim() }
     }
 }
