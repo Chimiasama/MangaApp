@@ -30,7 +30,6 @@ data class SettingsUiState(
     val readerMode: String = "WEBTOON",
     val readerOrientation: String = "SENSOR",
     val defaultFullscreenReader: Boolean = true,
-    val autoCloudSync: Boolean = true,
     val readerBackgroundColor: String = "OLED",
     val readerInvertColors: Boolean = false,
     val pagePreloadEnabled: Boolean = true,
@@ -41,15 +40,8 @@ data class SettingsUiState(
     val autoCleanCacheDays: Int = 3,
     val autoCleanDownloadsEnabled: Boolean = true,
     val keepFavoritesDownloads: Boolean = true,
-    val aniListToken: String? = null,
-    val aniListUsername: String? = null,
-    val aniListAvatar: String? = null,
-    val aniListAutoSync: Boolean = true,
-    val isCheckingAniList: Boolean = false,
-    val aniListErrorMessage: String? = null,
     val batterySaverEnabled: Boolean = false,
     val batterySaverDimPercent: Int = 0,
-    val syncOnWifiOnly: Boolean = false,
     val connectionDiagnosticsEnabled: Boolean = false,
     val homeSections: List<com.example.home.HomeSection> = com.example.home.HomeSections.defaults,
     val nsfwEnabled: Boolean = false,
@@ -69,36 +61,22 @@ private data class ReaderPrefs(
     val batterySaverDimPercent: Int
 )
 
-private data class AniListPrefs(
-    val token: String?,
-    val username: String?,
-    val avatar: String?,
-    val autoSync: Boolean
-)
-
 private data class SettingsUiFlags(
-    val autoSync: Boolean,
     val rulesStatus: Boolean?,
     val cacheSize: String,
     val downloadsSize: String,
-    val totalStorage: String,
-    val isCheckingAniList: Boolean,
-    val aniListError: String?,
-    val syncOnWifiOnly: Boolean
+    val totalStorage: String
 )
 
 class SettingsViewModel(
     private val repository: MangaRepository,
-    private val preferencesRepository: UserPreferencesRepository,
-    private val aniListSyncManager: com.example.data.sync.AniListSyncManager = com.example.data.sync.AniListSyncManager()
+    private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _rulesStatus = MutableStateFlow<Boolean?>(null)
     private val _cacheSize = MutableStateFlow("0 B")
     private val _downloadsSize = MutableStateFlow("0 B")
     private val _totalStorage = MutableStateFlow("0 B")
-    private val _isCheckingAniList = MutableStateFlow(false)
-    private val _aniListErrorMessage = MutableStateFlow<String?>(null)
     private val _updateUiState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -126,40 +104,24 @@ class SettingsViewModel(
                     batterySaverEnabled = args[7] as Boolean,
                     batterySaverDimPercent = args[8] as Int
                 )
-            },
-            combine(
-                preferencesRepository.aniListToken,
-                preferencesRepository.aniListUsername,
-                preferencesRepository.aniListAvatar,
-                preferencesRepository.aniListAutoSync
-            ) { token, username, avatar, autoSync ->
-                AniListPrefs(token, username, avatar, autoSync)
             }
-        ) { customJson, reader, anilist ->
-            Triple(customJson ?: "", reader, anilist)
+        ) { customJson, reader ->
+            Pair(customJson ?: "", reader)
         },
         combine(
-            preferencesRepository.autoCloudSync,
             _rulesStatus,
             _cacheSize,
             _downloadsSize,
-            _totalStorage,
-            _isCheckingAniList,
-            _aniListErrorMessage,
-            preferencesRepository.syncOnWifiOnly
+            _totalStorage
         ) { args: Array<Any?> ->
             SettingsUiFlags(
-                autoSync = args[0] as Boolean,
-                rulesStatus = args[1] as? Boolean,
-                cacheSize = args[2] as String,
-                downloadsSize = args[3] as String,
-                totalStorage = args[4] as String,
-                isCheckingAniList = args[5] as Boolean,
-                aniListError = args[6] as? String,
-                syncOnWifiOnly = args[7] as Boolean
+                rulesStatus = args[0] as? Boolean,
+                cacheSize = args[1] as String,
+                downloadsSize = args[2] as String,
+                totalStorage = args[3] as String
             )
         }
-    ) { (customJson, reader, anilist), flags ->
+    ) { (customJson, reader), flags ->
         SettingsUiState(
             customRulesJson = customJson,
             themeMode = reader.theme,
@@ -172,17 +134,9 @@ class SettingsViewModel(
             cacheSizeFormatted = flags.cacheSize,
             downloadsSizeFormatted = flags.downloadsSize,
             totalStorageFormatted = flags.totalStorage,
-            autoCloudSync = flags.autoSync,
             rulesUpdateSuccess = flags.rulesStatus,
-            aniListToken = anilist.token,
-            aniListUsername = anilist.username,
-            aniListAvatar = anilist.avatar,
-            aniListAutoSync = anilist.autoSync,
-            isCheckingAniList = flags.isCheckingAniList,
-            aniListErrorMessage = flags.aniListError,
             batterySaverEnabled = reader.batterySaverEnabled,
-            batterySaverDimPercent = reader.batterySaverDimPercent,
-            syncOnWifiOnly = flags.syncOnWifiOnly
+            batterySaverDimPercent = reader.batterySaverDimPercent
         )
     }.combine(preferencesRepository.connectionDiagnosticsEnabled) { state, enabled ->
         state.copy(connectionDiagnosticsEnabled = enabled)
@@ -261,12 +215,6 @@ class SettingsViewModel(
     fun setDefaultFullscreenReader(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setDefaultFullscreenReader(enabled)
-        }
-    }
-
-    fun setAutoCloudSync(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.setAutoCloudSync(enabled)
         }
     }
 
@@ -352,47 +300,6 @@ class SettingsViewModel(
         }
     }
 
-    fun connectAniList(token: String) {
-        val cleanToken = token.trim().removePrefix("Bearer ").trim()
-        if (cleanToken.isBlank()) {
-            _aniListErrorMessage.value = "O token não pode ser vazio."
-            return
-        }
-        viewModelScope.launch {
-            _isCheckingAniList.value = true
-            _aniListErrorMessage.value = null
-            val result = aniListSyncManager.validateToken(cleanToken)
-            result.onSuccess { viewer ->
-                preferencesRepository.saveAniListAuth(
-                    token = cleanToken,
-                    username = viewer.name,
-                    avatarUrl = viewer.avatar?.large ?: viewer.avatar?.medium
-                )
-                _isCheckingAniList.value = false
-            }.onFailure { ex ->
-                _aniListErrorMessage.value = ex.message ?: "Falha ao validar conta AniList"
-                _isCheckingAniList.value = false
-            }
-        }
-    }
-
-    fun disconnectAniList() {
-        viewModelScope.launch {
-            preferencesRepository.clearAniListAuth()
-            _aniListErrorMessage.value = null
-        }
-    }
-
-    fun setAniListAutoSync(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.setAniListAutoSync(enabled)
-        }
-    }
-
-    fun clearAniListError() {
-        _aniListErrorMessage.value = null
-    }
-
     fun setBatterySaverEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setBatterySaverEnabled(enabled)
@@ -402,12 +309,6 @@ class SettingsViewModel(
     fun setBatterySaverDimPercent(percent: Int) {
         viewModelScope.launch {
             preferencesRepository.setBatterySaverDimPercent(percent)
-        }
-    }
-
-    fun setSyncOnWifiOnly(wifiOnly: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.setSyncOnWifiOnly(wifiOnly)
         }
     }
 }

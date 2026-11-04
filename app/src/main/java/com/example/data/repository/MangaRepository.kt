@@ -19,7 +19,6 @@ import com.example.data.model.DailySpeedStat
 import com.example.data.model.GenreStat
 import com.example.data.model.ReadingStats
 import com.example.data.preferences.UserPreferencesRepository
-import com.example.data.sync.FirestoreSyncManager
 import com.example.source.ChapterLanguage
 import com.example.source.ChapterModel
 import com.example.source.ComickSource
@@ -177,9 +176,6 @@ class MangaRepository(
     suspend fun deleteBookmarkById(id: Long) {
         bookmarkDao?.deleteBookmarkById(id)
     }
-
-    val syncManager = FirestoreSyncManager(mangaDao, progressDao)
-    val cloudSyncState = syncManager.syncState
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
@@ -742,15 +738,6 @@ class MangaRepository(
         } else if (existingChapter != null) {
             chapterDao?.updateChapterReadStatus(chapterId, true, lastPageRead, totalPages)
         }
-
-        // Trigger background WorkManager progress sync with Firestore
-        appContext?.let { ctx ->
-            com.example.data.sync.ProgressSyncWorkHelper.triggerImmediateProgressSync(
-                context = ctx,
-                mangaUrl = mangaUrl,
-                chapterId = chapterId
-            )
-        }
     }
 
     suspend fun deleteProgress(mangaUrl: String) {
@@ -902,18 +889,4 @@ class MangaRepository(
             dailyTrend = dailyTrendList
         )
     }
-
-    suspend fun triggerCloudSync() = syncManager.performFullSync(
-        localFavorites = mangaDao.getAllFavoritesSync(),
-        localProgress = progressDao.getAllProgressSync()
-    )
-
-    suspend fun backupToCloud() = syncManager.backupOnly(
-        localFavorites = mangaDao.getAllFavoritesSync(),
-        localProgress = progressDao.getAllProgressSync()
-    )
-
-    suspend fun restoreFromCloud() = syncManager.restoreOnly()
-
-    fun setCustomSyncKey(key: String) = syncManager.setCustomSyncKey(key)
 }

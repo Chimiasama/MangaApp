@@ -89,18 +89,12 @@ class UserPreferencesRepository(private val context: Context) {
         val READER_MODE = stringPreferencesKey("reader_mode")
         val READER_ORIENTATION = stringPreferencesKey("reader_orientation")
         val DEFAULT_FULLSCREEN_READER = booleanPreferencesKey("default_fullscreen_reader")
-        val AUTO_CLOUD_SYNC = booleanPreferencesKey("auto_cloud_sync")
         val SELECTED_LANGUAGE = stringPreferencesKey("selected_language")
         val READER_BACKGROUND_COLOR = stringPreferencesKey("reader_background_color")
         val READER_INVERT_COLORS = booleanPreferencesKey("reader_invert_colors")
         val PAGE_PRELOAD_ENABLED = booleanPreferencesKey("page_preload_enabled")
-        val ANILIST_TOKEN = stringPreferencesKey("anilist_token")
-        val ANILIST_USERNAME = stringPreferencesKey("anilist_username")
-        val ANILIST_AVATAR = stringPreferencesKey("anilist_avatar")
-        val ANILIST_AUTO_SYNC = booleanPreferencesKey("anilist_auto_sync")
         val BATTERY_SAVER_ENABLED = booleanPreferencesKey("battery_saver_enabled")
         val BATTERY_SAVER_DIM_PERCENT = intPreferencesKey("battery_saver_dim_percent")
-        val SYNC_ON_WIFI_ONLY = booleanPreferencesKey("sync_on_wifi_only")
         val NSFW_ENABLED = booleanPreferencesKey("nsfw_enabled")
         val AUTO_CLEAN_CACHE_ENABLED = booleanPreferencesKey("auto_clean_cache_enabled")
         val AUTO_CLEAN_CACHE_DAYS = intPreferencesKey("auto_clean_cache_days")
@@ -152,10 +146,6 @@ class UserPreferencesRepository(private val context: Context) {
         prefs[DEFAULT_FULLSCREEN_READER] ?: true
     }
 
-    val autoCloudSync: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[AUTO_CLOUD_SYNC] ?: true
-    }
-
     val readerBackgroundColor: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[READER_BACKGROUND_COLOR] ?: "OLED"
     }
@@ -168,32 +158,12 @@ class UserPreferencesRepository(private val context: Context) {
         prefs[PAGE_PRELOAD_ENABLED] ?: true
     }
 
-    val aniListToken: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[ANILIST_TOKEN]
-    }
-
-    val aniListUsername: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[ANILIST_USERNAME]
-    }
-
-    val aniListAvatar: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[ANILIST_AVATAR]
-    }
-
-    val aniListAutoSync: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[ANILIST_AUTO_SYNC] ?: true
-    }
-
     val batterySaverEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[BATTERY_SAVER_ENABLED] ?: false
     }
 
     val batterySaverDimPercent: Flow<Int> = context.dataStore.data.map { prefs ->
         prefs[BATTERY_SAVER_DIM_PERCENT] ?: 0
-    }
-
-    val syncOnWifiOnly: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[SYNC_ON_WIFI_ONLY] ?: false
     }
 
     suspend fun saveCustomRulesJson(json: String) {
@@ -226,12 +196,6 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun setAutoCloudSync(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[AUTO_CLOUD_SYNC] = enabled
-        }
-    }
-
     suspend fun setSelectedLanguage(lang: String) {
         context.dataStore.edit { prefs ->
             prefs[SELECTED_LANGUAGE] = lang
@@ -256,32 +220,6 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveAniListAuth(token: String, username: String, avatarUrl: String?) {
-        context.dataStore.edit { prefs ->
-            prefs[ANILIST_TOKEN] = token
-            prefs[ANILIST_USERNAME] = username
-            if (avatarUrl != null) {
-                prefs[ANILIST_AVATAR] = avatarUrl
-            } else {
-                prefs.remove(ANILIST_AVATAR)
-            }
-        }
-    }
-
-    suspend fun clearAniListAuth() {
-        context.dataStore.edit { prefs ->
-            prefs.remove(ANILIST_TOKEN)
-            prefs.remove(ANILIST_USERNAME)
-            prefs.remove(ANILIST_AVATAR)
-        }
-    }
-
-    suspend fun setAniListAutoSync(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[ANILIST_AUTO_SYNC] = enabled
-        }
-    }
-
     suspend fun setBatterySaverEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[BATTERY_SAVER_ENABLED] = enabled
@@ -291,12 +229,6 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setBatterySaverDimPercent(percent: Int) {
         context.dataStore.edit { prefs ->
             prefs[BATTERY_SAVER_DIM_PERCENT] = percent.coerceIn(0, 60)
-        }
-    }
-
-    suspend fun setSyncOnWifiOnly(wifiOnly: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[SYNC_ON_WIFI_ONLY] = wifiOnly
         }
     }
 

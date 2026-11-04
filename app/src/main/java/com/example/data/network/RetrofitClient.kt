@@ -92,20 +92,7 @@ object RetrofitClient {
         comickRetrofit.create(ComickApiService::class.java)
     }
 
-    const val ANILIST_BASE_URL = "https://graphql.anilist.co/"
     const val JIKAN_BASE_URL = "https://api.jikan.moe/v4/"
-
-    val aniListRetrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(ANILIST_BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-    }
-
-    val aniListApiService: AniListApiService by lazy {
-        aniListRetrofit.create(AniListApiService::class.java)
-    }
 
     val jikanRetrofit: Retrofit by lazy {
         Retrofit.Builder()

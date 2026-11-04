@@ -99,7 +99,6 @@ fun MangaApp(
     var navigatedToDownloadsFromDetail by rememberSaveable { mutableStateOf(false) }
     val bookmarks by mangaViewModel.bookmarks.collectAsStateWithLifecycle()
     val stats by mangaViewModel.readingStats.collectAsStateWithLifecycle()
-    val cloudSyncState by mangaViewModel.cloudSyncState.collectAsStateWithLifecycle()
     val selectedLanguage by mangaViewModel.selectedLanguage.collectAsStateWithLifecycle()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -364,7 +363,6 @@ fun MangaApp(
                     onDeleteFavorite = { mangaUrl ->
                         mangaViewModel.removeFavoriteByUrl(mangaUrl)
                     },
-                    onSyncClicked = { mangaViewModel.triggerCloudSync() },
                     onBack = if (navigatedToDownloadsFromDetail) {
                         {
                             navigatedToDownloadsFromDetail = false
@@ -381,17 +379,11 @@ fun MangaApp(
                     onHomeSectionsChanged = settingsViewModel::setHomeSections,
                     onConnectionDiagnosticsToggled = settingsViewModel::setConnectionDiagnosticsEnabled,
                     state = settingsState,
-                    syncState = cloudSyncState,
                     onSaveRulesJson = { json -> settingsViewModel.importScraperRulesJson(json) },
-                    onSyncClicked = { mangaViewModel.triggerCloudSync() },
-                    onBackupClicked = { mangaViewModel.backupToCloud() },
-                    onRestoreClicked = { mangaViewModel.restoreFromCloud() },
-                    onSetCustomSyncKey = { key -> mangaViewModel.setCustomSyncKey(key) },
                     onThemeModeSelected = { mode -> settingsViewModel.setThemeMode(mode) },
                     onReaderModeSelected = { mode -> settingsViewModel.setReaderMode(mode) },
                     onReaderOrientationSelected = { orientation -> settingsViewModel.setReaderOrientation(orientation) },
                     onDefaultFullscreenToggled = { enabled -> settingsViewModel.setDefaultFullscreenReader(enabled) },
-                    onAutoCloudSyncToggled = { enabled -> settingsViewModel.setAutoCloudSync(enabled) },
                     onReaderBackgroundColorSelected = { color -> settingsViewModel.setReaderBackgroundColor(color) },
                     onReaderInvertColorsToggled = { inverted -> settingsViewModel.setReaderInvertColors(inverted) },
                     onPagePreloadToggled = { enabled -> settingsViewModel.setPagePreloadEnabled(enabled) },
@@ -401,20 +393,8 @@ fun MangaApp(
                     onClearAllDownloadsClicked = { settingsViewModel.clearAllDownloads(context) },
                     onAutoCleanCacheToggled = { enabled -> settingsViewModel.setAutoCleanCacheEnabled(enabled) },
                     onKeepFavoritesDownloadsToggled = { keep -> settingsViewModel.setKeepFavoritesDownloads(keep) },
-                    onConnectAniList = { token -> settingsViewModel.connectAniList(token) },
-                    onDisconnectAniList = { settingsViewModel.disconnectAniList() },
-                    onAniListAutoSyncToggled = { enabled -> settingsViewModel.setAniListAutoSync(enabled) },
-                    onClearAniListError = { settingsViewModel.clearAniListError() },
                     onBatterySaverToggled = { enabled -> settingsViewModel.setBatterySaverEnabled(enabled) },
                     onBatterySaverDimPercentChanged = { percent -> settingsViewModel.setBatterySaverDimPercent(percent) },
-                    onSyncOnWifiOnlyToggled = { wifiOnly ->
-                        settingsViewModel.setSyncOnWifiOnly(wifiOnly)
-                        com.example.data.sync.ProgressSyncWorkHelper.schedulePeriodicProgressSync(
-                            context = context,
-                            requiresWifiOnly = wifiOnly,
-                            requiresBatteryNotLow = true
-                        )
-                    },
                     onNsfwToggled = { enabled -> settingsViewModel.setNsfwEnabled(enabled) },
                     onCheckForUpdates = { repo -> settingsViewModel.checkForUpdates(repo) },
                     onSetGithubRepo = { repo -> settingsViewModel.setGithubRepo(repo) },

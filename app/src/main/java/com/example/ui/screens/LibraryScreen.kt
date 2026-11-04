@@ -110,7 +110,6 @@ fun LibraryScreen(
     onDeleteBookmark: (Long) -> Unit = {},
     onDeleteHistory: (String) -> Unit = {},
     onDeleteFavorite: (String) -> Unit = {},
-    onSyncClicked: () -> Unit = {},
     requestedTab: Int? = null,
     onRequestedTabConsumed: () -> Unit = {},
     isEnqueueingDownloads: Boolean = false,

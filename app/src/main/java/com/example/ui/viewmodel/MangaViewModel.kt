@@ -9,7 +9,6 @@ import com.example.data.local.ProgressEntity
 import com.example.data.local.SearchHistoryEntity
 import com.example.data.model.ReadingStats
 import com.example.data.repository.MangaRepository
-import com.example.data.sync.CloudSyncState
 import com.example.source.ChapterModel
 import com.example.source.GenreCarouselSection
 import com.example.source.MangaDexSource
@@ -39,7 +38,6 @@ import com.example.ui.reader.adjacentChapter
 
 import com.example.data.network.RetrofitClient
 import com.example.data.network.model.MalRecommendationItem
-import com.example.data.sync.AniListSyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -252,36 +250,11 @@ class MangaViewModel(
     val readingStats: StateFlow<ReadingStats> = repository.readingStats
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ReadingStats())
 
-    val cloudSyncState: StateFlow<CloudSyncState> = repository.cloudSyncState
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CloudSyncState.Idle())
-
     val selectedLanguage: StateFlow<String> = repository.preferencesRepository.selectedLanguage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "pt-br")
 
     val isNsfwEnabled: StateFlow<Boolean> = repository.preferencesRepository.nsfwEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.preferencesRepository.cachedNsfw)
-
-    fun triggerCloudSync() {
-        viewModelScope.launch {
-            repository.triggerCloudSync()
-        }
-    }
-
-    fun backupToCloud() {
-        viewModelScope.launch {
-            repository.backupToCloud()
-        }
-    }
-
-    fun restoreFromCloud() {
-        viewModelScope.launch {
-            repository.restoreFromCloud()
-        }
-    }
-
-    fun setCustomSyncKey(key: String) {
-        repository.setCustomSyncKey(key)
-    }
 
     val browseUiState: StateFlow<BrowseUiState> = combine(
         combine(_selectedSourceId, _selectedGenre, _selectedYearRange, selectedLanguage, _searchQuery) { sourceId, genre, yearRange, language, query ->
@@ -329,7 +302,6 @@ class MangaViewModel(
     private val _currentMangaProgress = MutableStateFlow<ProgressEntity?>(null)
 
     private val _detailMalRecommendations = MutableStateFlow<List<MalRecommendationItem>>(emptyList())
-    private val aniListSyncManager = AniListSyncManager()
 
     private val baseDetailUiState = combine(
         _detailManga,
@@ -1193,20 +1165,6 @@ class MangaViewModel(
             mangaCoverUrl = state.mangaCoverUrl, chapterId = chapter.id, chapterTitle = chapter.title,
             pageIndex = state.currentPageIndex, pageUrl = state.pages.getOrElse(state.currentPageIndex) { "" },
             scrollOffset = state.scrollOffset)
-        syncProgressToAniList(state.mangaTitle, chapter.chapterNumber)
-    }
-
-    private fun syncProgressToAniList(mangaTitle: String, chapterNumber: Float) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val token = repository.preferencesRepository.aniListToken.firstOrNull()
-                val autoSync = repository.preferencesRepository.aniListAutoSync.firstOrNull() ?: true
-                if (!token.isNullOrBlank() && autoSync) {
-                    aniListSyncManager.syncProgress(token, mangaTitle, chapterNumber)
-                }
-            } catch (_: Exception) {
-            }
-        }
     }
 
     fun updateReaderPageIndex(pageIndex: Int) {

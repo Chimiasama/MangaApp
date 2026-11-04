@@ -75,14 +75,12 @@ Este documento apresenta o plano estruturado de desenvolvimento e implantação 
 
 ---
 
-## 📚 FASE 3: Sincronização de Progresso com AniList & MyAnimeList (Jikan)
+## 📚 FASE 3: Metadados com MyAnimeList (Jikan)
+*(Nota: As funcionalidades de Sincronização na Nuvem e Integração com AniList foram totalmente removidas a pedido do usuário)*
 
-### 3.1 Conexão com AniList GraphQL API
-- **Objetivo:** Permitir ao usuário fazer login com sua conta AniList e atualizar automaticamente seu progresso de leitura na nuvem.
-- **Implementação:**
-  - Configurar cliente GraphQL / Retrofit para a API `https://graphql.anilist.co`.
-  - Criar fluxo de autenticação OAuth2 no `SettingsScreen` (Redirecionamento Web/Deep Link para capturar token de acesso).
-  - Ao concluir a leitura de um capítulo no `MangaViewModel` (`persistCurrentScrollPosition` / `navigateChapter`), disparar mutação GraphQL atualizando `SaveMediaListEntry(mediaId, progress)`.
+### 3.1 Sincronização na Nuvem & AniList (REMOVIDO)
+- **Status:** **Removido por completo.**
+- O aplicativo opera com persistência local de alta performance (SQLite / Room Database) e cache local de capítulos, sem dependência ou sincronização remota de contas AniList ou Firebase Firestore.
 
 ### 3.2 Metadados e Recomendações com Jikan API (MyAnimeList)
 - **Objetivo:** Exibir dados de populares, tendências e recomendações sem necessidade de autenticação.

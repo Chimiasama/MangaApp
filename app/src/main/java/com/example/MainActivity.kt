@@ -75,9 +75,6 @@ class MainActivity : ComponentActivity() {
         val customImageLoader = ImageCacheConfig.setupCoilImageLoader(applicationContext)
         Coil.setImageLoader(customImageLoader)
 
-        // Schedule background reading progress sync with Firestore via WorkManager
-        com.example.data.sync.ProgressSyncWorkHelper.schedulePeriodicProgressSync(applicationContext)
-
         setContent {
             val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
 
