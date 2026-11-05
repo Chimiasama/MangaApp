@@ -317,8 +317,8 @@ fun BrowseScreen(
                     trailingIcon = { Icon(Icons.Default.Close, "Remover fonte", Modifier.size(16.dp)) })
             }
 
-            if (activeCount > 0) Text(activeSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp).testTag("active_filter_summary"))
+            if (activeCount > 0) Text(activeSummary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().clickable { dismissSearchKeyboard(); showFilters = true }.padding(horizontal = 4.dp, vertical = 4.dp).testTag("active_filter_summary"))
 
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("genre:action", "genre:adventure", "genre:comedy", "genre:drama", "genre:romance").forEach { id ->

@@ -163,15 +163,15 @@ fun MangaApp(
         bottomBar = {
             if (currentRoute in bottomNavRoutes && !browsingWithKeyboard) {
                 NavigationBar(
-                    containerColor = androidx.compose.ui.graphics.Color(0xFF211F26),
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
                     modifier = Modifier.testTag("bottom_nav_bar")
                 ) {
                     val navItemColors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = PrimaryPurple,
-                        selectedTextColor = PrimaryPurple,
-                        indicatorColor = PrimaryPurple.copy(alpha = 0.12f),
-                        unselectedIconColor = TextSecondaryDark,
-                        unselectedTextColor = TextSecondaryDark
+                        selectedIconColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        selectedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        indicatorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        unselectedIconColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     NavigationBarItem(

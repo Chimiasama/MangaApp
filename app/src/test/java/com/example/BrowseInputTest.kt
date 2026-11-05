@@ -234,8 +234,9 @@ class BrowseInputTest {
             MaterialTheme { com.example.ui.screens.SettingsScreen(state = state.value, onSaveRulesJson = {},
                 onConnectionDiagnosticsToggled = { state.value = state.value.copy(connectionDiagnosticsEnabled = it) }) }
         }
-        compose.onNodeWithTag("connection_diagnostics_switch").assertIsOff().performClick().assertIsOn()
-        compose.onNodeWithTag("connection_diagnostics_switch").performClick().assertIsOff()
+        compose.onNodeWithTag("disclosure_Diagnóstico").performScrollTo().performClick()
+        compose.onNodeWithTag("connection_diagnostics_switch").performScrollTo().assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithTag("connection_diagnostics_switch").performScrollTo().performClick().assertIsOff()
     }
 
     @Test fun `default search hides the implicit filter summary`() {

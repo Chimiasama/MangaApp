@@ -124,6 +124,8 @@ fun MangaDetailScreen(
     val context = LocalContext.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
+    var synopsisExpanded by androidx.compose.runtime.saveable.rememberSaveable(state.manga?.id) { mutableStateOf(false) }
+    var synopsisOverflows by remember(state.manga?.id) { mutableStateOf(false) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf(setOf<String>()) }
     var sortAscending by remember { mutableStateOf(false) }
@@ -238,7 +240,7 @@ fun MangaDetailScreen(
                                 scaleY = favoriteScale
                             }
                             .background(
-                                if (state.isFavorite) CrimsonRed else Color.Black.copy(alpha = 0.5f),
+                                if (state.isFavorite) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.5f),
                                 CircleShape
                             )
                             .testTag("favorite_fixed_marker")
@@ -312,8 +314,14 @@ fun MangaDetailScreen(
                         text = cleanDescription(manga.description),
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 20.sp
+                        lineHeight = 20.sp,
+                        onTextLayout = { if (!synopsisExpanded) synopsisOverflows = it.hasVisualOverflow },
+                        maxLines = if (synopsisExpanded) Int.MAX_VALUE else 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
+                    if (synopsisExpanded || synopsisOverflows) TextButton(onClick = { synopsisExpanded = !synopsisExpanded }) {
+                        Text(if (synopsisExpanded) "Ler menos" else "Ler sinopse completa")
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -321,7 +329,7 @@ fun MangaDetailScreen(
                     val progress = state.readingProgress?.takeIf { saved -> visibleChapters.any { it.id == saved.chapterId } }
                     if (progress != null) {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = PrimaryPurple.copy(alpha = 0.15f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -334,7 +342,7 @@ fun MangaDetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Book,
                                     contentDescription = null,
-                                    tint = PrimaryPurple
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -342,7 +350,7 @@ fun MangaDetailScreen(
                                         text = "Continuar Leitura",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = PrimaryPurple
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
                                         text = "${formatChapterTitle(progress.chapterTitle)} • Pág ${progress.lastPageRead + 1}/${progress.totalPages}",
@@ -354,7 +362,7 @@ fun MangaDetailScreen(
                                 if (continueChapter != null) {
                                     Button(
                                         onClick = { onChapterClick(continueChapter) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                         modifier = Modifier.testTag("continue_button")
                                     ) {
                                         Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -369,7 +377,7 @@ fun MangaDetailScreen(
                         // Banner de início direto para novos leitores
                         val firstChapter = visibleChapters.minBy { it.chapterNumber }
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = CrimsonRed.copy(alpha = 0.15f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -382,7 +390,7 @@ fun MangaDetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Book,
                                     contentDescription = null,
-                                    tint = CrimsonRed
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -390,7 +398,7 @@ fun MangaDetailScreen(
                                         text = "Começar Leitura",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = CrimsonRed
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
                                         text = formatChapterTitle(firstChapter.title),
@@ -401,7 +409,7 @@ fun MangaDetailScreen(
                                 }
                                 Button(
                                     onClick = { onChapterClick(firstChapter) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                     modifier = Modifier.testTag("start_reading_button")
                                 ) {
                                     Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -492,7 +500,7 @@ fun MangaDetailScreen(
 
                     if (isSelectionMode) {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = PrimaryPurple.copy(alpha = 0.12f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -509,7 +517,7 @@ fun MangaDetailScreen(
                                         text = "Modo de Seleção (${selectedChapterIds.size} selecionados)",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = PrimaryPurple
+                                        color = MaterialTheme.colorScheme.primary
                                     )
 
                                     IconButton(
@@ -573,7 +581,7 @@ fun MangaDetailScreen(
                                                 ).show()
                                             }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier
                                             .weight(1.5f)
@@ -608,7 +616,7 @@ fun MangaDetailScreen(
                                 Row(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(PrimaryPurple.copy(alpha = 0.12f))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                                         .clickable { sortAscending = !sortAscending }
                                         .padding(horizontal = 8.dp, vertical = 6.dp)
                                         .testTag("toggle_sort_order_button"),
@@ -618,14 +626,14 @@ fun MangaDetailScreen(
                                     Icon(
                                         imageVector = Icons.Default.SwapVert,
                                         contentDescription = if (sortAscending) "Ordenar: Mais Recentes Primeiro" else "Ordenar: Do Começo",
-                                        tint = PrimaryPurple,
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Text(
                                         text = if (sortAscending) "Crescente ⬆" else "Decrescente ⬇",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = PrimaryPurple
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
@@ -652,195 +660,197 @@ fun MangaDetailScreen(
                                         onClick = { onLanguageSelected(code) },
                                         label = { Text(label, fontSize = 12.sp) },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = CrimsonRed.copy(alpha = 0.2f),
-                                            selectedLabelColor = CrimsonRed
+                                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                            selectedLabelColor = MaterialTheme.colorScheme.primary
                                         ),
                                         modifier = Modifier.testTag("filter_chip_$code")
                                     )
                                 }
                             }
 
-                            if (visibleChapters.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { isSelectionMode = true },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(40.dp)
-                                            .testTag("toggle_selection_mode_button")
+                            com.example.ui.components.DisclosureSection("Opções dos capítulos", if (chapterSearchQuery.isBlank()) "Selecionar, baixar e filtrar" else "Busca ativa: $chapterSearchQuery") {
+                                if (visibleChapters.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Checklist,
-                                            contentDescription = null,
-                                            tint = PrimaryPurple,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Selecionar",
-                                            fontSize = 13.sp,
-                                            color = PrimaryPurple,
-                                            fontWeight = FontWeight.Medium,
-                                            maxLines = 1
-                                        )
-                                    }
-
-                                    Button(
-                                        enabled = !isEnqueueingDownloads,
-                                        onClick = {
-                                            val unDownloaded = visibleChapters.filter { ch ->
-                                                downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
-                                            }
-                                            if (unDownloaded.isNotEmpty()) {
-                                                onDownloadMultipleChapters(unDownloaded)
-                                                Toast.makeText(
-                                                    context,
-                                                    "Adicionando capítulos. Acompanhe em Biblioteca → Downloads.",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Todos os capítulos já foram baixados!",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple.copy(alpha = 0.15f)),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(40.dp)
-                                            .testTag("download_all_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = null,
-                                            tint = PrimaryPurple,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Baixar Todos",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = PrimaryPurple,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Filtro rápido de capítulos quando há muitos capítulos
-                            if (visibleChapters.size > 3) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = chapterSearchQuery,
-                                    onValueChange = { chapterSearchQuery = it },
-                                    placeholder = { Text("Filtrar capítulos (ex: 12)", fontSize = 13.sp) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Search,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        if (chapterSearchQuery.isNotEmpty()) {
-                                            IconButton(onClick = { chapterSearchQuery = "" }) {
-                                                Icon(
-                                                    Icons.Default.Clear,
-                                                    contentDescription = "Limpar busca",
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                        OutlinedButton(
+                                            onClick = { isSelectionMode = true },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(40.dp)
+                                                .testTag("toggle_selection_mode_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Checklist,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Selecionar",
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1
+                                            )
                                         }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("chapter_search_input"),
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-                                    )
-                                )
-                            }
 
-                            // Grouping controls (50-in-50) & Expand/Collapse All
-                            if (visibleChapters.size > 20) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        FilterChip(
-                                            selected = isGroupingEnabled,
-                                            onClick = { isGroupingEnabled = true },
-                                            label = { Text("Agrupado (50)", fontSize = 12.sp) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.Folder,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            },
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = PrimaryPurple.copy(alpha = 0.2f),
-                                                selectedLabelColor = PrimaryPurple
-                                            ),
-                                            modifier = Modifier.testTag("group_by_50_chip")
-                                        )
-
-                                        FilterChip(
-                                            selected = !isGroupingEnabled,
-                                            onClick = { isGroupingEnabled = false },
-                                            label = { Text("Lista Completa", fontSize = 12.sp) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.Checklist,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            },
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = PrimaryPurple.copy(alpha = 0.2f),
-                                                selectedLabelColor = PrimaryPurple
-                                            ),
-                                            modifier = Modifier.testTag("full_list_chip")
-                                        )
-                                    }
-
-                                    if (isGroupingEnabled && chapterSearchQuery.isBlank()) {
-                                        TextButton(
+                                        Button(
+                                            enabled = !isEnqueueingDownloads,
                                             onClick = {
-                                                expandedGroups = if (expandedGroups.size == chapterChunks.size) {
-                                                    emptySet()
+                                                val unDownloaded = visibleChapters.filter { ch ->
+                                                    downloads.none { it.chapterId == ch.id && it.downloadState == DownloadEntity.STATE_COMPLETED }
+                                                }
+                                                if (unDownloaded.isNotEmpty()) {
+                                                    onDownloadMultipleChapters(unDownloaded)
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Adicionando capítulos. Acompanhe em Biblioteca → Downloads.",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
                                                 } else {
-                                                    chapterChunks.indices.toSet()
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Todos os capítulos já foram baixados!",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
                                                 }
                                             },
-                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                            modifier = Modifier.testTag("toggle_all_groups_button")
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(40.dp)
+                                                .testTag("download_all_button")
                                         ) {
-                                            Text(
-                                                text = if (expandedGroups.size == chapterChunks.size) "Recolher Todos" else "Expandir Todos",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = PrimaryPurple
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
                                             )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Baixar Todos",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Filtro rápido de capítulos quando há muitos capítulos
+                                if (visibleChapters.size > 3) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = chapterSearchQuery,
+                                        onValueChange = { chapterSearchQuery = it },
+                                        placeholder = { Text("Filtrar capítulos (ex: 12)", fontSize = 13.sp) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Search,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            if (chapterSearchQuery.isNotEmpty()) {
+                                                IconButton(onClick = { chapterSearchQuery = "" }) {
+                                                    Icon(
+                                                        Icons.Default.Clear,
+                                                        contentDescription = "Limpar busca",
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("chapter_search_input"),
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                                        )
+                                    )
+                                }
+
+                                // Grouping controls (50-in-50) & Expand/Collapse All
+                                if (visibleChapters.size > 20) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            FilterChip(
+                                                selected = isGroupingEnabled,
+                                                onClick = { isGroupingEnabled = true },
+                                                label = { Text("Agrupado (50)", fontSize = 12.sp) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Folder,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                                                ),
+                                                modifier = Modifier.testTag("group_by_50_chip")
+                                            )
+
+                                            FilterChip(
+                                                selected = !isGroupingEnabled,
+                                                onClick = { isGroupingEnabled = false },
+                                                label = { Text("Lista Completa", fontSize = 12.sp) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Checklist,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                                    selectedLabelColor = MaterialTheme.colorScheme.primary
+                                                ),
+                                                modifier = Modifier.testTag("full_list_chip")
+                                            )
+                                        }
+
+                                        if (isGroupingEnabled && chapterSearchQuery.isBlank()) {
+                                            TextButton(
+                                                onClick = {
+                                                    expandedGroups = if (expandedGroups.size == chapterChunks.size) {
+                                                        emptySet()
+                                                    } else {
+                                                        chapterChunks.indices.toSet()
+                                                    }
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                modifier = Modifier.testTag("toggle_all_groups_button")
+                                            ) {
+                                                Text(
+                                                    text = if (expandedGroups.size == chapterChunks.size) "Recolher Todos" else "Expandir Todos",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -860,7 +870,7 @@ fun MangaDetailScreen(
                             .padding(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = PrimaryPurple)
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
                 }
             } else if (state.chapterError != null) {
@@ -921,7 +931,7 @@ fun MangaDetailScreen(
                                     label = { Text(label, fontSize = 11.sp) },
                                     modifier = Modifier.testTag("detail_lang_chip_$code"),
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = CrimsonRed,
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
                                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                                     )
                                 )
@@ -1017,7 +1027,7 @@ fun MangaDetailScreen(
                             text = "Resultados da busca: ${sortedChapters.size} capítulos",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = PrimaryPurple,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                         )
                     }
@@ -1073,7 +1083,7 @@ private fun ChapterGroupHeader(
             .testTag("chapter_group_header_$groupTitle"),
         colors = CardDefaults.cardColors(
             containerColor = if (isExpanded) {
-                PrimaryPurple.copy(alpha = 0.12f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             }
@@ -1094,7 +1104,7 @@ private fun ChapterGroupHeader(
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
                     contentDescription = null,
-                    tint = PrimaryPurple,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -1114,7 +1124,7 @@ private fun ChapterGroupHeader(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier
-                                    .background(PrimaryPurple, RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -1146,7 +1156,7 @@ private fun ChapterGroupHeader(
                         Text(
                             text = if (allSelectedInGroup) "Desmarcar 50" else "Marcar 50",
                             fontSize = 12.sp,
-                            color = PrimaryPurple,
+                            color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -1159,7 +1169,7 @@ private fun ChapterGroupHeader(
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (isExpanded) "Recolher" else "Expandir",
-                        tint = PrimaryPurple
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -1202,9 +1212,9 @@ private fun ChapterRowItem(
             .testTag("chapter_item_${chapter.id}"),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
-                PrimaryPurple.copy(alpha = 0.25f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
             } else if (isCurrentReading) {
-                PrimaryPurple.copy(alpha = 0.15f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
             } else {
                 MaterialTheme.colorScheme.surface
             }
@@ -1221,7 +1231,7 @@ private fun ChapterRowItem(
                 Checkbox(
                     checked = isSelected,
                     onCheckedChange = { onToggleSelect() },
-                    colors = CheckboxDefaults.colors(checkedColor = PrimaryPurple),
+                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier
                         .padding(end = 8.dp)
                         .testTag("chapter_checkbox_${chapter.id}")
@@ -1242,7 +1252,7 @@ private fun ChapterRowItem(
                     text = formatChapterTitle(chapter.title),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
-                    color = if (isCurrentReading || isSelected) PrimaryPurple else MaterialTheme.colorScheme.onSurface
+                    color = if (isCurrentReading || isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                 )
                 if (chapter.dateUpload.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
@@ -1259,7 +1269,7 @@ private fun ChapterRowItem(
                 Icon(
                     imageVector = if (isRead) Icons.Default.CheckCircle else Icons.Default.Checklist,
                     contentDescription = if (isRead) "Marcar como não lido" else "Marcar como lido",
-                    tint = if (isRead) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = if (isRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             // Download Action / Status
@@ -1299,7 +1309,7 @@ private fun ChapterRowItem(
                             DownloadEntity.STATE_PREPARING -> "Preparando…"
                             DownloadEntity.STATE_RETRYING -> "Aguardando…"
                             else -> "Na fila"
-                        }, color = PrimaryPurple, fontSize = 11.sp,
+                        }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp,
                             modifier = Modifier.testTag("chapter_download_pending_${chapter.id}"))
                     }
                     DownloadEntity.STATE_DOWNLOADING -> {
@@ -1308,14 +1318,14 @@ private fun ChapterRowItem(
                             CircularProgressIndicator(
                                 progress = { downloadRecord.downloadProgress },
                                 modifier = Modifier.size(18.dp),
-                                color = PrimaryPurple,
+                                color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "$percent%",
                                 fontSize = 11.sp,
-                                color = PrimaryPurple,
+                                color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -1341,7 +1351,7 @@ private fun ChapterRowItem(
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Ler Capítulo",
-                    tint = PrimaryPurple,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             }

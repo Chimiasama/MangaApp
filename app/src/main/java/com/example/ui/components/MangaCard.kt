@@ -123,7 +123,7 @@ fun MangaCard(
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
-                            tint = if (isFavorite) CrimsonRed else Color.White,
+                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else Color.White,
                             modifier = Modifier.size(26.dp)
                                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
                                 .padding(5.dp)
@@ -137,19 +137,13 @@ fun MangaCard(
                     text = manga.title,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
+                    lineHeight = 18.sp,
                     minLines = 2,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                        text = manga.genres.firstOrNull().orEmpty(),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+
             }
         }
     }
