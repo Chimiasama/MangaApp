@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-      - master
   workflow_dispatch:
     inputs:
       tag_name:
@@ -50,17 +47,17 @@ jobs:
 
       # 4. Preparar ambiente e chaves de assinatura
       - name: Preparar ambiente e keystore
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.MANGA_SIGNING_KEYSTORE_BASE64 }}
         run: |
           touch .env
-
-          if [ ! -f "debug.keystore" ]; then
-            if [ -f "debug.keystore.base64" ]; then
-              base64 -d debug.keystore.base64 > debug.keystore
-            else
-              keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
-            fi
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
+            echo "::error::Configure MANGA_SIGNING_KEYSTORE_BASE64 com a chave fixa de assinatura. Uma chave nova impediria atualizar instalações existentes. Veja docs/github-updates.md."
+            exit 1
           fi
-
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+          chmod 600 debug.keystore
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null
           chmod +x ./gradlew
 
       # 5. Determinar tag de versão
@@ -74,7 +71,7 @@ jobs:
           else
             # Extrai versionName do build.gradle.kts
             RAW_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
-            TAG="v${RAW_VERSION:-1.1.0}-${GITHUB_SHA::7}"
+            TAG="v${RAW_VERSION}"
           fi
           echo "TAG_NAME=$TAG" >> $GITHUB_OUTPUT
           echo "Release tag: $TAG"
@@ -104,6 +101,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.versioning.outputs.TAG_NAME }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           name: Manga Reader ${{ steps.versioning.outputs.TAG_NAME }}
           body: |
             ## O que há de novo no Manga Reader ${{ steps.versioning.outputs.TAG_NAME }}

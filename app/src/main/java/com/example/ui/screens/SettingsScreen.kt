@@ -1312,13 +1312,13 @@ fun SettingsScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Manga Reader v1.1.0",
+                text = "Manga Reader v${com.example.BuildConfig.VERSION_NAME}",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Versão 1.1.0 (Build 2) • Pronto para Google Play",
+                text = "Versão ${com.example.BuildConfig.VERSION_NAME} (Build ${com.example.BuildConfig.VERSION_CODE})",
                 fontSize = 11.sp,
                 maxLines = if (state.connectionDiagnosticsEnabled) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)

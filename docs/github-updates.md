@@ -1,0 +1,31 @@
+# Publicação e atualizações pelo GitHub
+
+O app consulta `repos/Chimiasama/MangaApp/releases/latest`, compara a tag com `BuildConfig.VERSION_NAME` e oferece o APK anexado. Um artefato de Actions sozinho não entra nessa consulta. Toda versão publicada precisa aumentar `versionName` e `versionCode`.
+
+## Assinatura fixa obrigatória
+
+Os workflows antigos geravam um novo `debug.keystore` em cada execução. Isso faz o Android rejeitar atualização sobre uma instalação com outra assinatura, mesmo quando a versão aumenta. O log da compilação 42119579510 confirma que uma chave nova foi gerada. Não é possível recuperar a chave privada a partir do APK ou do certificado público.
+
+Ambos os workflows agora exigem `MANGA_SIGNING_KEYSTORE_BASE64`. Não há geração silenciosa de outra chave. A chave atual deve ter o alias `androiddebugkey` e senha de armazenamento/chave `android`, conforme o perfil de assinatura já utilizado pelo projeto. O conteúdo fica em Actions Secrets, nunca no Git ou nos logs.
+
+Com a chave correta disponível e uma autenticação administrativa própria no GitHub CLI, execute na pasta em que ela está:
+
+```sh
+base64 < debug.keystore | gh secret set MANGA_SIGNING_KEYSTORE_BASE64 --repo Chimiasama/MangaApp
+```
+
+Também é possível cadastrar o conteúdo base64 em Settings → Secrets and variables → Actions → New repository secret. Não publique o arquivo ou seu base64 no repositório.
+
+**Use a chave que assinou a instalação existente.** Uma chave local diferente estabelece uma identidade fixa para as próximas versões, mas não torna compatíveis APKs antigos de assinatura diferente. Se a chave temporária original não foi preservada, a atualização sobre ela não pode ser garantida; não desinstale o app sem antes proteger seus dados.
+
+## Publicar
+
+Depois de configurar a assinatura:
+
+```sh
+gh workflow run release.yml --repo Chimiasama/MangaApp --ref main -f tag_name=v1.1.1
+```
+
+O workflow publica uma Release estável, marcada como Latest, com o APK e a tag da versão. Também pode ser acionado por tags `v*`; commits comuns não publicam mais cópias com o mesmo número de versão e um hash no final.
+
+No celular: Ajustes → Atualizações → Verificar atualizações no GitHub. O repositório padrão é `chimiasama/MangaApp`. O download usa o APK público da Release, sem login necessário no telefone. A instalação ainda exige a confirmação normal do Android.
