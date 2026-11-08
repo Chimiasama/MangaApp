@@ -51,13 +51,7 @@ jobs:
           SIGNING_KEYSTORE_BASE64: ${{ secrets.MANGA_SIGNING_KEYSTORE_BASE64 }}
         run: |
           touch .env
-          if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
-            echo "::error::Configure MANGA_SIGNING_KEYSTORE_BASE64 com a chave fixa de assinatura. Uma chave nova impediria atualizar instalações existentes. Veja docs/github-updates.md."
-            exit 1
-          fi
-          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          chmod 600 debug.keystore
-          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null
+          bash .github/scripts/prepare-debug-signing.sh
           chmod +x ./gradlew
 
       # 5. Determinar tag de versão

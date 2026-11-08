@@ -49,14 +49,7 @@ jobs:
           # 1. Cria .env se ausente para o secrets-gradle-plugin
           touch .env
 
-          # A mesma chave deve assinar APKs de teste e de atualização.
-          if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
-            echo "::error::Configure MANGA_SIGNING_KEYSTORE_BASE64. Veja docs/github-updates.md. Não é seguro gerar outra assinatura a cada build."
-            exit 1
-          fi
-          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-          chmod 600 debug.keystore
-          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null
+          bash .github/scripts/prepare-debug-signing.sh
 
           # 3. Se for release, garante chave de upload
           BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
@@ -65,11 +58,12 @@ jobs:
               echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > my-upload-key.jks
               echo "STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> $GITHUB_ENV
               echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
-            elif [ ! -f "my-upload-key.jks" ]; then
-              echo "Gerando chave release padrão..."
-              keytool -genkeypair -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android,O=Android,C=US"
-              echo "STORE_PASSWORD=android" >> $GITHUB_ENV
-              echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+            else
+              # Sem chave privada de release, use a mesma identidade dos APKs de teste.
+              echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/debug.keystore" >> "$GITHUB_ENV"
+              echo "KEY_ALIAS=androiddebugkey" >> "$GITHUB_ENV"
+              echo "STORE_PASSWORD=android" >> "$GITHUB_ENV"
+              echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
             fi
           fi
 
