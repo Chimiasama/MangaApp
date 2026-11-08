@@ -217,6 +217,15 @@ class MangaDexSource(
         dto.toMangaModel(baseUrl, id)
     }
 
+    override suspend fun getAuthorManga(manga: MangaModel, language: String): List<MangaModel> = withContext(Dispatchers.IO) {
+        if (!hasKnownAuthor(manga.author) || manga.authorIds.isEmpty()) return@withContext emptyList()
+        apiService.getMangaList(limit = 30, authors = manga.authorIds.distinct(),
+            translatedLanguages = if (language == "all") null else listOf(ChapterLanguage.normalize(language)),
+            orderFollowedCount = "desc").data.orEmpty()
+            .filter { dto -> dto.relationships.orEmpty().any { it.type == "author" && it.id in manga.authorIds } }
+            .map { it.toMangaModel(baseUrl, id) }
+    }
+
     override suspend fun getChapters(mangaUrl: String): List<ChapterModel> = getChapters(mangaUrl, "pt-br")
 
     override suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> = withContext(Dispatchers.IO) {

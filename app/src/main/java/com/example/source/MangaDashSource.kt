@@ -26,6 +26,7 @@ class MangaDashSource(
     private val downloadPdf: suspend (String, String, File) -> Unit = ::downloadMangaDashPdf,
     private val renderPdf: suspend (File, File) -> List<String> = PdfRendererHelper::renderPdfPagesToImages
 ) : MangaSource {
+    override val supportsAuthorRecommendations = true
     override val id = "mangadash"
     override val name = "MangaDash"
     override val baseUrl = "https://mangadash.net"
@@ -168,6 +169,13 @@ class MangaDashSource(
             status = doc.selectFirst(".stat-item[title=Status] span")?.text() ?: "Unknown",
             year = doc.selectFirst(".stat-item[title='Ano de Lançamento'] span")?.text()?.toIntOrNull(),
             isNsfw = doc.selectFirst(".cover-3d.is-plus18") != null)
+    }
+
+    override suspend fun getAuthorManga(manga: MangaModel, language: String): List<MangaModel> = withContext(Dispatchers.IO) {
+        if (!hasKnownAuthor(manga.author) || !supportsLanguage(language)) return@withContext emptyList()
+        val url = "$baseUrl/mangas".toHttpUrl().newBuilder().addQueryParameter("autor", manga.author.trim()).build().toString()
+        // Use the provider's author catalog, not its title search.
+        parseCatalog(Jsoup.parse(fetch(url), url)).take(30)
     }
 
     override suspend fun getChapters(mangaUrl: String) = getChapters(mangaUrl, lang)

@@ -87,8 +87,8 @@ object MangaDexMapper {
      * Extracts author name from relationships.
      */
     fun extractAuthor(dto: MangaDexMangaDto): String {
-        val authorRel = dto.relationships?.firstOrNull { it.type == "author" }
-        return authorRel?.attributes?.name ?: ""
+        return dto.relationships.orEmpty().filter { it.type == "author" }
+            .mapNotNull { it.attributes?.name?.trim()?.takeIf(String::isNotBlank) }.distinct().joinToString(", ")
     }
 
     /**
@@ -172,6 +172,7 @@ object MangaDexMapper {
             isNsfw = isNsfw(dto),
             sourceId = sourceId,
             author = extractAuthor(dto),
+            authorIds = dto.relationships.orEmpty().filter { it.type == "author" }.mapNotNull { it.id?.takeIf(String::isNotBlank) }.distinct(),
             status = dto.attributes?.status ?: "Unknown",
             originalLanguage = dto.attributes?.originalLanguage.orEmpty(),
             year = dto.attributes?.year,

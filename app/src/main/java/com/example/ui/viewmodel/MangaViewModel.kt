@@ -20,6 +20,7 @@ import com.example.source.MangaSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.map
@@ -83,7 +84,8 @@ data class MangaDetailUiState(
     val readChapterIds: Set<String> = emptySet(),
     val chapterError: String? = null,
     val chapterErrorDetails: String? = null,
-    val chapterLanguage: String = "pt-br"
+    val chapterLanguage: String = "pt-br",
+    val authorSuggestions: com.example.source.AuthorSuggestions = com.example.source.AuthorSuggestions()
 )
 
 data class ReaderUiState(
@@ -303,6 +305,20 @@ class MangaViewModel(
 
     private val _detailMalRecommendations = MutableStateFlow<List<MalRecommendationItem>>(emptyList())
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val authorSuggestions = combine(_detailManga, _detailChapterLanguage, isNsfwEnabled) { manga, language, adult ->
+        Triple(manga, language, adult)
+    }.distinctUntilChanged().flatMapLatest { (manga, language, adult) ->
+        kotlinx.coroutines.flow.flow {
+            emit(com.example.source.AuthorSuggestions())
+            if (manga != null) {
+                try { emit(repository.getAuthorSuggestions(manga, language, adult)) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Optional discovery must not interrupt chapter loading. */ }
+            }
+        }.flowOn(Dispatchers.IO)
+    }
+
     private val baseDetailUiState = combine(
         _detailManga,
         _detailChapters,
@@ -324,6 +340,9 @@ class MangaViewModel(
         chapterError = error?.let { "Não foi possível carregar os capítulos. Verifique a conexão e tente novamente." },
         chapterErrorDetails = error) }
         .combine(_detailChapterLanguage) { state, language -> state.copy(chapterLanguage = language) }
+        .combine(authorSuggestions) { state, suggestions -> state.copy(authorSuggestions =
+            suggestions.takeIf { it.mangaUrl == state.manga?.url && it.sourceId == state.manga?.sourceId }
+                ?: com.example.source.AuthorSuggestions()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MangaDetailUiState())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -652,8 +671,18 @@ class MangaViewModel(
         loadBrowseManga(debounceMillis = if (saveToHistory || trimmed.isEmpty()) 0 else 350)
     }
 
+    private var detailFavoriteJob: Job? = null
+    private var detailProgressJob: Job? = null
+    private var detailMalJob: Job? = null
+
     fun openMangaDetails(manga: MangaModel, language: String? = null) {
-        viewModelScope.launch {
+        detailFavoriteJob?.cancel()
+        detailProgressJob?.cancel()
+        detailMalJob?.cancel()
+        _currentMangaProgress.value = null
+        _isFavorite.value = false
+        _detailMalRecommendations.value = emptyList()
+        detailFavoriteJob = viewModelScope.launch {
             _isLoadingDetail.value = true
             _detailManga.value = manga
             
@@ -662,7 +691,7 @@ class MangaViewModel(
                 _isFavorite.value = isFav
             }
         }
-        viewModelScope.launch {
+        detailProgressJob = viewModelScope.launch {
             // Check progress from Room
             repository.getProgressForManga(manga.url).collect { prog ->
                 _currentMangaProgress.value = prog
@@ -676,7 +705,7 @@ class MangaViewModel(
             }
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        detailMalJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 _detailMalRecommendations.value = emptyList()
                 val cleanTitle = manga.title.replace(Regex("""(?i)\(pt-br\)|\[pt-br\]|\(color\)|\[color\]|manhwa|webtoon"""), "").trim()
@@ -697,10 +726,11 @@ class MangaViewModel(
                             votes = rec.votes ?: 0
                         )
                     }
-                    _detailMalRecommendations.value = recs
+                    if (_detailManga.value?.url == manga.url && _detailManga.value?.sourceId == manga.sourceId) _detailMalRecommendations.value = recs
                 }
+            } catch (cancelled: CancellationException) { throw cancelled
             } catch (e: Exception) {
-                _detailMalRecommendations.value = emptyList()
+                if (_detailManga.value?.url == manga.url) _detailMalRecommendations.value = emptyList()
             }
         }
     }

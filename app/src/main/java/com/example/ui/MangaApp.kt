@@ -417,6 +417,7 @@ fun MangaApp(
                     onRetryChapters = mangaViewModel::retryDetailChapters,
                     diagnosticsEnabled = settingsState.connectionDiagnosticsEnabled,
                     state = detailState,
+                    onAuthorMangaClick = { mangaViewModel.openMangaDetails(it, detailState.chapterLanguage) },
                     isEnqueueingDownloads = downloadQueue.isEnqueueing && downloadQueue.mangaUrl == detailState.manga?.url,
                     downloadQueueError = downloadQueue.error.takeIf { downloadQueue.mangaUrl == detailState.manga?.url },
                     onOpenDownloads = {

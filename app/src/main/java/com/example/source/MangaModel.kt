@@ -15,7 +15,8 @@ data class MangaModel(
     val originalLanguage: String = "",
     val updatedAt: String = "",
     val rating: Double? = null,
-    val contentRating: String? = null
+    val contentRating: String? = null,
+    val authorIds: List<String> = emptyList()
 )
 
 /**

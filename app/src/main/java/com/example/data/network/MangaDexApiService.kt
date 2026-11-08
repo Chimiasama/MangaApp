@@ -25,7 +25,8 @@ interface MangaDexApiService {
         @Query("order[relevance]") orderRelevance: String? = null,
         @Query("includes[]") includes: List<String> = listOf("cover_art", "author"),
         @Query("contentRating[]") contentRatings: List<String> = listOf("safe", "suggestive"),
-        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT
+        @Header("User-Agent") userAgent: String = MangaDexApiConfig.USER_AGENT,
+        @Query("authors[]") authors: List<String>? = null
     ): MangaDexMangaListResponse
 
     @GET("manga/{id}")

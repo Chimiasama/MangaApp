@@ -110,7 +110,8 @@ fun MangaDetailScreen(
     diagnosticsEnabled: Boolean = false,
     onOpenDownloads: () -> Unit = {},
     isEnqueueingDownloads: Boolean = false,
-    downloadQueueError: String? = null
+    downloadQueueError: String? = null,
+    onAuthorMangaClick: (MangaModel) -> Unit = {}
 ) {
     val manga = state.manga ?: return
     val effectiveLanguage = when (val l = selectedLanguage.lowercase(java.util.Locale.ROOT)) {
@@ -126,11 +127,11 @@ fun MangaDetailScreen(
 
     var synopsisExpanded by androidx.compose.runtime.saveable.rememberSaveable(state.manga?.id) { mutableStateOf(false) }
     var synopsisOverflows by remember(state.manga?.id) { mutableStateOf(false) }
-    var isSelectionMode by remember { mutableStateOf(false) }
-    var selectedChapterIds by remember { mutableStateOf(setOf<String>()) }
-    var sortAscending by remember { mutableStateOf(false) }
-    var chapterSearchQuery by remember { mutableStateOf("") }
-    var isGroupingEnabled by remember { mutableStateOf(true) }
+    var isSelectionMode by remember(manga.url) { mutableStateOf(false) }
+    var selectedChapterIds by remember(manga.url) { mutableStateOf(setOf<String>()) }
+    var sortAscending by remember(manga.url) { mutableStateOf(false) }
+    var chapterSearchQuery by remember(manga.url) { mutableStateOf("") }
+    var isGroupingEnabled by remember(manga.url) { mutableStateOf(true) }
 
     val sortedChapters = remember(visibleChapters, sortAscending, chapterSearchQuery) {
         val list = if (sortAscending) {
@@ -149,7 +150,7 @@ fun MangaDetailScreen(
         sortedChapters.chunked(50)
     }
 
-    var expandedGroups by remember(visibleChapters.size, sortAscending, isGroupingEnabled) {
+    var expandedGroups by remember(manga.url, visibleChapters.size, sortAscending, isGroupingEnabled) {
         val initialSet = mutableSetOf<Int>()
         if (sortedChapters.size <= 50) {
             initialSet.add(0)
@@ -172,7 +173,7 @@ fun MangaDetailScreen(
             .fillMaxSize()
             .testTag("manga_detail_screen")
     ) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), state = remember(manga.url) { androidx.compose.foundation.lazy.LazyListState() }) {
             // Header Hero Banner
             item {
                 Box(
@@ -497,6 +498,8 @@ fun MangaDetailScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
+
+                    com.example.ui.components.AuthorSuggestionsCarousel(state.authorSuggestions, onAuthorMangaClick)
 
                     if (isSelectionMode) {
                         Card(

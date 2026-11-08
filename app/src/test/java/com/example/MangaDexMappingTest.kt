@@ -166,7 +166,7 @@ class MangaDexMappingTest {
                 orderRelevance: String?,
                 includes: List<String>,
                 contentRatings: List<String>,
-                userAgent: String
+                userAgent: String, authors: List<String>?
             ): MangaDexMangaListResponse {
                 return MangaDexMangaListResponse(
                     result = "ok",
@@ -285,7 +285,7 @@ class MangaDexMappingTest {
             override suspend fun getMangaList(
                 limit: Int, offset: Int, title: String?, year: Int?, translatedLanguages: List<String>?,
                 orderFollowedCount: String?, orderRelevance: String?, includes: List<String>,
-                contentRatings: List<String>, userAgent: String
+                contentRatings: List<String>, userAgent: String, authors: List<String>?
             ): MangaDexMangaListResponse = throw NotImplementedError()
 
             override suspend fun getMangaDetails(

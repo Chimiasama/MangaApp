@@ -43,6 +43,11 @@ interface MangaSource {
 
     suspend fun getMangaDetails(mangaUrl: String): MangaModel
 
+    val supportsAuthorRecommendations: Boolean get() = false
+
+    /** Verified author catalogs only; unsupported sources do not guess by title. */
+    suspend fun getAuthorManga(manga: MangaModel, language: String): List<MangaModel> = emptyList()
+
     suspend fun getChapters(mangaUrl: String): List<ChapterModel>
     suspend fun getChapters(mangaUrl: String, language: String): List<ChapterModel> = getChapters(mangaUrl)
 

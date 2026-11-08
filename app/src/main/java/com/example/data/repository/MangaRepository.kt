@@ -439,6 +439,14 @@ class MangaRepository(
         return results
     }
 
+    suspend fun getAuthorSuggestions(manga: MangaModel, language: String, allowAdult: Boolean = false): com.example.source.AuthorSuggestions {
+        val source = sourceRegistry[manga.sourceId]?.takeIf { it.supportsAuthorRecommendations } ?: return com.example.source.AuthorSuggestions()
+        val detailed = if (manga.author.isBlank() || (manga.sourceId == "mangadex" && manga.authorIds.isEmpty()))
+            getMangaDetails(manga.url, manga.sourceId) else manga
+        if (!com.example.source.hasKnownAuthor(detailed.author)) return com.example.source.AuthorSuggestions()
+        return com.example.source.authorSuggestions(detailed, source.getAuthorManga(detailed, language), allowAdult).copy(mangaUrl = manga.url, sourceId = manga.sourceId)
+    }
+
     suspend fun getMangaDetails(mangaUrl: String, sourceId: String): MangaModel {
         val source = sourceRegistry[sourceId] ?: sourceRegistry.values.first()
         return try {
