@@ -6,12 +6,12 @@ O app consulta `repos/Chimiasama/MangaApp/releases/latest`, compara a tag com `B
 
 Os workflows antigos geravam um novo `debug.keystore` em cada execução. Isso faz o Android rejeitar atualização sobre uma instalação com outra assinatura, mesmo quando a versão aumenta. O log da compilação 42119579510 confirma que uma chave nova foi gerada. Não é possível recuperar a chave privada a partir do APK ou do certificado público.
 
-Ambos os workflows usam o script `.github/scripts/prepare-debug-signing.sh`:
+Os workflows de build, publicação, leitor e teste de PDF usam o script `.github/scripts/prepare-debug-signing.sh`:
 
 1. Com `MANGA_SIGNING_KEYSTORE_BASE64`, restauram a chave configurada no Secret.
 2. Sem o Secret, usam a chave **pública de teste** fixa em `config/signing/mangareader-public-test.keystore`. Isso permite gerar o APK sem configuração adicional. A chave é intencionalmente pública, não uma credencial privada de produção.
 
-O Secret é opcional. Ele deve conter um keystore com alias `androiddebugkey` e senha de armazenamento/chave `android`, conforme o perfil do projeto. Uma chave configurada inválida causa erro em vez de ser substituída silenciosamente. Os dois workflows e o build `release` sem chave privada usam a mesma identidade de teste.
+O Secret é opcional. Ele deve conter um keystore com alias `androiddebugkey` e senha de armazenamento/chave `android`, conforme o perfil do projeto. Uma chave configurada inválida causa erro em vez de ser substituída silenciosamente. Os workflows e o build `release` sem chave privada usam a mesma identidade de teste.
 
 Com a chave correta disponível e uma autenticação administrativa própria no GitHub CLI, execute na pasta em que ela está:
 
