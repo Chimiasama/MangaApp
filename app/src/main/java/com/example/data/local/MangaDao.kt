@@ -9,6 +9,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface MangaDao {
 
+    @Query("""SELECT m.* FROM manga_favorites AS m
+        INNER JOIN reading_progress AS p ON p.mangaUrl = m.url
+        WHERE TRIM(m.title) != '' AND TRIM(m.sourceId) != ''
+        ORDER BY p.timestamp DESC""")
+    fun getContinueReadingMangas(): Flow<List<MangaEntity>>
+
     @Query("SELECT * FROM manga_favorites WHERE isFavorite = 1 ORDER BY addedTimestamp DESC")
     fun getFavoriteMangas(): Flow<List<MangaEntity>>
 

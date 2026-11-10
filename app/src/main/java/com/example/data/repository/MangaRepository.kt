@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import com.example.data.mapping.toDomainModel
 import com.example.data.download.ChapterDownloadManager
 import com.example.data.local.BookmarkDao
 import com.example.data.local.BookmarkEntity
@@ -687,7 +688,7 @@ class MangaRepository(
     }
 
     suspend fun removeFavorite(url: String) {
-        mangaDao.deleteFavoriteByUrl(url)
+        mangaDao.updateFavoriteStatus(url, false)
     }
 
     fun getReadChapterIds(mangaUrl: String, sourceId: String): Flow<List<String>> =
@@ -703,6 +704,10 @@ class MangaRepository(
 
     // Room Reading Progress
     val readingProgress: Flow<List<ProgressEntity>> = progressDao.getAllProgress()
+
+    val continueReadingManga: Flow<List<MangaModel>> = mangaDao.getContinueReadingMangas().map { mangas ->
+        mangas.map { it.toDomainModel() }
+    }
 
     fun getProgressForManga(mangaUrl: String): Flow<ProgressEntity?> {
         return progressDao.getProgressForManga(mangaUrl)

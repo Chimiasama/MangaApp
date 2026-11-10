@@ -46,6 +46,7 @@ class MangaRepositoryTest {
     private lateinit var repository: MangaRepository
 
     class FakeMangaDao : MangaDao {
+        override fun getContinueReadingMangas(): Flow<List<MangaEntity>> = flowOf(emptyList())
         override fun getFavoriteMangas(): Flow<List<MangaEntity>> = flowOf(emptyList())
         override suspend fun getAllFavoritesSync(): List<MangaEntity> = emptyList()
         override fun getMangaByUrl(url: String): Flow<MangaEntity?> = flowOf(null)

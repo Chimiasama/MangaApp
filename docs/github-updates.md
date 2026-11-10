@@ -28,7 +28,7 @@ Também é possível cadastrar o conteúdo base64 em Settings → Secrets and va
 Para publicar usando o Secret opcional ou a assinatura de teste:
 
 ```sh
-gh workflow run release.yml --repo Chimiasama/MangaApp --ref main -f tag_name=v1.1.1
+gh workflow run release.yml --repo Chimiasama/MangaApp --ref main -f tag_name=v1.1.2
 ```
 
 O workflow publica uma Release estável, marcada como Latest, com o APK e a tag da versão. Também pode ser acionado por tags `v*`; commits comuns não publicam mais cópias com o mesmo número de versão e um hash no final.

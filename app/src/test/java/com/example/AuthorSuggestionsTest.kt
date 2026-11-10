@@ -41,14 +41,17 @@ class AuthorSuggestionsTest {
             .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().add(KotlinJsonAdapterFactory()).build()))
             .build().create(MangaDexApiService::class.java)
         val source = MangaDexSource(apiService = api)
+        assertTrue(source.supportsAuthorRecommendations)
         assertEquals(listOf("slump"), source.getAuthorManga(dragon, "pt-br").map { it.id })
         assertEquals(listOf("toriyama"), requests.single().queryParameterValues("authors[]"))
         assertEquals(listOf("pt-br"), requests.single().queryParameterValues("availableTranslatedLanguage[]"))
         assertNull(requests.single().queryParameter("title"))
         source.getAuthorManga(dragon, "all")
         assertTrue(requests.last().queryParameterValues("availableTranslatedLanguage[]").isEmpty())
+        source.getAuthorManga(dragon, "")
+        assertEquals(listOf("pt-br"), requests.last().queryParameterValues("availableTranslatedLanguage[]"))
         assertTrue(source.getAuthorManga(dragon.copy(author = ""), "pt-br").isEmpty())
-        assertEquals(2, requests.size)
+        assertEquals(3, requests.size)
         assertEquals(listOf("toriyama"), MangaDexMangaDto("dragon", relationships = listOf(
             MangaDexRelationshipDto("toriyama", "author", MangaDexRelationshipAttributesDto(name = "Toriyama Akira")),
             MangaDexRelationshipDto("artist", "artist"))).toMangaModel().authorIds)

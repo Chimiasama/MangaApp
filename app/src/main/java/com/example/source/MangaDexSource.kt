@@ -27,6 +27,7 @@ class MangaDexSource(
         RetrofitClient.mangaDexRetrofit.create(com.example.data.network.MangaDexCatalogFilterApi::class.java)
 ) : MangaSource {
 
+    override val supportsAuthorRecommendations = true
     override val id: String = "mangadex"
     override val name: String = "MangaDex (API Oficial)"
     override val baseUrl: String = "https://api.mangadex.org"
@@ -220,7 +221,7 @@ class MangaDexSource(
     override suspend fun getAuthorManga(manga: MangaModel, language: String): List<MangaModel> = withContext(Dispatchers.IO) {
         if (!hasKnownAuthor(manga.author) || manga.authorIds.isEmpty()) return@withContext emptyList()
         apiService.getMangaList(limit = 30, authors = manga.authorIds.distinct(),
-            translatedLanguages = if (language == "all") null else listOf(ChapterLanguage.normalize(language)),
+            translatedLanguages = ChapterLanguage.requested(language)?.toList(),
             orderFollowedCount = "desc").data.orEmpty()
             .filter { dto -> dto.relationships.orEmpty().any { it.type == "author" && it.id in manga.authorIds } }
             .map { it.toMangaModel(baseUrl, id) }

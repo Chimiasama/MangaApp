@@ -105,7 +105,8 @@ data class ReaderUiState(
     val contentVersion: Long = 0,
     val pendingChapter: ChapterModel? = null,
     val errorMessage: String? = null,
-    val nextChapterFirstPages: List<String> = emptyList()
+    val nextChapterFirstPages: List<String> = emptyList(),
+    val historyRevision: Long = 0
 )
 
 private data class BrowseSelection(
@@ -374,12 +375,8 @@ class MangaViewModel(
                 }
             }
             viewModelScope.launch {
-                repository.readingProgress.distinctUntilChangedBy { history -> history.map { it.mangaUrl } }.collectLatest { history ->
-                    homeHistoryItems = history.map { progress ->
-                        val cached = repository.getMangaByUrlSync(progress.mangaUrl)
-                        MangaModel(progress.mangaUrl, cached?.id ?: progress.mangaUrl, cached?.title ?: "Continuar lendo", cached?.coverUrl.orEmpty(),
-                            sourceId = cached?.sourceId.orEmpty())
-                    }
+                repository.continueReadingManga.distinctUntilChanged().collectLatest { mangas ->
+                    homeHistoryItems = mangas
                     publishHome(_homeUiState.value.isLoading, _homeUiState.value.error)
                 }
             }
@@ -766,9 +763,14 @@ class MangaViewModel(
         }
     }
 
+    private val historyRevisions = mutableMapOf<String, Long>()
+    private val readerProgressLock = kotlinx.coroutines.sync.Mutex()
+
     fun deleteHistory(mangaUrl: String) {
+        historyRevisions[mangaUrl] = (historyRevisions[mangaUrl] ?: 0L) + 1L
+        if (_readerState.value.mangaUrl == mangaUrl) scrollSyncJob?.cancel()
         viewModelScope.launch {
-            repository.deleteProgress(mangaUrl)
+            readerProgressLock.withLock { repository.deleteProgress(mangaUrl) }
         }
     }
 
@@ -845,6 +847,7 @@ class MangaViewModel(
         restoreViewport: Boolean = initialPage == null
     ) {
         val previous = _readerState.value
+        val historyRevision = historyRevisions[manga.url] ?: 0L
         val request = ++readerRequestId
         readerJob?.cancel()
         if (previous.mangaUrl != manga.url) readerBookmarksJob?.cancel()
@@ -880,7 +883,7 @@ class MangaViewModel(
                     currentPageIndex = target, scrollOffset = initialScrollOffset ?: savedOffset,
                     chaptersList = chaptersList, isOfflineDownloaded = pages.any { it.startsWith("file:") },
                     viewport = saved?.copy(pageIndex = target) ?: ReaderViewport(chapter.id, target, scale = scale),
-                    contentVersion = request
+                    contentVersion = request, historyRevision = historyRevision
                 )
                 readerBookmarksJob?.cancel()
                 readerBookmarksJob = viewModelScope.launch {
@@ -1012,7 +1015,8 @@ class MangaViewModel(
             val chapter = ChapterModel(
                 id = progress.chapterId,
                 title = progress.chapterTitle.ifBlank { cachedChapter?.title ?: "Capítulo" },
-                chapterUrl = realChapterUrl
+                chapterUrl = realChapterUrl,
+                language = cachedChapter?.language.orEmpty()
             )
 
             val targetLanguage = repository.preferencesRepository.selectedLanguage.first()
@@ -1028,7 +1032,9 @@ class MangaViewModel(
             }.ifEmpty { listOf(chapter) }
 
             _detailManga.value = manga
-            _detailChapterLanguage.value = com.example.source.ChapterLanguage.normalize(chapter.language)
+            _detailChapterLanguage.value = com.example.source.ChapterLanguage.normalize(chapter.language).ifBlank {
+                com.example.source.ChapterLanguage.normalize(targetLanguage).ifBlank { "pt-br" }
+            }
             _detailChapterError.value = null
             _detailChapters.value = chaptersList
 
@@ -1092,7 +1098,8 @@ class MangaViewModel(
             val chapter = ChapterModel(
                 id = bookmark.chapterId,
                 title = bookmark.chapterTitle.ifBlank { cachedChapter?.title ?: "Capítulo" },
-                chapterUrl = realChapterUrl
+                chapterUrl = realChapterUrl,
+                language = cachedChapter?.language.orEmpty()
             )
 
             val targetLanguage = repository.preferencesRepository.selectedLanguage.first()
@@ -1108,7 +1115,9 @@ class MangaViewModel(
             }.ifEmpty { listOf(chapter) }
 
             _detailManga.value = manga
-            _detailChapterLanguage.value = com.example.source.ChapterLanguage.normalize(chapter.language)
+            _detailChapterLanguage.value = com.example.source.ChapterLanguage.normalize(chapter.language).ifBlank {
+                com.example.source.ChapterLanguage.normalize(targetLanguage).ifBlank { "pt-br" }
+            }
             _detailChapterError.value = null
             _detailChapters.value = chaptersList
 
@@ -1183,18 +1192,21 @@ class MangaViewModel(
     }
 
     private suspend fun persistReaderSnapshot(state: ReaderUiState) {
-        val chapter = state.currentChapter ?: return
-        if (state.pages.isEmpty()) return
-        state.viewport?.let { repository.preferencesRepository.saveReaderViewport(state.mangaUrl, it) }
-        if (state.currentPageIndex >= state.pages.lastIndex) {
-            repository.markChapterRead(state.mangaUrl, state.sourceId, chapter.id)
+        readerProgressLock.withLock {
+            if (state.historyRevision != (historyRevisions[state.mangaUrl] ?: 0L)) return@withLock
+            val chapter = state.currentChapter ?: return@withLock
+            if (state.pages.isEmpty()) return@withLock
+            state.viewport?.let { repository.preferencesRepository.saveReaderViewport(state.mangaUrl, it) }
+            if (state.currentPageIndex >= state.pages.lastIndex) {
+                repository.markChapterRead(state.mangaUrl, state.sourceId, chapter.id)
+            }
+            repository.saveReadingProgress(state.mangaUrl, chapter.id, chapter.title, chapter.chapterUrl,
+                state.currentPageIndex, state.pages.size, state.scrollOffset)
+            repository.saveAutoScrollBookmark(mangaUrl = state.mangaUrl, mangaTitle = state.mangaTitle.ifBlank { "Mangá" },
+                mangaCoverUrl = state.mangaCoverUrl, chapterId = chapter.id, chapterTitle = chapter.title,
+                pageIndex = state.currentPageIndex, pageUrl = state.pages.getOrElse(state.currentPageIndex) { "" },
+                scrollOffset = state.scrollOffset)
         }
-        repository.saveReadingProgress(state.mangaUrl, chapter.id, chapter.title, chapter.chapterUrl,
-            state.currentPageIndex, state.pages.size, state.scrollOffset)
-        repository.saveAutoScrollBookmark(mangaUrl = state.mangaUrl, mangaTitle = state.mangaTitle.ifBlank { "Mangá" },
-            mangaCoverUrl = state.mangaCoverUrl, chapterId = chapter.id, chapterTitle = chapter.title,
-            pageIndex = state.currentPageIndex, pageUrl = state.pages.getOrElse(state.currentPageIndex) { "" },
-            scrollOffset = state.scrollOffset)
     }
 
     fun updateReaderPageIndex(pageIndex: Int) {
