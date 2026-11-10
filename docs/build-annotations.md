@@ -22,3 +22,9 @@ O `reactivecircus/android-emulator-runner@v2` já usa Node.js 24 no ref atual. O
 Os jobs usam `ubuntu-24.04`, incluindo a Action principal. Isso define um ambiente explícito e reproduzível, em vez de depender da mudança automática de `ubuntu-latest` para Ubuntu 26.
 
 Não há filtros de log, supressão de warnings, `continue-on-error` ou variáveis para forçar runtime obsoleto. A verificação inclui compilação e testes com KSP reexecutado sem build cache, além de uma nova execução real da Action e consulta das anotações pela API do GitHub.
+
+## Gradle
+
+A Action atualizada identificou também que o Gradle 9.3.1 estava desatualizado. O wrapper foi atualizado para a versão estável 9.9.0, incluindo scripts e JAR regenerados pela própria tarefa `wrapper`. A distribuição tem SHA-256 fixado em `gradle-wrapper.properties`, conferido com o serviço oficial do Gradle. O JAR do wrapper também foi conferido com o checksum oficial.
+
+A checagem de versão do setup-gradle continua habilitada. A atualização do wrapper foi testada com o AGP 9.1.1 e JDK 21 existentes.
