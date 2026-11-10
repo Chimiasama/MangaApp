@@ -17,24 +17,24 @@ permissions:
 jobs:
   publish-release:
     name: Compilar APK e Publicar Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout do repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       # 1. Configurar JDK 21 (Compatível com AGP e Gradle moderno)
       - name: Configurar JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
       # 2. Configurar cache do Gradle
       - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # 3. Aceitar licenças do Android SDK
       - name: Aceitar licenças do Android SDK
@@ -92,7 +92,7 @@ jobs:
 
       # 8. Criar ou Atualizar Release no GitHub com o APK anexado
       - name: Criar GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.versioning.outputs.TAG_NAME }}
           target_commitish: ${{ github.sha }}
